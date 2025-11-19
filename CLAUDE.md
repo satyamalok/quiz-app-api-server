@@ -21,10 +21,12 @@ JNV Quiz App - A gamified quiz application backend for Jawahar Navodaya Vidyalay
 
 ### Initial Setup
 ```bash
-npm install                    # Install dependencies
+npm install                    # Install dependencies (generates package-lock.json)
 npm run migrate                # Run database migrations (creates all 13 tables)
 # or: node scripts/migrate.js
 ```
+
+**Note:** `package-lock.json` is tracked in git for consistent builds. Use `npm ci` for production (10-50x faster).
 
 ### Database Management
 ```bash
@@ -465,6 +467,12 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 **Development dependencies:**
 - nodemon - Auto-restart on file changes
 
+**Dependency Management:**
+- `package-lock.json` is **tracked in git** for reproducible builds (standard practice for applications)
+- Use `npm install` for development (updates lock file if needed)
+- Use `npm ci` for production/Docker (10-50x faster, uses exact locked versions)
+- Dockerfile uses `npm ci --only=production` for optimal build speed
+
 ## Common Gotchas
 
 1. **@ symbol must be included in API responses** - Don't strip it on server, let Android parse
@@ -479,3 +487,4 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 10. **WhatsApp OTP graceful mode** - Even if one provider fails, OTP is considered sent if ANY provider succeeds
 11. **Rate limiting is configurable** - Can be disabled or adjusted via admin panel (stored in `app_config` table)
 12. **Database must be initialized** - Run `npm run migrate` before first use to create all 13 tables
+13. **package-lock.json is tracked** - Committed to git for consistent builds (use `npm ci` in production for speed)
