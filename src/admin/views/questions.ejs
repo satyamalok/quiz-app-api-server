@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Questions - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .filters {
+            display: grid;
+            grid-template-columns: 150px 200px 1fr auto;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .question-text {
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .actions button {
+            padding: 5px 10px;
+            margin-right: 5px;
+            font-size: 12px;
+        }
+        .pagination {
+            margin-top: 20px;
+            text-align: center;
+        }
+        .pagination a {
+            display: inline-block;
+            padding: 8px 12px;
+            margin: 0 2px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            text-decoration: none;
+            color: #333;
+        }
+        .pagination a.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>Manage Questions (<%= pagination.totalQuestions %> total)</h1>
+
+        <div class="card">
+            <form method="GET" action="/admin/questions" class="filters">
+                <input type="number" name="level" placeholder="Level" value="<%= filters.level || '' %>" min="1">
+                <input type="text" name="subject" placeholder="Subject" value="<%= filters.subject || '' %>">
+                <input type="text" name="search" placeholder="Search question text" value="<%= filters.search || '' %>">
+                <button type="submit">Filter</button>
+            </form>
+
+            <% if (questions.length > 0) { %>
+                <div style="margin-bottom: 15px;">
+                    <button onclick="deleteSelected()" style="background: #dc3545; padding: 8px 15px;">Delete Selected</button>
+                    <span id="selectedCount" style="margin-left: 10px; color: #666;"></span>
+                </div>
+            <% } %>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 40px;">
+                            <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                        </th>
+                        <th style="width: 50px;">Level</th>
+                        <th style="width: 50px;">Order</th>
+                        <th>Question</th>
+                        <th style="width: 100px;">Subject</th>
+                        <th style="width: 200px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (questions.length === 0) { %>
+                        <tr>
+                            <td colspan="6" style="text-align: center;">No questions found</td>
+                        </tr>
+                    <% } else { %>
+                        <% questions.forEach(q => { %>
+                            <tr>
+                                <td>
+                                    <input type="checkbox" class="question-checkbox" value="<%= q.sl %>" onchange="updateSelectedCount()">
+                                </td>
+                                <td><%= q.level %></td>
+                                <td><%= q.question_order %></td>
+                                <td class="question-text"><%= q.question_text || 'Image question' %></td>
+                                <td><%= q.subject || 'N/A' %></td>
+                                <td class="actions">
+                                    <a href="/admin/questions/<%= q.sl %>/edit" class="btn" style="padding: 5px 10px; font-size: 12px;">Edit</a>
+                                    <button onclick="deleteQuestion(<%= q.sl %>)" style="background: #dc3545;">Delete</button>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                </tbody>
+            </table>
+
+            <% if (pagination.totalPages > 1) { %>
+                <div class="pagination">
+                    <% for (let i = 1; i <= pagination.totalPages; i++) { %>
+                        <a href="?page=<%= i %>&level=<%= filters.level || '' %>&subject=<%= filters.subject || '' %>&search=<%= filters.search || '' %>"
+                           class="<%= i === pagination.currentPage ? 'active' : '' %>">
+                            <%= i %>
+                        </a>
+                    <% } %>
+                </div>
+            <% } %>
+        </div>
+    </div>
+
+    <script>
+        function deleteQuestion(id) {
+            if (!confirm('Are you sure you want to delete this question?')) return;
+
+            fetch(`/admin/questions/${id}`, {
+                method: 'DELETE'
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Question deleted successfully');
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(err => alert('Error deleting question'));
+        }
+
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('.question-checkbox');
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            const checkboxes = document.querySelectorAll('.question-checkbox:checked');
+            const count = checkboxes.length;
+            const countDisplay = document.getElementById('selectedCount');
+            if (count > 0) {
+                countDisplay.textContent = `${count} question(s) selected`;
+            } else {
+                countDisplay.textContent = '';
+            }
+        }
+
+        function deleteSelected() {
+            const checkboxes = document.querySelectorAll('.question-checkbox:checked');
+            const ids = Array.from(checkboxes).map(cb => cb.value);
+
+            if (ids.length === 0) {
+                alert('Please select at least one question to delete');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete ${ids.length} question(s)? This action cannot be undone.`)) {
+                return;
+            }
+
+            fetch('/admin/questions/bulk-delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ ids })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert(`Successfully deleted ${data.deletedCount} question(s)`);
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(err => alert('Error deleting questions'));
+        }
+    </script>
+</body>
+</html>

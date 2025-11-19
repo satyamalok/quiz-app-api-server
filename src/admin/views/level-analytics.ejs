@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Level Analytics - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .difficulty-indicator {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .difficulty-easy { background: #d4edda; color: #155724; }
+        .difficulty-medium { background: #fff3cd; color: #856404; }
+        .difficulty-hard { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>Level Analytics</h1>
+
+        <div class="card">
+            <h2>Performance by Level</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">Level</th>
+                        <th style="width: 100px;">Attempts</th>
+                        <th style="width: 100px;">Completions</th>
+                        <th style="width: 120px;">Completion %</th>
+                        <th style="width: 100px;">Avg Accuracy</th>
+                        <th style="width: 120px;">Video Watch %</th>
+                        <th style="width: 100px;">Difficulty</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (analytics.length === 0) { %>
+                        <tr>
+                            <td colspan="7" style="text-align: center;">No analytics data yet. Users need to attempt levels first.</td>
+                        </tr>
+                    <% } else { %>
+                        <% analytics.forEach(level => {
+                            const completionRate = level.total_attempts > 0
+                                ? ((level.completions / level.total_attempts) * 100).toFixed(1)
+                                : 0;
+
+                            let difficultyClass = 'difficulty-easy';
+                            let difficultyLabel = 'Easy';
+
+                            if (level.avg_accuracy < 50) {
+                                difficultyClass = 'difficulty-hard';
+                                difficultyLabel = 'Hard';
+                            } else if (level.avg_accuracy < 70) {
+                                difficultyClass = 'difficulty-medium';
+                                difficultyLabel = 'Medium';
+                            }
+                        %>
+                            <tr>
+                                <td><strong><%= level.level %></strong></td>
+                                <td><%= level.total_attempts %></td>
+                                <td><%= level.completions %></td>
+                                <td><%= completionRate %>%</td>
+                                <td><%= level.avg_accuracy %>%</td>
+                                <td><%= level.video_watch_rate %>%</td>
+                                <td>
+                                    <span class="difficulty-indicator <%= difficultyClass %>">
+                                        <%= difficultyLabel %>
+                                    </span>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                </tbody>
+            </table>
+
+            <% if (analytics.length > 0) { %>
+                <div style="margin-top: 30px; padding: 20px; background: #f9f9f9; border-radius: 5px;">
+                    <h3>Summary</h3>
+                    <ul style="margin: 10px 0 0 20px;">
+                        <li>Total Levels with Data: <%= analytics.length %></li>
+                        <li>Difficulty based on average accuracy: &lt;50% = Hard, 50-70% = Medium, &gt;70% = Easy</li>
+                        <li>High video watch rate indicates engaging content</li>
+                        <li>Low completion rate may indicate difficult or abandoned levels</li>
+                    </ul>
+                </div>
+            <% } %>
+        </div>
+    </div>
+</body>
+</html>

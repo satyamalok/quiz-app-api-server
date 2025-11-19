@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OTP Viewer - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .refresh-info {
+            background: #e7f3ff;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            text-align: center;
+            color: #004085;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>OTP Viewer</h1>
+
+        <div class="refresh-info">
+            Auto-refreshes every 10 seconds
+        </div>
+
+        <div class="card">
+            <h2>Recent OTP Requests (Last 50)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Phone</th>
+                        <th>OTP</th>
+                        <th>Generated At</th>
+                        <th>Expires At</th>
+                        <th>Status</th>
+                        <th>Attempts</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (otpLogs.length === 0) { %>
+                        <tr>
+                            <td colspan="6" style="text-align: center;">No OTP logs yet</td>
+                        </tr>
+                    <% } else { %>
+                        <% otpLogs.forEach(log => { %>
+                            <tr>
+                                <td><%= log.phone %></td>
+                                <td><strong><%= log.otp_code %></strong></td>
+                                <td><%= new Date(log.generated_at).toLocaleString() %></td>
+                                <td><%= new Date(log.expires_at).toLocaleString() %></td>
+                                <td>
+                                    <% if (log.is_verified) { %>
+                                        <span style="color: green;">Verified</span>
+                                    <% } else if (new Date(log.expires_at) < new Date()) { %>
+                                        <span style="color: red;">Expired</span>
+                                    <% } else { %>
+                                        <span style="color: orange;">Pending</span>
+                                    <% } %>
+                                </td>
+                                <td><%= log.attempts %></td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh every 10 seconds
+        setTimeout(() => location.reload(), 10000);
+    </script>
+</body>
+</html>

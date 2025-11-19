@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV Column Mapping - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .mapping-row {
+            display: grid;
+            grid-template-columns: 1fr 50px 1fr;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .mapping-row span {
+            text-align: center;
+            font-weight: 600;
+            color: #667eea;
+        }
+        .preview-table {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        .preview-table table {
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>Map CSV Columns to Database Fields</h1>
+
+        <% if (locals.errors && errors.length > 0) { %>
+            <div class="error">
+                <strong>Validation Errors:</strong>
+                <ul>
+                    <% errors.forEach(error => { %>
+                        <li><%= error %></li>
+                    <% }) %>
+                </ul>
+            </div>
+        <% } %>
+
+        <div class="card">
+            <p style="color: #666; margin-bottom: 20px;">
+                Map your CSV columns to the database fields. Total rows to import: <strong><%= totalRows %></strong>
+            </p>
+
+            <form method="POST" action="/admin/questions/bulk-insert">
+                <h3>Column Mapping</h3>
+
+                <% csvHeaders.forEach(header => { %>
+                    <div class="mapping-row">
+                        <div>
+                            <strong>CSV Column:</strong> <%= header %>
+                        </div>
+                        <span>→</span>
+                        <div>
+                            <select name="mapping[<%= header %>]" style="width: 100%;">
+                                <% dbColumns.forEach(col => { %>
+                                    <option value="<%= col.value %>">
+                                        <%= col.label %> <%= col.required ? '*' : '' %>
+                                    </option>
+                                <% }) %>
+                            </select>
+                        </div>
+                    </div>
+                <% }) %>
+
+                <div style="margin-top: 20px;">
+                    <button type="submit">Import <%= totalRows %> Questions</button>
+                    <a href="/admin/questions/upload" class="btn" style="background: #999; margin-left: 10px;">Cancel</a>
+                </div>
+            </form>
+        </div>
+
+        <div class="card preview-table">
+            <h3>Preview (First 10 Rows)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <% csvHeaders.forEach(header => { %>
+                            <th><%= header %></th>
+                        <% }) %>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% previewRows.forEach(row => { %>
+                        <tr>
+                            <% csvHeaders.forEach(header => { %>
+                                <td><%= row[header] || '' %></td>
+                            <% }) %>
+                        </tr>
+                    <% }) %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

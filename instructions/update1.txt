@@ -1,0 +1,11 @@
+1- make rate limiting optional, with editable number of Max verification attempts per otp and max OTP requests per phone per hour - mean i can turn them off so that there is no rate limiting or i can increase or decrese this number. i am talking about this table - otp_logs
+
+2- in this table online_users_config, for fake users online - give option for a range instead of a single number like 200 to 300 or something and change is every n minutes.
+
+4- regarding bulk question upload via csv upload, you have to give option to match the header of the csv ie first row with the options possible in questions table column. any column can be empty if necessary.
+
+5- how will actual online users be calculated? is there any plan?
+
+6- in a quiz there are three lifelines. when a users answers any question as incorrect then this lifeline is deducted. and once these three lifelines are deducted then he is given an option to watch a video and again gain one 3 lifelines. these videos will be from same promotional table. represent a lifeline with hearts in red at top of quiz.
+
+7- there will be a think called initialize setup, in which all the tables with schemas will be created in the postgres. i think we are doing this in some way, right? the postgres should be able to remove all the schema and tables and data and reset it.

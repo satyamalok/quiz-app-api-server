@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>Dashboard</h1>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value"><%= stats.totalUsers %></div>
+                <div class="stat-label">Total Users</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-value"><%= stats.totalQuestions %></div>
+                <div class="stat-label">Total Questions</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-value"><%= stats.totalVideos %></div>
+                <div class="stat-label">Total Videos</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-value"><%= stats.todayActiveUsers %></div>
+                <div class="stat-label">Active Users Today</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Top Performers Today</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Name</th>
+                        <th>Phone</th>
+                        <th>XP Today</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (topPerformers.length === 0) { %>
+                        <tr>
+                            <td colspan="4" style="text-align: center;">No data yet</td>
+                        </tr>
+                    <% } else { %>
+                        <% topPerformers.forEach((user, index) => { %>
+                            <tr>
+                                <td><%= index + 1 %></td>
+                                <td><%= user.name || 'N/A' %></td>
+                                <td><%= user.phone %></td>
+                                <td><%= user.total_xp_today %></td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,206 @@
+###############################################
+# JNV QUIZ APP - API TESTING FILE
+###############################################
+# Install "REST Client" extension in VS Code
+# Click "Send Request" above any request to test
+###############################################
+
+### VARIABLES (Update these as needed)
+@baseUrl = http://localhost:3000/api/v1
+@phone = 9876543210
+@token = YOUR_TOKEN_HERE
+@referralCode =
+
+###############################################
+# 1. AUTHENTICATION APIS
+###############################################
+
+### 1.1 Send OTP
+POST {{baseUrl}}/auth/send-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}"
+}
+
+### 1.2 Verify OTP and Register/Login
+# Note: Copy OTP from console/database or use test_mode OTP from response
+POST {{baseUrl}}/auth/verify-otp
+Content-Type: application/json
+
+{
+  "phone": "{{phone}}",
+  "otp": "123456",
+  "name": "Test User",
+  "district": "Test District",
+  "state": "Test State",
+  "referred_by": "{{referralCode}}"
+}
+
+### 1.3 Validate Token
+POST {{baseUrl}}/auth/validate-token
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "token": "{{token}}"
+}
+
+###############################################
+# 2. USER PROFILE APIS
+###############################################
+
+### 2.1 Get User Profile
+GET {{baseUrl}}/user/profile
+Authorization: Bearer {{token}}
+
+### 2.2 Update User Profile (without image)
+PATCH {{baseUrl}}/user/profile
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Updated Test User",
+  "district": "New District",
+  "state": "New State"
+}
+
+### 2.3 Update User Profile (with image - use multipart/form-data)
+# Note: For file upload, use Postman or Thunder Client
+# PATCH {{baseUrl}}/user/profile
+# Authorization: Bearer {{token}}
+# Content-Type: multipart/form-data
+# profile_image: [select file]
+
+###############################################
+# 3. QUIZ/LEVEL APIS
+###############################################
+
+### 3.1 Get Level History
+GET {{baseUrl}}/user/level-history
+Authorization: Bearer {{token}}
+
+### 3.2 Start Level
+POST {{baseUrl}}/level/start
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "level": 1
+}
+
+### 3.3 Answer Question
+# Note: Use attempt_id from "Start Level" response
+POST {{baseUrl}}/question/answer
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "attempt_id": 1,
+  "question_sl": 1,
+  "selected_option": 1
+}
+
+### 3.4 Abandon Level
+POST {{baseUrl}}/level/abandon
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "attempt_id": 1
+}
+
+### 3.5 Resume Level
+GET {{baseUrl}}/level/resume
+Authorization: Bearer {{token}}
+
+###############################################
+# 4. VIDEO APIS
+###############################################
+
+### 4.1 Get Video URL for Level
+GET {{baseUrl}}/video/url?level=1
+Authorization: Bearer {{token}}
+
+### 4.2 Get Video URL with Category Filter
+GET {{baseUrl}}/video/url?level=1&category=promotional
+Authorization: Bearer {{token}}
+
+### 4.3 Complete Video (Mark as Watched & Double XP)
+POST {{baseUrl}}/video/complete
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "attempt_id": 1,
+  "video_id": 1,
+  "watch_duration_seconds": 45
+}
+
+### 4.4 Restore Lifelines by Watching Video
+POST {{baseUrl}}/video/restore-lifelines
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "attempt_id": 1,
+  "video_id": 1,
+  "watch_duration_seconds": 45
+}
+
+###############################################
+# 5. STATISTICS & LEADERBOARD APIS
+###############################################
+
+### 5.1 Get Daily Leaderboard
+GET {{baseUrl}}/leaderboard/daily
+Authorization: Bearer {{token}}
+
+### 5.2 Get Daily XP (Last 30 Days)
+GET {{baseUrl}}/user/daily-xp
+Authorization: Bearer {{token}}
+
+### 5.3 Get User Streak
+GET {{baseUrl}}/user/streak
+Authorization: Bearer {{token}}
+
+### 5.4 Get User Stats
+GET {{baseUrl}}/user/stats
+Authorization: Bearer {{token}}
+
+###############################################
+# 6. APP CONFIGURATION APIS
+###############################################
+
+### 6.1 Check App Version
+GET {{baseUrl}}/app/version
+Authorization: Bearer {{token}}
+
+### 6.2 Get Online Users Count
+GET {{baseUrl}}/app/online-count
+Authorization: Bearer {{token}}
+
+###############################################
+# TESTING NOTES
+###############################################
+#
+# TESTING SEQUENCE:
+# 1. Start with Send OTP (1.1)
+# 2. Check console/OTP Viewer for OTP code
+# 3. Verify OTP (1.2) - Copy the token from response
+# 4. Update @token variable at top with your token
+# 5. Test all other APIs in order
+#
+# COMMON ERRORS:
+# - 401 Unauthorized: Token expired/invalid - get new token
+# - 400 Bad Request: Check request body format
+# - 404 Not Found: Check endpoint URL
+# - 500 Server Error: Check server logs
+#
+# TIPS:
+# - Use "Test Mode" in admin config to get OTP in response
+# - Upload at least 1 video and 10 questions for level 1
+# - Complete level flow: start -> answer 10 questions -> watch video
+# - Check admin panel for data verification
+#
+###############################################

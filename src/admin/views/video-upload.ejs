@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Management - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>Video Management</h1>
+
+        <% if (message) { %>
+            <div class="success"><%= message %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="error"><%= error %></div>
+        <% } %>
+
+        <!-- Upload Video Form -->
+        <div class="card">
+            <h2>Upload Video</h2>
+            <p style="color: #666; margin-bottom: 15px;">
+                Upload videos for any level. Multiple videos can have the same level with different categories.
+            </p>
+
+            <form method="POST" action="/admin/videos/upload" enctype="multipart/form-data">
+                <div style="display: grid; grid-template-columns: 150px 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label for="level">Level *</label>
+                        <input type="number" id="level" name="level" min="1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video_name">Video Name *</label>
+                        <input type="text" id="video_name" name="video_name" placeholder="e.g., Level 1 Introduction" required>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="video_file">Video File *</label>
+                    <input type="file" id="video_file" name="video_file" accept="video/*" required>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 200px 1fr 200px; gap: 20px;">
+                    <div class="form-group">
+                        <label for="duration_seconds">Duration (seconds) *</label>
+                        <input type="number" id="duration_seconds" name="duration_seconds" min="1" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <input type="text" id="description" name="description" placeholder="Optional description">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="category">Category *</label>
+                        <select id="category" name="category" required>
+                            <option value="promotional">Promotional</option>
+                            <option value="shorts">Shorts</option>
+                            <option value="lifeline">Lifeline</option>
+                            <option value="tutorial">Tutorial</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit">Upload Video</button>
+            </form>
+        </div>
+
+        <!-- Existing Videos Table -->
+        <div class="card">
+            <h2>Uploaded Videos (<%= videos.length %>)</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">Level</th>
+                        <th>Name</th>
+                        <th style="width: 100px;">Category</th>
+                        <th style="width: 100px;">Duration</th>
+                        <th style="width: 80px;">Status</th>
+                        <th style="width: 200px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (videos.length === 0) { %>
+                        <tr>
+                            <td colspan="6" style="text-align: center;">No videos uploaded yet</td>
+                        </tr>
+                    <% } else { %>
+                        <% videos.forEach(video => { %>
+                            <tr>
+                                <td><%= video.level %></td>
+                                <td><%= video.video_name %></td>
+                                <td>
+                                    <span style="padding: 3px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-size: 11px; text-transform: capitalize;">
+                                        <%= video.category %>
+                                    </span>
+                                </td>
+                                <td><%= video.duration_seconds %>s</td>
+                                <td>
+                                    <span style="color: <%= video.is_active ? 'green' : 'red' %>;">
+                                        <%= video.is_active ? 'Active' : 'Inactive' %>
+                                    </span>
+                                </td>
+                                <td>
+                                    <a href="<%= video.video_url %>" target="_blank" class="btn" style="padding: 5px 10px; font-size: 12px;">Preview</a>
+                                    <button onclick="deleteVideo(<%= video.id %>)" style="background: #dc3545; padding: 5px 10px; font-size: 12px;">Delete</button>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        function deleteVideo(id) {
+            if (!confirm('Are you sure you want to delete this video?')) return;
+
+            fetch(`/admin/videos/${id}`, {
+                method: 'DELETE'
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Video deleted successfully');
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(err => alert('Error deleting video'));
+        }
+    </script>
+</body>
+</html>

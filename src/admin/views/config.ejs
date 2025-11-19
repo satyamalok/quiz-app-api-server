@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>App Configuration</h1>
+
+        <% if (message) { %>
+            <div class="success"><%= message %></div>
+        <% } %>
+
+        <form method="POST" action="/admin/config/update">
+            <div class="card">
+                <h2>OTP Settings</h2>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="otp_rate_limiting_enabled" <%= appConfig.otp_rate_limiting_enabled ? 'checked' : '' %>>
+                        Enable OTP Rate Limiting
+                    </label>
+                </div>
+
+                <div class="form-group">
+                    <label for="otp_max_requests_per_hour">Max OTP Requests Per Hour</label>
+                    <input type="number" id="otp_max_requests_per_hour" name="otp_max_requests_per_hour" value="<%= appConfig.otp_max_requests_per_hour %>" min="1" max="100" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="otp_max_verification_attempts">Max Verification Attempts Per OTP</label>
+                    <input type="number" id="otp_max_verification_attempts" name="otp_max_verification_attempts" value="<%= appConfig.otp_max_verification_attempts %>" min="1" max="10" required>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="test_mode_enabled" <%= appConfig.test_mode_enabled ? 'checked' : '' %>>
+                        Enable Test Mode (OTP returned in API response)
+                    </label>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>WhatsApp OTP Configuration</h2>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+                    This is a read-only view. Configure WhatsApp OTP settings in the <code>.env</code> file.
+                </p>
+
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr style="border-bottom: 1px solid #ddd;">
+                        <td style="padding: 12px; font-weight: 600;">WhatsApp OTP Enabled:</td>
+                        <td style="padding: 12px;">
+                            <% if (whatsappStatus && whatsappStatus.enabled) { %>
+                                <span style="color: #27ae60; font-weight: 600;">✅ Enabled</span>
+                            <% } else { %>
+                                <span style="color: #e74c3c; font-weight: 600;">❌ Disabled</span>
+                            <% } %>
+                        </td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #ddd;">
+                        <td style="padding: 12px; font-weight: 600;">Interakt API:</td>
+                        <td style="padding: 12px;">
+                            <% if (whatsappStatus && whatsappStatus.interakt && whatsappStatus.interakt.enabled) { %>
+                                <span style="color: #27ae60; font-weight: 600;">✅ Active</span>
+                                <br><small style="color: #666;">Template: <%= whatsappStatus.interakt.template %></small>
+                            <% } else { %>
+                                <span style="color: #e74c3c; font-weight: 600;">❌ Disabled</span>
+                            <% } %>
+                        </td>
+                    </tr>
+                    <tr style="border-bottom: 1px solid #ddd;">
+                        <td style="padding: 12px; font-weight: 600;">n8n Webhook:</td>
+                        <td style="padding: 12px;">
+                            <% if (whatsappStatus && whatsappStatus.n8n && whatsappStatus.n8n.enabled) { %>
+                                <span style="color: #27ae60; font-weight: 600;">✅ Active</span>
+                            <% } else { %>
+                                <span style="color: #e74c3c; font-weight: 600;">❌ Disabled</span>
+                            <% } %>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 12px; font-weight: 600;">Active Methods:</td>
+                        <td style="padding: 12px;">
+                            <% if (whatsappStatus && whatsappStatus.available_methods && whatsappStatus.available_methods.length > 0) { %>
+                                <span style="color: #27ae60; font-weight: 600;"><%= whatsappStatus.available_methods.join(', ') %></span>
+                            <% } else { %>
+                                <span style="color: #e74c3c;">None</span>
+                            <% } %>
+                        </td>
+                    </tr>
+                </table>
+
+                <div style="margin-top: 15px; padding: 12px; background: #f8f9fa; border-left: 4px solid #3498db;">
+                    <strong>Note:</strong> To change WhatsApp configuration, edit the following variables in <code>.env</code>:
+                    <ul style="margin: 8px 0; padding-left: 20px;">
+                        <li><code>WHATSAPP_OTP_ENABLED</code> - Enable/disable WhatsApp OTP</li>
+                        <li><code>WHATSAPP_INTERAKT_ENABLED</code> - Enable/disable Interakt method</li>
+                        <li><code>WHATSAPP_N8N_ENABLED</code> - Enable/disable n8n webhook method</li>
+                        <li><code>INTERAKT_SECRET_KEY</code> - Interakt API secret</li>
+                        <li><code>N8N_WEBHOOK_URL</code> - n8n webhook URL</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Online Users Settings</h2>
+
+                <div class="form-group">
+                    <label for="online_count_min">Minimum Online Count</label>
+                    <input type="number" id="online_count_min" name="online_count_min" value="<%= onlineConfig.online_count_min %>" min="0" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="online_count_max">Maximum Online Count</label>
+                    <input type="number" id="online_count_max" name="online_count_max" value="<%= onlineConfig.online_count_max %>" min="0" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="update_interval_minutes">Update Interval (minutes)</label>
+                    <input type="number" id="update_interval_minutes" name="update_interval_minutes" value="<%= onlineConfig.update_interval_minutes %>" min="1" max="60" required>
+                </div>
+
+                <p style="color: #666; font-size: 14px; margin-top: 10px;">
+                    Current online count: <strong><%= onlineConfig.current_online_count %></strong>
+                    (updates every <%= onlineConfig.update_interval_minutes %> minutes between <%= onlineConfig.online_count_min %>-<%= onlineConfig.online_count_max %>)
+                </p>
+            </div>
+
+            <button type="submit">Save Configuration</button>
+        </form>
+    </div>
+</body>
+</html>

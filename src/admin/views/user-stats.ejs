@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Statistics - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>User Statistics</h1>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value"><%= stats.totalUsers %></div>
+                <div class="stat-label">Total Users</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-value"><%= stats.newToday %></div>
+                <div class="stat-label">New Users Today</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-value"><%= stats.activeLast7Days %></div>
+                <div class="stat-label">Active Last 7 Days</div>
+            </div>
+
+            <div class="stat-card">
+                <div class="stat-value"><%= stats.avgXP %></div>
+                <div class="stat-label">Average XP</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Top 10 Users by Total XP</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Name</th>
+                        <th>Phone</th>
+                        <th>Total XP</th>
+                        <th>Current Level</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (topUsers.length === 0) { %>
+                        <tr>
+                            <td colspan="5" style="text-align: center;">No users yet</td>
+                        </tr>
+                    <% } else { %>
+                        <% topUsers.forEach((user, index) => { %>
+                            <tr>
+                                <td><%= index + 1 %></td>
+                                <td><%= user.name || 'N/A' %></td>
+                                <td><%= user.phone %></td>
+                                <td><%= user.xp_total %></td>
+                                <td><%= user.current_level %></td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>
