@@ -55,6 +55,7 @@ services:
     environment:
       # Override .env with Docker-specific values
       NODE_ENV: production
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN:-quiz.tsblive.in}
       DB_HOST: postgres
       DB_PORT: 5432
       DB_NAME: quizdb

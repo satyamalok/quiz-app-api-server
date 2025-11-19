@@ -31,7 +31,8 @@ async function uploadFile(file, folder) {
     );
 
     // Generate public URL
-    const publicUrl = `http://${process.env.MINIO_ENDPOINT}:${process.env.MINIO_PORT}/${bucketName}/${objectName}`;
+    const domain = process.env.PUBLIC_DOMAIN || 'quiz.tsblive.in';
+    const publicUrl = `https://${domain}/storage/${objectName}`;
 
     return {
       fileName,
