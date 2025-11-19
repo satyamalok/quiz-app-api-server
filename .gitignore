@@ -4,6 +4,8 @@ package-lock.json
 
 # Environment variables
 .env
+.env.local
+.env.*.local
 
 # Logs
 logs
@@ -26,3 +28,12 @@ coverage/
 # Build
 dist/
 build/
+
+# Docker volumes and data (if running locally)
+postgres-data/
+minio-data/
+
+# Backups
+backups/
+*.sql
+*.tar.gz
