@@ -59,7 +59,15 @@ async function processLogin(req, res) {
       role: admin.role
     };
 
-    res.redirect('/admin/dashboard');
+    // Explicitly save session before redirect to prevent race condition
+    // This ensures the session is persisted to the store before the redirect happens
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+        return res.render('login', { error: 'Session error. Please try again.' });
+      }
+      res.redirect('/admin/dashboard');
+    });
 
   } catch (err) {
     console.error('Login error:', err);

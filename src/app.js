@@ -12,6 +12,10 @@ const apiRoutes = require('./routes');
 
 const app = express();
 
+// Trust proxy for secure cookies behind nginx/reverse proxy
+// This allows Express to correctly identify HTTPS when behind a reverse proxy
+app.set('trust proxy', 1);
+
 // View engine setup for admin panel
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'admin/views'));
@@ -40,11 +44,13 @@ app.use(cookieParser());
 // Session for admin panel
 app.use(session({
   secret: process.env.SESSION_SECRET,
+  name: 'admin.sid', // Named session cookie for better debugging
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: false, // Set to false - app runs on HTTP internally, Nginx handles HTTPS externally
     httpOnly: true,
+    sameSite: 'lax', // Prevents browser from blocking cookies
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));
