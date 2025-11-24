@@ -8,7 +8,13 @@ const {
   showOTPViewer,
   showConfig,
   updateConfig,
+  showWhatsAppConfig,
+  updateWhatsAppConfig,
   showUsers,
+  listAllUsers,
+  viewUserProfile,
+  showEditUser,
+  updateUser,
   // Question management
   showQuestionUpload,
   uploadCSVForMapping,
@@ -22,6 +28,8 @@ const {
   // Video management
   showVideos,
   uploadVideo,
+  showEditVideo,
+  updateVideo,
   deleteVideo,
   // Analytics
   showAnalytics,
@@ -49,11 +57,19 @@ router.get('/otp-viewer', showOTPViewer);
 router.get('/config', showConfig);
 router.post('/config/update', updateConfig);
 
+// WhatsApp Configuration
+router.get('/config/whatsapp', showWhatsAppConfig);
+router.post('/config/whatsapp/update', updateWhatsAppConfig);
+
 // Referral Analytics
 router.get('/referrals', getReferralDashboard);
 
-// User Statistics
-router.get('/users', showUsers);
+// User Management
+router.get('/users', showUsers); // Stats page
+router.get('/users/list', listAllUsers); // List all users
+router.get('/users/:phone/view', viewUserProfile); // View user profile
+router.get('/users/:phone/edit', showEditUser); // Edit user form
+router.post('/users/:phone/update', updateUser); // Update user
 
 // Question Management
 router.get('/questions/upload', showQuestionUpload);
@@ -75,6 +91,8 @@ router.delete('/questions/:id', deleteQuestion);
 // Video Management
 router.get('/videos', showVideos);
 router.post('/videos/upload', upload.single('video_file'), uploadVideo);
+router.get('/videos/:id/edit', showEditVideo);
+router.post('/videos/:id/update', updateVideo);
 router.delete('/videos/:id', deleteVideo);
 
 // Analytics

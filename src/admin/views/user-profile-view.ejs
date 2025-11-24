@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Profile - <%= user.name %> - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>User Profile: <%= user.name %></h1>
+
+        <!-- User Basic Info -->
+        <div class="card">
+            <h2>Basic Information</h2>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+                <div>
+                    <strong>Phone:</strong> <%= user.phone %><br>
+                    <strong>Name:</strong> <%= user.name %><br>
+                    <strong>District:</strong> <%= user.district || 'Not set' %><br>
+                    <strong>State:</strong> <%= user.state || 'Not set' %>
+                </div>
+                <div>
+                    <strong>Referral Code:</strong> <code><%= user.referral_code %></code><br>
+                    <strong>Date Joined:</strong> <%= new Date(user.date_joined).toLocaleString() %><br>
+                    <strong>Last Updated:</strong> <%= new Date(user.updated_at).toLocaleString() %>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <a href="/admin/users/<%= user.phone %>/edit" class="btn" style="background: #28a745;">Edit User</a>
+            </div>
+        </div>
+
+        <!-- Progress and Stats -->
+        <div class="card">
+            <h2>Progress & Statistics</h2>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;">
+                <div style="background: #e3f2fd; padding: 20px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 32px; font-weight: bold; color: #1976d2;"><%= user.xp_total %></div>
+                    <div style="color: #666; margin-top: 5px;">Total XP</div>
+                </div>
+                <div style="background: #f3e5f5; padding: 20px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 32px; font-weight: bold; color: #7b1fa2;"><%= user.current_level %></div>
+                    <div style="color: #666; margin-top: 5px;">Current Level</div>
+                </div>
+                <div style="background: #e8f5e9; padding: 20px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 32px; font-weight: bold; color: #388e3c;"><%= user.total_ads_watched %></div>
+                    <div style="color: #666; margin-top: 5px;">Videos Watched</div>
+                </div>
+                <div style="background: #fff3e0; padding: 20px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 32px; font-weight: bold; color: #f57c00;"><%= streak.current_streak %></div>
+                    <div style="color: #666; margin-top: 5px;">Current Streak</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 15px; color: #666; font-size: 14px;">
+                <strong>Longest Streak:</strong> <%= streak.longest_streak %> days
+                <% if (streak.last_activity_date) { %>
+                    | <strong>Last Activity:</strong> <%= new Date(streak.last_activity_date).toLocaleDateString() %>
+                <% } %>
+            </div>
+        </div>
+
+        <!-- Referral Statistics -->
+        <div class="card">
+            <h2>Referral Statistics</h2>
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                    <strong>Total Referrals:</strong> <%= referralStats.total_referrals || 0 %>
+                </div>
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                    <strong>XP Earned from Referrals:</strong> <%= referralStats.total_xp_earned || 0 %>
+                </div>
+            </div>
+
+            <% if (referredUsers.length > 0) { %>
+                <h3 style="margin-top: 20px;">Recent Referrals</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Phone</th>
+                            <th>Name</th>
+                            <th>XP Granted</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% referredUsers.forEach(ref => { %>
+                            <tr>
+                                <td><%= ref.referee_phone %></td>
+                                <td><%= ref.name || 'N/A' %></td>
+                                <td><%= ref.xp_granted %></td>
+                                <td><%= new Date(ref.referral_date).toLocaleDateString() %></td>
+                            </tr>
+                        <% }) %>
+                    </tbody>
+                </table>
+            <% } %>
+        </div>
+
+        <!-- Level History -->
+        <div class="card">
+            <h2>Level Completion History (Recent 50)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 80px;">Level</th>
+                        <th style="width: 120px;">Status</th>
+                        <th style="width: 100px;">Accuracy</th>
+                        <th style="width: 100px;">XP Earned</th>
+                        <th style="width: 100px;">Video Watched</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (levelHistory.length === 0) { %>
+                        <tr>
+                            <td colspan="6" style="text-align: center;">No level attempts yet</td>
+                        </tr>
+                    <% } else { %>
+                        <% levelHistory.forEach(attempt => { %>
+                            <tr>
+                                <td><%= attempt.level %></td>
+                                <td>
+                                    <span style="padding: 3px 8px; background: <%= attempt.completion_status === 'completed' ? '#d4edda' : '#fff3cd' %>; color: <%= attempt.completion_status === 'completed' ? '#155724' : '#856404' %>; border-radius: 3px; font-size: 12px; text-transform: capitalize;">
+                                        <%= attempt.completion_status %>
+                                    </span>
+                                </td>
+                                <td><%= attempt.accuracy_percentage %>%</td>
+                                <td><%= attempt.xp_earned_final %></td>
+                                <td>
+                                    <span style="color: <%= attempt.video_watched ? 'green' : 'red' %>;">
+                                        <%= attempt.video_watched ? '✓ Yes' : '✗ No' %>
+                                    </span>
+                                </td>
+                                <td><%= new Date(attempt.attempt_date).toLocaleString() %></td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Recent XP Activity -->
+        <div class="card">
+            <h2>Recent XP Activity (Last 30 Days)</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th style="width: 120px;">XP Earned</th>
+                        <th style="width: 150px;">Levels Completed</th>
+                        <th style="width: 150px;">Videos Watched</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (xpActivity.length === 0) { %>
+                        <tr>
+                            <td colspan="4" style="text-align: center;">No activity in the last 30 days</td>
+                        </tr>
+                    <% } else { %>
+                        <% xpActivity.forEach(activity => { %>
+                            <tr>
+                                <td><%= new Date(activity.date).toLocaleDateString() %></td>
+                                <td><%= activity.total_xp_today %></td>
+                                <td><%= activity.levels_completed_today %></td>
+                                <td><%= activity.videos_watched_today %></td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Back Links -->
+        <div style="margin-top: 20px; display: flex; gap: 20px;">
+            <a href="/admin/users/list" style="color: #0066cc; text-decoration: none;">← Back to User List</a>
+            <a href="/admin/users/<%= user.phone %>/edit" style="color: #28a745; text-decoration: none;">✎ Edit User</a>
+        </div>
+    </div>
+</body>
+</html>

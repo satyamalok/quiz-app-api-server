@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Management - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>User Management</h1>
+
+        <!-- Search and Filter Bar -->
+        <div class="card">
+            <form method="GET" action="/admin/users/list" style="display: flex; gap: 15px; align-items: end;">
+                <div class="form-group" style="flex: 1; margin: 0;">
+                    <label for="search">Search Users</label>
+                    <input
+                        type="text"
+                        id="search"
+                        name="search"
+                        value="<%= filters.search || '' %>"
+                        placeholder="Phone, name, or referral code..."
+                    >
+                </div>
+
+                <div class="form-group" style="width: 200px; margin: 0;">
+                    <label for="sort">Sort By</label>
+                    <select id="sort" name="sort">
+                        <option value="xp_total" <%= filters.sort === 'xp_total' ? 'selected' : '' %>>XP (High to Low)</option>
+                        <option value="current_level" <%= filters.sort === 'current_level' ? 'selected' : '' %>>Level (High to Low)</option>
+                        <option value="date_joined" <%= filters.sort === 'date_joined' ? 'selected' : '' %>>Date Joined (Recent)</option>
+                        <option value="name" <%= filters.sort === 'name' ? 'selected' : '' %>>Name (A-Z)</option>
+                    </select>
+                </div>
+
+                <button type="submit" style="white-space: nowrap;">Search</button>
+                <% if (filters.search) { %>
+                    <a href="/admin/users/list" class="btn" style="background: #6c757d; text-decoration: none;">Clear</a>
+                <% } %>
+            </form>
+        </div>
+
+        <!-- User List Table -->
+        <div class="card">
+            <h2>All Users (<%= pagination.totalUsers %>)</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 120px;">Phone</th>
+                        <th>Name</th>
+                        <th style="width: 150px;">District</th>
+                        <th style="width: 100px;">Level</th>
+                        <th style="width: 100px;">Total XP</th>
+                        <th style="width: 100px;">Referral Code</th>
+                        <th style="width: 120px;">Date Joined</th>
+                        <th style="width: 200px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (users.length === 0) { %>
+                        <tr>
+                            <td colspan="8" style="text-align: center;">No users found</td>
+                        </tr>
+                    <% } else { %>
+                        <% users.forEach(user => { %>
+                            <tr>
+                                <td><%= user.phone %></td>
+                                <td><%= user.name %></td>
+                                <td><%= user.district || '-' %></td>
+                                <td><%= user.current_level %></td>
+                                <td><%= user.xp_total %></td>
+                                <td><code><%= user.referral_code %></code></td>
+                                <td><%= new Date(user.date_joined).toLocaleDateString() %></td>
+                                <td>
+                                    <a href="/admin/users/<%= user.phone %>/view" class="btn" style="padding: 5px 10px; font-size: 12px;">View</a>
+                                    <a href="/admin/users/<%= user.phone %>/edit" class="btn" style="padding: 5px 10px; font-size: 12px; background: #28a745;">Edit</a>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                </tbody>
+            </table>
+
+            <!-- Pagination -->
+            <% if (pagination.totalPages > 1) { %>
+                <div style="margin-top: 20px; text-align: center;">
+                    <% if (pagination.currentPage > 1) { %>
+                        <a href="?page=<%= pagination.currentPage - 1 %><%= filters.search ? '&search=' + filters.search : '' %>&sort=<%= filters.sort %>" class="btn" style="margin: 0 5px;">Previous</a>
+                    <% } %>
+
+                    <span style="margin: 0 15px; color: #666;">
+                        Page <%= pagination.currentPage %> of <%= pagination.totalPages %>
+                    </span>
+
+                    <% if (pagination.currentPage < pagination.totalPages) { %>
+                        <a href="?page=<%= pagination.currentPage + 1 %><%= filters.search ? '&search=' + filters.search : '' %>&sort=<%= filters.sort %>" class="btn" style="margin: 0 5px;">Next</a>
+                    <% } %>
+                </div>
+            <% } %>
+        </div>
+
+        <!-- Back Link -->
+        <div style="margin-top: 20px;">
+            <a href="/admin/users" style="color: #0066cc; text-decoration: none;">← Back to User Statistics</a>
+        </div>
+    </div>
+</body>
+</html>

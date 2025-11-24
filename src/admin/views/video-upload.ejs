@@ -109,6 +109,7 @@
                                 </td>
                                 <td>
                                     <a href="<%= video.video_url %>" target="_blank" class="btn" style="padding: 5px 10px; font-size: 12px;">Preview</a>
+                                    <a href="/admin/videos/<%= video.id %>/edit" class="btn" style="padding: 5px 10px; font-size: 12px; background: #28a745;">Edit</a>
                                     <button onclick="deleteVideo(<%= video.id %>)" style="background: #dc3545; padding: 5px 10px; font-size: 12px;">Delete</button>
                                 </td>
                             </tr>

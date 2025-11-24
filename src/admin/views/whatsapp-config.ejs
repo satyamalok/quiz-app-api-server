@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp OTP Configuration - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>WhatsApp OTP Configuration</h1>
+
+        <% if (message) { %>
+            <div class="success"><%= message %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="error"><%= error %></div>
+        <% } %>
+
+        <% if (usingDefaultKey) { %>
+            <div class="error" style="margin-bottom: 20px;">
+                <strong>⚠️ Security Warning:</strong> You are using the default encryption key.
+                Please set a custom <code>ENCRYPTION_KEY</code> environment variable (32 characters) for production use.
+            </div>
+        <% } %>
+
+        <!-- Configuration Form -->
+        <form method="POST" action="/admin/config/whatsapp/update">
+
+            <!-- Interakt API Configuration -->
+            <div class="card">
+                <h2 style="display: flex; align-items: center; gap: 10px;">
+                    <span>Interakt API Configuration</span>
+                    <label style="display: flex; align-items: center; cursor: pointer; font-size: 14px; font-weight: normal;">
+                        <input type="checkbox" name="whatsapp_interakt_enabled" <%= config.whatsapp_interakt_enabled ? 'checked' : '' %> style="width: auto; margin-right: 5px;">
+                        <span style="color: #666;">Enable Interakt</span>
+                    </label>
+                </h2>
+
+                <p style="color: #666; margin-bottom: 20px;">
+                    Configure Interakt WhatsApp Business API for OTP delivery. Get your credentials from
+                    <a href="https://app.interakt.ai/" target="_blank">Interakt Dashboard</a>.
+                </p>
+
+                <div class="form-group">
+                    <label for="interakt_api_url">API URL *</label>
+                    <input
+                        type="url"
+                        id="interakt_api_url"
+                        name="interakt_api_url"
+                        value="<%= config.interakt_api_url || 'https://api.interakt.ai/v1/public/message/' %>"
+                        placeholder="https://api.interakt.ai/v1/public/message/"
+                        required
+                    >
+                    <small style="color: #666;">Interakt API endpoint for sending messages</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="interakt_secret_key">API Secret Key *</label>
+                    <input
+                        type="password"
+                        id="interakt_secret_key"
+                        name="interakt_secret_key"
+                        value="<%= config.interakt_secret_key ? '••••••••••••••••' : '' %>"
+                        placeholder="<%= config.interakt_secret_key ? 'Enter new key to update' : 'Enter your Interakt secret key' %>"
+                    >
+                    <small style="color: #666;">
+                        <% if (config.interakt_secret_key) { %>
+                            ✓ Secret key is set (encrypted). Leave blank to keep current key.
+                        <% } else { %>
+                            Your Interakt API secret key (will be encrypted)
+                        <% } %>
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="interakt_template_name">Template Name *</label>
+                    <input
+                        type="text"
+                        id="interakt_template_name"
+                        name="interakt_template_name"
+                        value="<%= config.interakt_template_name || 'otp_jnv_quiz_app' %>"
+                        placeholder="otp_jnv_quiz_app"
+                        required
+                    >
+                    <small style="color: #666;">WhatsApp approved template name for OTP messages</small>
+                </div>
+            </div>
+
+            <!-- n8n Webhook Configuration -->
+            <div class="card">
+                <h2 style="display: flex; align-items: center; gap: 10px;">
+                    <span>n8n Webhook Configuration</span>
+                    <label style="display: flex; align-items: center; cursor: pointer; font-size: 14px; font-weight: normal;">
+                        <input type="checkbox" name="whatsapp_n8n_enabled" <%= config.whatsapp_n8n_enabled ? 'checked' : '' %> style="width: auto; margin-right: 5px;">
+                        <span style="color: #666;">Enable n8n</span>
+                    </label>
+                </h2>
+
+                <p style="color: #666; margin-bottom: 20px;">
+                    Configure n8n workflow webhook for custom WhatsApp integrations. Set up your workflow at
+                    <a href="https://n8n.io" target="_blank">n8n.io</a>.
+                </p>
+
+                <div class="form-group">
+                    <label for="n8n_webhook_url">Webhook URL *</label>
+                    <input
+                        type="url"
+                        id="n8n_webhook_url"
+                        name="n8n_webhook_url"
+                        value="<%= config.n8n_webhook_url ? '••••••••••••••••' : '' %>"
+                        placeholder="<%= config.n8n_webhook_url ? 'Enter new URL to update' : 'https://your-n8n.com/webhook/otp' %>"
+                    >
+                    <small style="color: #666;">
+                        <% if (config.n8n_webhook_url) { %>
+                            ✓ Webhook URL is set (encrypted). Leave blank to keep current URL.
+                        <% } else { %>
+                            Your n8n webhook URL (will be encrypted)
+                        <% } %>
+                    </small>
+                </div>
+            </div>
+
+            <!-- Configuration Guide -->
+            <div class="card" style="background: #f8f9fa; border-left: 4px solid #0066cc;">
+                <h3 style="margin-bottom: 15px;">Configuration Guide</h3>
+
+                <div style="margin-bottom: 20px;">
+                    <h4 style="margin-bottom: 10px;">Interakt Setup:</h4>
+                    <ol style="color: #666; line-height: 1.8; margin-left: 20px;">
+                        <li>Sign up at <a href="https://app.interakt.ai/" target="_blank">Interakt Dashboard</a></li>
+                        <li>Go to Settings → API Keys and copy your secret key</li>
+                        <li>Create and get approval for an OTP message template</li>
+                        <li>Enter your credentials above and enable Interakt</li>
+                    </ol>
+                </div>
+
+                <div>
+                    <h4 style="margin-bottom: 10px;">n8n Setup:</h4>
+                    <ol style="color: #666; line-height: 1.8; margin-left: 20px;">
+                        <li>Create a workflow in your n8n instance</li>
+                        <li>Add a Webhook node as the trigger</li>
+                        <li>Configure WhatsApp message sending (via Twilio, Interakt, etc.)</li>
+                        <li>Copy the webhook URL and enter it above</li>
+                        <li>Enable n8n integration</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- OTP Delivery Mode -->
+            <div class="card" style="background: #e8f5e9; border-left: 4px solid #4caf50;">
+                <h3 style="margin-bottom: 10px;">📡 OTP Delivery Mode</h3>
+                <p style="color: #666; margin-bottom: 15px;">
+                    The system uses <strong>graceful mode</strong> by default: OTP is considered sent if
+                    <strong>ANY</strong> enabled provider succeeds. To require <strong>ALL</strong> providers
+                    to succeed, set <code>OTP_REQUIRE_ALL_METHODS=true</code> in your environment variables.
+                </p>
+                <div style="background: white; padding: 15px; border-radius: 5px; border: 1px solid #c8e6c9;">
+                    <strong>Current Status:</strong>
+                    <ul style="margin: 10px 0 0 20px; color: #666;">
+                        <li>Interakt: <span style="color: <%= config.whatsapp_interakt_enabled ? '#4caf50' : '#666' %>; font-weight: bold;"><%= config.whatsapp_interakt_enabled ? 'Enabled' : 'Disabled' %></span></li>
+                        <li>n8n: <span style="color: <%= config.whatsapp_n8n_enabled ? '#4caf50' : '#666' %>; font-weight: bold;"><%= config.whatsapp_n8n_enabled ? 'Enabled' : 'Disabled' %></span></li>
+                    </ul>
+                </div>
+            </div>
+
+            <button type="submit">Save Configuration</button>
+        </form>
+
+        <!-- Back Link -->
+        <div style="margin-top: 20px;">
+            <a href="/admin/config" style="color: #0066cc; text-decoration: none;">← Back to General Configuration</a>
+        </div>
+    </div>
+</body>
+</html>

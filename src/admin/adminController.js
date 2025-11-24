@@ -7,6 +7,7 @@ const { uploadFile } = require('../services/uploadService');
 const { updateOnlineConfig, getOnlineConfig } = require('../services/onlineUsersService');
 const { parseCSV, getQuestionColumns, mapRowsToDatabase, validateMappedRows } = require('../services/csvService');
 const whatsappOtpService = require('../services/whatsappOtpService');
+const { encrypt, decrypt, isUsingDefaultKey } = require('../utils/encryption');
 
 // Multer setup
 const upload = multer({ storage: multer.memoryStorage() });
@@ -152,6 +153,166 @@ async function showOTPViewer(req, res) {
 }
 
 /**
+ * GET /admin/config/whatsapp
+ * Show WhatsApp OTP configuration page
+ */
+async function showWhatsAppConfig(req, res) {
+  try {
+    const result = await pool.query('SELECT * FROM app_config WHERE id = 1');
+    const config = result.rows[0];
+
+    // Decrypt sensitive values for display (as masked)
+    let interaktSecretKey = null;
+    let n8nWebhookUrl = null;
+
+    if (config.interakt_secret_key_encrypted) {
+      try {
+        interaktSecretKey = decrypt(config.interakt_secret_key_encrypted);
+      } catch (err) {
+        console.error('Failed to decrypt Interakt key:', err);
+      }
+    }
+
+    if (config.n8n_webhook_url_encrypted) {
+      try {
+        n8nWebhookUrl = decrypt(config.n8n_webhook_url_encrypted);
+      } catch (err) {
+        console.error('Failed to decrypt n8n URL:', err);
+      }
+    }
+
+    res.render('whatsapp-config', {
+      admin: req.session.adminUser,
+      config: {
+        interakt_api_url: config.interakt_api_url,
+        interakt_secret_key: interaktSecretKey,
+        interakt_template_name: config.interakt_template_name,
+        n8n_webhook_url: n8nWebhookUrl,
+        whatsapp_interakt_enabled: config.whatsapp_interakt_enabled,
+        whatsapp_n8n_enabled: config.whatsapp_n8n_enabled
+      },
+      usingDefaultKey: isUsingDefaultKey(),
+      message: null,
+      error: null
+    });
+
+  } catch (err) {
+    console.error('WhatsApp config error:', err);
+    res.status(500).send('Error loading WhatsApp configuration');
+  }
+}
+
+/**
+ * POST /admin/config/whatsapp/update
+ * Update WhatsApp OTP configuration
+ */
+async function updateWhatsAppConfig(req, res) {
+  try {
+    const {
+      interakt_api_url,
+      interakt_secret_key,
+      interakt_template_name,
+      n8n_webhook_url,
+      whatsapp_interakt_enabled,
+      whatsapp_n8n_enabled
+    } = req.body;
+
+    // Get existing config to preserve unchanged encrypted values
+    const existingConfig = await pool.query('SELECT * FROM app_config WHERE id = 1');
+    let interaktKeyEncrypted = existingConfig.rows[0].interakt_secret_key_encrypted;
+    let n8nUrlEncrypted = existingConfig.rows[0].n8n_webhook_url_encrypted;
+
+    // Encrypt new values if provided (not empty or placeholder)
+    if (interakt_secret_key && interakt_secret_key !== '••••••••••••••••') {
+      interaktKeyEncrypted = encrypt(interakt_secret_key);
+    }
+
+    if (n8n_webhook_url && n8n_webhook_url !== '••••••••••••••••') {
+      n8nUrlEncrypted = encrypt(n8n_webhook_url);
+    }
+
+    // Update database
+    await pool.query(`
+      UPDATE app_config SET
+        interakt_api_url = $1,
+        interakt_secret_key_encrypted = $2,
+        interakt_template_name = $3,
+        n8n_webhook_url_encrypted = $4,
+        whatsapp_interakt_enabled = $5,
+        whatsapp_n8n_enabled = $6,
+        updated_at = NOW()
+      WHERE id = 1
+    `, [
+      interakt_api_url,
+      interaktKeyEncrypted,
+      interakt_template_name,
+      n8nUrlEncrypted,
+      whatsapp_interakt_enabled === 'on',
+      whatsapp_n8n_enabled === 'on'
+    ]);
+
+    // Reload config
+    const result = await pool.query('SELECT * FROM app_config WHERE id = 1');
+    const config = result.rows[0];
+
+    // Decrypt for display
+    let interaktSecretKey = null;
+    let n8nWebhookUrl = null;
+
+    if (config.interakt_secret_key_encrypted) {
+      try {
+        interaktSecretKey = decrypt(config.interakt_secret_key_encrypted);
+      } catch (err) {
+        console.error('Failed to decrypt Interakt key:', err);
+      }
+    }
+
+    if (config.n8n_webhook_url_encrypted) {
+      try {
+        n8nWebhookUrl = decrypt(config.n8n_webhook_url_encrypted);
+      } catch (err) {
+        console.error('Failed to decrypt n8n URL:', err);
+      }
+    }
+
+    res.render('whatsapp-config', {
+      admin: req.session.adminUser,
+      config: {
+        interakt_api_url: config.interakt_api_url,
+        interakt_secret_key: interaktSecretKey,
+        interakt_template_name: config.interakt_template_name,
+        n8n_webhook_url: n8nWebhookUrl,
+        whatsapp_interakt_enabled: config.whatsapp_interakt_enabled,
+        whatsapp_n8n_enabled: config.whatsapp_n8n_enabled
+      },
+      usingDefaultKey: isUsingDefaultKey(),
+      message: 'WhatsApp configuration updated successfully!',
+      error: null
+    });
+
+  } catch (err) {
+    console.error('Update WhatsApp config error:', err);
+    const result = await pool.query('SELECT * FROM app_config WHERE id = 1');
+    const config = result.rows[0];
+
+    res.render('whatsapp-config', {
+      admin: req.session.adminUser,
+      config: {
+        interakt_api_url: config.interakt_api_url,
+        interakt_secret_key: null,
+        interakt_template_name: config.interakt_template_name,
+        n8n_webhook_url: null,
+        whatsapp_interakt_enabled: config.whatsapp_interakt_enabled,
+        whatsapp_n8n_enabled: config.whatsapp_n8n_enabled
+      },
+      usingDefaultKey: isUsingDefaultKey(),
+      message: null,
+      error: 'Error updating configuration: ' + err.message
+    });
+  }
+}
+
+/**
  * GET /admin/config
  * Show app configuration page
  */
@@ -282,6 +443,218 @@ async function showUsers(req, res) {
   } catch (err) {
     console.error('Users stats error:', err);
     res.status(500).send('Error loading user statistics');
+  }
+}
+
+/**
+ * GET /admin/users/list
+ * List all users with search and pagination
+ */
+async function listAllUsers(req, res) {
+  try {
+    const { search, page = 1, sort = 'xp_total' } = req.query;
+    const limit = 50;
+    const offset = (page - 1) * limit;
+
+    let query = 'SELECT * FROM users_profile WHERE 1=1';
+    const params = [];
+    let paramCount = 1;
+
+    // Search filter
+    if (search) {
+      query += ` AND (phone LIKE $${paramCount} OR name ILIKE $${paramCount} OR referral_code LIKE $${paramCount})`;
+      params.push(`%${search}%`);
+      paramCount++;
+    }
+
+    // Sorting
+    const validSorts = {
+      'xp_total': 'xp_total DESC',
+      'current_level': 'current_level DESC',
+      'date_joined': 'date_joined DESC',
+      'name': 'name ASC'
+    };
+    const orderBy = validSorts[sort] || 'xp_total DESC';
+    query += ` ORDER BY ${orderBy} LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+    params.push(limit, offset);
+
+    const result = await pool.query(query, params);
+
+    // Get total count for pagination
+    let countQuery = 'SELECT COUNT(*) FROM users_profile WHERE 1=1';
+    const countParams = [];
+    if (search) {
+      countQuery += ` AND (phone LIKE $1 OR name ILIKE $1 OR referral_code LIKE $1)`;
+      countParams.push(`%${search}%`);
+    }
+
+    const countResult = await pool.query(countQuery, countParams);
+    const totalUsers = parseInt(countResult.rows[0].count);
+    const totalPages = Math.ceil(totalUsers / limit);
+
+    res.render('user-list', {
+      admin: req.session.adminUser,
+      users: result.rows,
+      filters: { search, sort },
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages,
+        totalUsers
+      }
+    });
+
+  } catch (err) {
+    console.error('List users error:', err);
+    res.status(500).send('Error loading users');
+  }
+}
+
+/**
+ * GET /admin/users/:phone/view
+ * View detailed user profile
+ */
+async function viewUserProfile(req, res) {
+  try {
+    const { phone } = req.params;
+
+    // Get user profile
+    const userResult = await pool.query('SELECT * FROM users_profile WHERE phone = $1', [phone]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).send('User not found');
+    }
+    const user = userResult.rows[0];
+
+    // Get level history
+    const levelHistory = await pool.query(`
+      SELECT level, completion_status, accuracy_percentage, xp_earned_final, video_watched, attempt_date
+      FROM level_attempts
+      WHERE phone = $1
+      ORDER BY level ASC, attempt_date DESC
+      LIMIT 50
+    `, [phone]);
+
+    // Get recent XP activity (last 30 days)
+    const xpActivity = await pool.query(`
+      SELECT date, total_xp_today, levels_completed_today, videos_watched_today
+      FROM daily_xp_summary
+      WHERE phone = $1 AND date >= CURRENT_DATE - INTERVAL '30 days'
+      ORDER BY date DESC
+    `, [phone]);
+
+    // Get referral stats
+    const referralStats = await pool.query(`
+      SELECT
+        COUNT(*) as total_referrals,
+        SUM(xp_granted) as total_xp_earned
+      FROM referral_tracking
+      WHERE referrer_phone = $1 AND status = 'active'
+    `, [phone]);
+
+    // Get referred users
+    const referredUsers = await pool.query(`
+      SELECT rt.referee_phone, rt.xp_granted, rt.referral_date, up.name
+      FROM referral_tracking rt
+      LEFT JOIN users_profile up ON rt.referee_phone = up.phone
+      WHERE rt.referrer_phone = $1 AND rt.status = 'active'
+      ORDER BY rt.referral_date DESC
+      LIMIT 10
+    `, [phone]);
+
+    // Get streak info
+    const streakResult = await pool.query(`
+      SELECT current_streak, longest_streak, last_activity_date
+      FROM streak_tracking
+      WHERE phone = $1
+    `, [phone]);
+
+    res.render('user-profile-view', {
+      admin: req.session.adminUser,
+      user,
+      levelHistory: levelHistory.rows,
+      xpActivity: xpActivity.rows,
+      referralStats: referralStats.rows[0],
+      referredUsers: referredUsers.rows,
+      streak: streakResult.rows[0] || { current_streak: 0, longest_streak: 0 }
+    });
+
+  } catch (err) {
+    console.error('View user error:', err);
+    res.status(500).send('Error loading user profile');
+  }
+}
+
+/**
+ * GET /admin/users/:phone/edit
+ * Show edit user form
+ */
+async function showEditUser(req, res) {
+  try {
+    const { phone } = req.params;
+
+    const result = await pool.query('SELECT * FROM users_profile WHERE phone = $1', [phone]);
+    if (result.rows.length === 0) {
+      return res.status(404).send('User not found');
+    }
+
+    res.render('user-edit', {
+      admin: req.session.adminUser,
+      user: result.rows[0],
+      message: null,
+      error: null
+    });
+
+  } catch (err) {
+    console.error('Show edit user error:', err);
+    res.status(500).send('Error loading user');
+  }
+}
+
+/**
+ * POST /admin/users/:phone/update
+ * Update user details
+ */
+async function updateUser(req, res) {
+  try {
+    const { phone } = req.params;
+    const {
+      name,
+      district,
+      state,
+      xp_total,
+      current_level,
+      total_ads_watched
+    } = req.body;
+
+    await pool.query(`
+      UPDATE users_profile SET
+        name = $1,
+        district = $2,
+        state = $3,
+        xp_total = $4,
+        current_level = $5,
+        total_ads_watched = $6,
+        updated_at = NOW()
+      WHERE phone = $7
+    `, [name, district, state, parseInt(xp_total), parseInt(current_level), parseInt(total_ads_watched), phone]);
+
+    const result = await pool.query('SELECT * FROM users_profile WHERE phone = $1', [phone]);
+
+    res.render('user-edit', {
+      admin: req.session.adminUser,
+      user: result.rows[0],
+      message: 'User updated successfully!',
+      error: null
+    });
+
+  } catch (err) {
+    console.error('Update user error:', err);
+    const result = await pool.query('SELECT * FROM users_profile WHERE phone = $1', [req.params.phone]);
+    res.render('user-edit', {
+      admin: req.session.adminUser,
+      user: result.rows[0],
+      message: null,
+      error: 'Error updating user: ' + err.message
+    });
   }
 }
 
@@ -777,6 +1150,74 @@ async function uploadVideo(req, res) {
 }
 
 /**
+ * GET /admin/videos/:id/edit
+ * Show edit video form
+ */
+async function showEditVideo(req, res) {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query('SELECT * FROM promotional_videos WHERE id = $1', [id]);
+
+    if (result.rows.length === 0) {
+      return res.redirect('/admin/videos');
+    }
+
+    res.render('edit-video', {
+      admin: req.session.adminUser,
+      video: result.rows[0],
+      message: null,
+      error: null
+    });
+
+  } catch (err) {
+    console.error('Show edit video error:', err);
+    res.status(500).send('Error loading video');
+  }
+}
+
+/**
+ * POST /admin/videos/:id/update
+ * Update video details
+ */
+async function updateVideo(req, res) {
+  try {
+    const { id } = req.params;
+    const { level, video_name, duration_seconds, description, category, is_active } = req.body;
+
+    await pool.query(`
+      UPDATE promotional_videos SET
+        level = $1,
+        video_name = $2,
+        duration_seconds = $3,
+        description = $4,
+        category = $5,
+        is_active = $6
+      WHERE id = $7
+    `, [level, video_name, duration_seconds, description, category, is_active === 'on', id]);
+
+    const result = await pool.query('SELECT * FROM promotional_videos WHERE id = $1', [id]);
+
+    res.render('edit-video', {
+      admin: req.session.adminUser,
+      video: result.rows[0],
+      message: 'Video updated successfully!',
+      error: null
+    });
+
+  } catch (err) {
+    console.error('Update video error:', err);
+    const result = await pool.query('SELECT * FROM promotional_videos WHERE id = $1', [req.params.id]);
+    res.render('edit-video', {
+      admin: req.session.adminUser,
+      video: result.rows[0],
+      message: null,
+      error: 'Error updating video: ' + err.message
+    });
+  }
+}
+
+/**
  * DELETE /admin/videos/:id
  * Delete video
  */
@@ -835,7 +1276,13 @@ module.exports = {
   showOTPViewer,
   showConfig,
   updateConfig,
+  showWhatsAppConfig,
+  updateWhatsAppConfig,
   showUsers,
+  listAllUsers,
+  viewUserProfile,
+  showEditUser,
+  updateUser,
   // Question management
   showQuestionUpload,
   uploadCSVForMapping,
@@ -849,6 +1296,8 @@ module.exports = {
   // Video management
   showVideos,
   uploadVideo,
+  showEditVideo,
+  updateVideo,
   deleteVideo,
   // Analytics
   showAnalytics,

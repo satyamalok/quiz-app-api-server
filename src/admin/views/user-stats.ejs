@@ -10,7 +10,12 @@
     <%- include('partials/nav') %>
 
     <div class="container">
-        <h1>User Statistics</h1>
+        <h1 style="display: flex; align-items: center; justify-content: space-between;">
+            <span>User Statistics</span>
+            <a href="/admin/users/list" style="background: #2196f3; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; font-size: 16px; font-weight: normal;">
+                👥 Manage All Users
+            </a>
+        </h1>
 
         <div class="stats-grid">
             <div class="stat-card">
@@ -44,12 +49,13 @@
                         <th>Phone</th>
                         <th>Total XP</th>
                         <th>Current Level</th>
+                        <th style="width: 100px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <% if (topUsers.length === 0) { %>
                         <tr>
-                            <td colspan="5" style="text-align: center;">No users yet</td>
+                            <td colspan="6" style="text-align: center;">No users yet</td>
                         </tr>
                     <% } else { %>
                         <% topUsers.forEach((user, index) => { %>
@@ -59,6 +65,9 @@
                                 <td><%= user.phone %></td>
                                 <td><%= user.xp_total %></td>
                                 <td><%= user.current_level %></td>
+                                <td>
+                                    <a href="/admin/users/<%= user.phone %>/view" class="btn" style="padding: 5px 10px; font-size: 12px;">View</a>
+                                </td>
                             </tr>
                         <% }) %>
                     <% } %>
