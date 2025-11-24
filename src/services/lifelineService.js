@@ -21,11 +21,14 @@ async function initializeLifelines(attemptId, lifelineCount = 3) {
 /**
  * Deduct lifeline when user answers incorrectly
  * @param {number} attemptId - Level attempt ID
+ * @param {Object} client - Database client (optional, for transaction reuse)
  * @returns {Promise<Object>} Updated lifeline status
  */
-async function deductLifeline(attemptId) {
+async function deductLifeline(attemptId, client = null) {
+  const dbClient = client || pool;
+
   try {
-    const result = await pool.query(`
+    const result = await dbClient.query(`
       UPDATE level_attempts
       SET
         lifelines_remaining = GREATEST(lifelines_remaining - 1, 0),
@@ -56,11 +59,14 @@ async function deductLifeline(attemptId) {
 /**
  * Get current lifeline status for an attempt
  * @param {number} attemptId - Level attempt ID
+ * @param {Object} client - Database client (optional, for transaction reuse)
  * @returns {Promise<Object>} Lifeline status
  */
-async function getLifelineStatus(attemptId) {
+async function getLifelineStatus(attemptId, client = null) {
+  const dbClient = client || pool;
+
   try {
-    const result = await pool.query(`
+    const result = await dbClient.query(`
       SELECT lifelines_remaining, lifelines_used, lifeline_videos_watched
       FROM level_attempts
       WHERE id = $1

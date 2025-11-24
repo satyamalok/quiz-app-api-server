@@ -444,6 +444,14 @@ async function myService(param1, param2, client = null) {
 }
 ```
 
+**Services Following This Pattern:**
+- `processReferral(newUserPhone, referralCode, client)` - Prevents nested transactions during OTP verification
+- `deductLifeline(attemptId, client)` - Reuses quiz answer transaction to prevent deadlocks
+- `getLifelineStatus(attemptId, client)` - Reuses quiz answer transaction to prevent deadlocks
+- `restoreLifelines(attemptId, phone, ...)` - Manages own transaction (not called within parent transaction)
+
+**⚠️ CRITICAL:** The quiz answer submission endpoint (`POST /question/answer`) was experiencing 30-second timeouts due to deadlock. This was caused by calling `deductLifeline(attempt_id)` and `getLifelineStatus(attempt_id)` without passing the client, which tried to UPDATE/SELECT rows already locked by the parent transaction. Fix: Always pass `client` to these functions when inside a transaction.
+
 **Monitoring Connection Health:**
 
 ```sql
@@ -645,18 +653,19 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 12. **Connection timeout is 20 seconds** - Not 2 seconds! Requests wait up to 20s for available connection
 13. **Pool size is 50 connections** - Enough for moderate load, monitor pg_stat_activity for issues
 14. **Health check uses /health endpoint** - Docker health check must not use authenticated endpoints
+15. **Lifeline functions need client parameter** - `deductLifeline()` and `getLifelineStatus()` must receive `client` when called inside a transaction (quiz answer submission), otherwise causes 30s timeout deadlock
 
 **Infrastructure:**
-15. **MinIO uses internal hostname in Docker** - `minio` not `localhost` in production
-16. **PostgreSQL uses internal hostname in Docker** - `postgres` not `localhost` in production
-17. **axios dependency required** - WhatsApp OTP services need axios (added to package.json)
-18. **WhatsApp OTP graceful mode** - Even if one provider fails, OTP is considered sent if ANY provider succeeds
-19. **Rate limiting is configurable** - Can be disabled or adjusted via admin panel (stored in `app_config` table)
-20. **Database must be initialized** - Run `npm run migrate` before first use to create all 15 tables
-21. **package-lock.json is tracked** - Committed to git for consistent builds (use `npm ci` in production for speed)
+16. **MinIO uses internal hostname in Docker** - `minio` not `localhost` in production
+17. **PostgreSQL uses internal hostname in Docker** - `postgres` not `localhost` in production
+18. **axios dependency required** - WhatsApp OTP services need axios (added to package.json)
+19. **WhatsApp OTP graceful mode** - Even if one provider fails, OTP is considered sent if ANY provider succeeds
+20. **Rate limiting is configurable** - Can be disabled or adjusted via admin panel (stored in `app_config` table)
+21. **Database must be initialized** - Run `npm run migrate` before first use to create all 15 tables
+22. **package-lock.json is tracked** - Committed to git for consistent builds (use `npm ci` in production for speed)
 
 **Referral System:**
-22. **Self-referral is blocked** - Users cannot use their own referral code
-23. **One referral per user** - Each user can only use a referral code once (UNIQUE constraint on referee_phone)
-24. **Referral tracking is permanent** - Logged in `referral_tracking` table for analytics and two-way lookup
-25. **Referral code is 5 digits** - Generated once, never changes (10000-99999 range)
+23. **Self-referral is blocked** - Users cannot use their own referral code
+24. **One referral per user** - Each user can only use a referral code once (UNIQUE constraint on referee_phone)
+25. **Referral tracking is permanent** - Logged in `referral_tracking` table for analytics and two-way lookup
+26. **Referral code is 5 digits** - Generated once, never changes (10000-99999 range)

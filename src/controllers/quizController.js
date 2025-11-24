@@ -181,12 +181,12 @@ async function answerQuestion(req, res, next) {
       WHERE id = $2
     `, [isCorrect, attempt_id]);
 
-    // Deduct lifeline if incorrect
+    // Deduct lifeline if incorrect (pass client to reuse transaction)
     let lifelineStatus = null;
     if (!isCorrect) {
-      lifelineStatus = await deductLifeline(attempt_id);
+      lifelineStatus = await deductLifeline(attempt_id, client);
     } else {
-      lifelineStatus = await getLifelineStatus(attempt_id);
+      lifelineStatus = await getLifelineStatus(attempt_id, client);
     }
 
     // Get updated attempt progress
