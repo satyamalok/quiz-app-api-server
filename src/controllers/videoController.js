@@ -62,7 +62,7 @@ async function completeVideo(req, res, next) {
     const attemptResult = await client.query(`
       SELECT
         phone, level, xp_earned_base, is_first_attempt,
-        accuracy_percentage, video_watched, correct_answers
+        accuracy_percentage, video_watched, correct_answers, completion_status
       FROM level_attempts
       WHERE id = $1
     `, [attempt_id]);
@@ -116,6 +116,9 @@ async function completeVideo(req, res, next) {
         updated_at = NOW()
       WHERE id = $2
     `, [finalXP, attempt_id]);
+
+    // Update attempt object to reflect the changes (needed for unlock logic below)
+    attempt.completion_status = 'completed';
 
     // Log video watch
     await client.query(`
