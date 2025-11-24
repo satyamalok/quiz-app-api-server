@@ -2,6 +2,7 @@ const pool = require('../config/database');
 const multer = require('multer');
 const { uploadFile } = require('../services/uploadService');
 const { getStreak } = require('../services/streakService');
+const { getReferralStats, getReferredUsers } = require('../services/referralService');
 
 // Multer setup for memory storage
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
@@ -145,8 +146,61 @@ async function updateProfile(req, res, next) {
   }
 }
 
+/**
+ * GET /api/v1/user/referral-stats
+ * Get user's referral statistics
+ */
+async function getReferralStatsHandler(req, res, next) {
+  try {
+    const { phone } = req.user;
+
+    const stats = await getReferralStats(phone);
+
+    res.json({
+      success: true,
+      referral_stats: stats
+    });
+
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/user/referred-users?limit=50&offset=0
+ * Get list of users referred by current user
+ */
+async function getReferredUsersHandler(req, res, next) {
+  try {
+    const { phone } = req.user;
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+
+    // Validate pagination params
+    if (limit < 1 || limit > 100) {
+      throw { code: 'INVALID_LIMIT', message: 'Limit must be between 1 and 100' };
+    }
+
+    if (offset < 0) {
+      throw { code: 'INVALID_OFFSET', message: 'Offset must be 0 or greater' };
+    }
+
+    const result = await getReferredUsers(phone, limit, offset);
+
+    res.json({
+      success: true,
+      ...result
+    });
+
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getProfile,
   updateProfile,
+  getReferralStatsHandler,
+  getReferredUsersHandler,
   upload // Export multer middleware
 };

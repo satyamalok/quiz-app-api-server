@@ -1,9 +1,9 @@
 # JNV Quiz App - Complete API Documentation
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Base URL**: `http://your-domain.com/api/v1`
 **Authentication**: JWT Bearer Token
-**Date**: November 19, 2025
+**Date**: November 24, 2025
 
 ---
 
@@ -33,7 +33,7 @@ This API powers the JNV Quiz App, a gamified learning platform with:
 - XP rewards (base XP + video bonus that doubles XP)
 - Video integration for XP bonuses and lifeline restoration
 - Leaderboards and streak tracking
-- Referral system
+- Two-way referral tracking system (earn XP by referring friends)
 
 ---
 
@@ -98,6 +98,11 @@ All errors follow this structure:
 | `VIDEO_NOT_FOUND` | 404 | Video not found for level |
 | `ATTEMPT_NOT_FOUND` | 404 | Level attempt not found |
 | `INSUFFICIENT_WATCH_TIME` | 400 | Video watched less than 80% |
+| `INVALID_REFERRAL_CODE` | 400 | Referral code does not exist |
+| `SELF_REFERRAL_NOT_ALLOWED` | 400 | Cannot use your own referral code |
+| `ALREADY_REFERRED` | 400 | User already used a referral code |
+| `INVALID_LIMIT` | 400 | Pagination limit out of range (1-100) |
+| `INVALID_OFFSET` | 400 | Pagination offset must be >= 0 |
 
 ---
 
@@ -230,6 +235,33 @@ Verify OTP and login/register user.
   "success": false,
   "error": "OTP_EXPIRED",
   "message": "OTP has expired. Please request a new one"
+}
+```
+
+**400 - Invalid Referral Code**
+```json
+{
+  "success": false,
+  "error": "INVALID_REFERRAL_CODE",
+  "message": "Invalid referral code"
+}
+```
+
+**400 - Self Referral Not Allowed**
+```json
+{
+  "success": false,
+  "error": "SELF_REFERRAL_NOT_ALLOWED",
+  "message": "You cannot use your own referral code"
+}
+```
+
+**400 - Already Referred**
+```json
+{
+  "success": false,
+  "error": "ALREADY_REFERRED",
+  "message": "You have already used a referral code"
 }
 ```
 
@@ -521,6 +553,175 @@ curl -X PATCH http://localhost:3000/api/v1/user/profile \
   -F "district=Delhi" \
   -F "state=Delhi" \
   -F "profile_image=@/path/to/image.jpg"
+```
+
+---
+
+### 2.4 Get Referral Stats
+
+Get user's referral statistics including total referrals and XP earned.
+
+**Endpoint**: `GET /user/referral-stats`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+```
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "referral_stats": {
+    "my_referral_code": "12345",
+    "total_referrals": 15,
+    "total_xp_earned_from_referrals": 750,
+    "referred_by": {
+      "phone": "9876543210",
+      "name": "John Doe"
+    }
+  }
+}
+```
+
+**If not referred by anyone:**
+```json
+{
+  "success": true,
+  "referral_stats": {
+    "my_referral_code": "12345",
+    "total_referrals": 5,
+    "total_xp_earned_from_referrals": 250,
+    "referred_by": null
+  }
+}
+```
+
+#### Error Responses
+
+**404 - User Not Found**
+```json
+{
+  "success": false,
+  "error": "USER_NOT_FOUND",
+  "message": "User not found"
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET http://localhost:3000/api/v1/user/referral-stats \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 2.5 Get Referred Users
+
+Get paginated list of users referred by current user.
+
+**Endpoint**: `GET /user/referred-users`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+```
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | integer | No | 50 | Number of results (1-100) |
+| offset | integer | No | 0 | Offset for pagination |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "total_referrals": 15,
+  "referrals": [
+    {
+      "referee_phone": "9123456789",
+      "referee_name": "Alice",
+      "referee_xp": 1250,
+      "referee_level": 8,
+      "xp_granted": 50,
+      "referral_date": "2025-11-15T10:30:00.000Z",
+      "status": "active"
+    },
+    {
+      "referee_phone": "9123456790",
+      "referee_name": "Bob",
+      "referee_xp": 850,
+      "referee_level": 5,
+      "xp_granted": 50,
+      "referral_date": "2025-11-18T14:20:00.000Z",
+      "status": "active"
+    }
+  ],
+  "pagination": {
+    "limit": 50,
+    "offset": 0,
+    "has_more": false
+  }
+}
+```
+
+**If no referrals:**
+```json
+{
+  "success": true,
+  "total_referrals": 0,
+  "referrals": [],
+  "pagination": {
+    "limit": 50,
+    "offset": 0,
+    "has_more": false
+  }
+}
+```
+
+#### Error Responses
+
+**400 - Invalid Limit**
+```json
+{
+  "success": false,
+  "error": "INVALID_LIMIT",
+  "message": "Limit must be between 1 and 100"
+}
+```
+
+**400 - Invalid Offset**
+```json
+{
+  "success": false,
+  "error": "INVALID_OFFSET",
+  "message": "Offset must be 0 or greater"
+}
+```
+
+#### cURL Examples
+
+```bash
+# Get first 50 referrals
+curl -X GET "http://localhost:3000/api/v1/user/referred-users?limit=50&offset=0" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+# Get next 50 referrals (pagination)
+curl -X GET "http://localhost:3000/api/v1/user/referred-users?limit=50&offset=50" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+# Get only 10 referrals
+curl -X GET "http://localhost:3000/api/v1/user/referred-users?limit=10&offset=0" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 
 ---
@@ -1395,6 +1596,40 @@ sequenceDiagram
     API->>App: comprehensive stats
 ```
 
+### 4. Referral System Flow
+
+```mermaid
+sequenceDiagram
+    participant User as New User
+    participant API
+    participant Referrer
+
+    User->>API: POST /auth/send-otp (phone)
+    API->>User: OTP sent
+    User->>API: POST /auth/verify-otp (with referral_code)
+    API->>API: Validate referral code
+    API->>API: Check self-referral & duplicate
+    API->>API: Grant 50 XP to both users
+    API->>API: Log to referral_tracking table
+    API->>User: JWT + user data (xp_total=50)
+    API->>Referrer: +50 XP (background update)
+
+    Note over User,Referrer: Later: Check referral stats
+
+    Referrer->>API: GET /user/referral-stats
+    API->>Referrer: total_referrals + xp_earned
+    Referrer->>API: GET /user/referred-users
+    API->>Referrer: List of all referred users
+```
+
+**Key Points:**
+- Referral code is validated before XP is granted
+- Self-referral is blocked (user cannot use own code)
+- Each user can only be referred once (UNIQUE constraint)
+- Both users get 50 XP immediately upon successful referral
+- XP is added to both `xp_total` and `daily_xp_summary`
+- Referral is logged in `referral_tracking` for analytics
+
 ---
 
 ## Data Types & Enums
@@ -1425,6 +1660,23 @@ medium  - Medium difficulty
 hard    - Hard questions
 ```
 
+### Referral Code Format
+
+```
+Format: 5-digit numeric code
+Range: 10000 - 99999
+Example: 12345, 98765
+Uniqueness: Each user gets a unique code on signup
+Immutability: Code never changes once generated
+```
+
+### Referral Status
+
+```
+active   - Referral is active and counted
+revoked  - Referral has been revoked (future use)
+```
+
 ---
 
 ## Notes for Android Development
@@ -1437,6 +1689,10 @@ hard    - Hard questions
 6. **Error Handling**: Implement retry logic with exponential backoff for network errors
 7. **Rate Limiting**: Implement client-side rate limiting to avoid 429 errors
 8. **File Upload**: Use Retrofit with Multipart for profile image upload
+9. **Referral Code Input**: Validate 5-digit numeric input before sending to API
+10. **Referral Stats**: Show user's referral code prominently for sharing (QR code, share button)
+11. **Pagination**: Implement RecyclerView with pagination for referred users list
+12. **Deep Linking**: Consider implementing deep links with referral code pre-filled
 
 ---
 

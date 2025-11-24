@@ -55,23 +55,25 @@ docker-compose up -d
 
 ## Critical Architecture Details
 
-### Database Schema (13 Tables)
+### Database Schema (15 Tables)
 
-The application uses 13 interconnected tables. Key relationships:
+The application uses 15 interconnected tables. Key relationships:
 
 1. **users_profile** - Core user data with unique 5-digit `referral_code`
 2. **questions** - 100 levels × 10 questions, uses **@ symbol prefix** for correct answers
-3. **level_attempts** - Tracks each level attempt with XP calculations
-4. **question_responses** - Individual question answers per attempt
-5. **daily_xp_summary** - Daily XP aggregation for leaderboards
-6. **video_watch_log** - Tracks promotional video watches
-7. **streak_tracking** - User activity streaks
-8. **promotional_videos** - One video per level (1-100)
-9. **otp_logs** - OTP generation and verification
-10. **online_users_config** - Configurable fake online count range (single row)
-11. **admin_users** - Admin authentication (separate from JWT)
-12. **app_config** - Application-wide configuration (OTP rate limiting, test mode, etc.)
-13. **app_version** - App version control and force update configuration
+3. **referral_tracking** - Two-way referral tracking (who referred whom, XP granted, timestamps)
+4. **level_attempts** - Tracks each level attempt with XP calculations and lifelines
+5. **question_responses** - Individual question answers per attempt
+6. **daily_xp_summary** - Daily XP aggregation for leaderboards
+7. **video_watch_log** - Tracks promotional video watches
+8. **lifeline_videos_watched** - Tracks lifeline restoration videos
+9. **streak_tracking** - User activity streaks
+10. **promotional_videos** - One video per level (1-100)
+11. **otp_logs** - OTP generation and verification
+12. **online_users_config** - Configurable fake online count range (single row)
+13. **admin_users** - Admin authentication (separate from JWT)
+14. **app_config** - Application-wide configuration (OTP rate limiting, test mode, lifelines per quiz, etc.)
+15. **app_version** - App version control and force update configuration
 
 ### Correct Answer Format (CRITICAL)
 
@@ -106,22 +108,75 @@ const correctIndex = options.findIndex(opt => opt.startsWith('@')) + 1;
 - `users_profile.xp_total` (all-time total)
 - `daily_xp_summary.total_xp_today` (for leaderboards)
 
+### Lifelines System (CRITICAL)
+
+**Game mechanic:** Each level attempt starts with 3 lifelines (hearts).
+
+**Rules:**
+- Start with 3 lifelines per quiz (configurable in `app_config.lifelines_per_quiz`)
+- Lose 1 lifeline for each incorrect answer
+- When lifelines reach 0, can watch a video to restore all lifelines
+- Can watch multiple lifeline restoration videos per quiz
+- Lifeline videos must be watched ≥80% duration to restore
+- `level_attempts` tracks: `lifelines_remaining`, `lifelines_used`, `lifeline_videos_watched`
+- `lifeline_videos_watched` table logs each restoration event
+
+**Implementation:**
+- `lifelineService.js` handles all lifeline operations
+- `initializeLifelines()` - Sets starting lifelines (called when level starts)
+- `deductLifeline()` - Decrements on wrong answer
+- `restoreLifelines()` - Validates video watch, restores to full (transaction)
+- `getLifelineStatus()` - Returns current lifeline state
+
 ### Level Unlock Logic
 
 **Requirements to unlock next level:**
 1. Must be **first attempt** of current level
-2. Achieve **≥30% accuracy** (not 60%!)
+2. Achieve **≥30% accuracy** (3/10 correct)
 3. Must **watch promotional video** (≥80% duration)
 
 Only unlocks if `nextLevel > current_level` (prevents unlocking backwards).
 
-### Referral System
+### Referral System (CRITICAL - Two-Way Tracking)
 
-**Flow:**
-1. New user signs up with optional 5-digit `referral_code`
-2. System validates code exists in `users_profile`
+**Code Generation:**
+- Each user gets unique 5-digit code (10000-99999) on signup
+- Stored in `users_profile.referral_code` (unique, permanent)
+- Code cannot be changed once generated
+
+**Signup with Referral Flow:**
+1. New user provides optional 5-digit `referral_code` during signup
+2. System validates:
+   - Code exists in `users_profile`
+   - **Not using own code** (self-referral blocked)
+   - **Not already referred** (one referral per user max)
 3. **Both users get 50 XP immediately**
 4. XP added to `xp_total` AND `daily_xp_summary` for both users
+5. **Referral logged in `referral_tracking` table** for two-way lookup
+
+**Two-Way Tracking (`referral_tracking` table):**
+- `referrer_phone` - User who owns the code
+- `referee_phone` - User who used the code (unique constraint)
+- `referral_code` - Code that was used
+- `xp_granted` - XP given to each user (default 50)
+- `referral_date` - Timestamp of referral
+- `status` - 'active', 'revoked', etc.
+
+**Database Constraints:**
+- `UNIQUE(referee_phone)` - Each user can only be referred once
+- `CHECK(referrer_phone != referee_phone)` - Cannot refer yourself
+- Foreign keys cascade on delete
+
+**Validations:**
+- `INVALID_REFERRAL_CODE` - Code doesn't exist
+- `SELF_REFERRAL_NOT_ALLOWED` - User trying to use own code
+- `ALREADY_REFERRED` - User already used a referral code
+
+**Analytics Available:**
+- Total referrals per user
+- Total XP earned from referrals
+- List of users referred with details (name, XP, level, date)
+- Who referred you (if applicable)
 
 ### File Uploads (MinIO)
 
@@ -140,25 +195,28 @@ Only unlocks if `nextLevel > current_level` (prevents unlocking backwards).
 **Base URL:** `/api/v1`
 **Auth:** `Authorization: Bearer <jwt_token>` (6 months expiry)
 
-### 18 Main Endpoints
+### 21 Main Endpoints
 
 **Authentication (2):**
 - `POST /auth/send-otp` - Generate 6-digit OTP (5 min expiry, max 3/hour)
 - `POST /auth/verify-otp` - Verify OTP, create/login user, process referral
 
-**User (2):**
+**User (4):**
 - `GET /user/profile` - Complete user profile with streak
 - `PATCH /user/profile` - Update name/district/state/profile_image
+- `GET /user/referral-stats` - Get referral statistics (total referrals, XP earned, who referred me)
+- `GET /user/referred-users?limit=50&offset=0` - Get list of users I referred (paginated)
 
 **Levels & Quiz (4):**
 - `GET /user/level-history` - Level completion stats
-- `POST /level/start` - Start level attempt, fetch 10 questions (validates unlock)
-- `POST /question/answer` - Submit answer, returns correctness + explanation
+- `POST /level/start` - Start level attempt, fetch 10 questions (validates unlock, initializes lifelines)
+- `POST /question/answer` - Submit answer, returns correctness + explanation, deducts lifeline if wrong
 - `POST /level/abandon` - Mark incomplete level as abandoned
 
-**Video & XP (2):**
+**Video & XP (3):**
 - `GET /video/url?level=N` - Get promotional video for level
 - `POST /video/complete` - Validate watch (≥80%), double XP, unlock next level
+- `POST /video/restore-lifelines` - Watch video to restore all lifelines (≥80% watch required)
 
 **Leaderboard (1):**
 - `GET /leaderboard/daily?date=YYYY-MM-DD` - Top 50 + user's rank
@@ -235,6 +293,10 @@ scripts/
 3. `users_profile` (add XP to total, increment ads watched, possibly unlock level)
 4. `daily_xp_summary` (add XP to today's total)
 
+**Lifeline restoration API must use database transaction** - updates 2 tables atomically:
+1. `level_attempts` (restore lifelines to full, increment `lifeline_videos_watched` counter)
+2. `lifeline_videos_watched` (log the restoration event with video details and duration)
+
 ### Validation Rules
 
 - Phone: 10-15 digits
@@ -309,6 +371,97 @@ Common error codes: `UNAUTHORIZED`, `INVALID_TOKEN`, `INVALID_OTP`, `OTP_EXPIRED
 - Validate JWT on all protected routes
 - Never log OTPs, passwords, or tokens
 - MinIO files use public URLs (bucket is public-read)
+
+### Database Connection Pool Best Practices (CRITICAL)
+
+**Industry Standards - MUST Follow:**
+
+1. **One request → One connection**
+   - Never create nested connections within a single request
+   - Pass existing `client` to services instead of acquiring new connections
+   - Pattern: `service.function(params, client)` where client is optional
+
+2. **No Nested Transactions**
+   - If parent has `pool.connect()` + `BEGIN`, child functions must accept client parameter
+   - Example: `processReferral(phone, code, client)` reuses parent's transaction
+   - Bad: Parent starts transaction → calls service → service starts another transaction ❌
+   - Good: Parent starts transaction → passes client to service → service reuses it ✅
+
+3. **Strict Timeouts** (configured in `database.js`):
+   - `connectionTimeoutMillis: 20000` (20s, not 2s!)
+   - `statement_timeout: 30000` (30s max per statement)
+   - `query_timeout: 30000` (30s max per query)
+   - Prevents connection pool exhaustion from long-running queries
+
+4. **Proper Pool Sizing**:
+   - `max: 50` connections (for moderate load)
+   - PostgreSQL default max is 100, keep buffer for admin tools
+   - Too small = frequent timeouts, too large = database overload
+
+5. **Transaction Cleanup**:
+   - Always use try/catch/finally pattern
+   - COMMIT on success, ROLLBACK on error
+   - Release client in finally block (guaranteed execution)
+
+6. **Health Checks Without Authentication**:
+   - Use `/health` endpoint (no JWT required)
+   - Docker health check must not use authenticated endpoints
+   - Prevents false "unhealthy" status from 401 responses
+
+**Code Pattern for Services:**
+
+```javascript
+// Service that can work standalone OR within parent transaction
+async function myService(param1, param2, client = null) {
+  const useOwnClient = !client;
+
+  if (useOwnClient) {
+    client = await pool.connect();
+  }
+
+  try {
+    if (useOwnClient) {
+      await client.query('BEGIN');
+    }
+
+    // ... business logic using 'client' ...
+
+    if (useOwnClient) {
+      await client.query('COMMIT');
+    }
+
+    return result;
+  } catch (err) {
+    if (useOwnClient) {
+      await client.query('ROLLBACK');
+    }
+    throw err;
+  } finally {
+    if (useOwnClient) {
+      client.release();
+    }
+  }
+}
+```
+
+**Monitoring Connection Health:**
+
+```sql
+-- Check active connections
+SELECT count(*), state FROM pg_stat_activity
+WHERE datname = 'quizdb' GROUP BY state;
+
+-- Find idle-in-transaction (leaked connections)
+SELECT pid, state, query_start, state_change
+FROM pg_stat_activity
+WHERE state = 'idle in transaction';
+
+-- Kill long-running queries (if needed)
+SELECT pg_terminate_backend(pid)
+FROM pg_stat_activity
+WHERE state = 'idle in transaction'
+  AND state_change < NOW() - INTERVAL '5 minutes';
+```
 
 ### Streak Update Logic
 
@@ -408,11 +561,11 @@ npm run migrate
 # Method 2: Direct execution
 node scripts/migrate.js
 
-# This creates all 13 tables:
-# - users_profile, questions, level_attempts, question_responses
-# - daily_xp_summary, video_watch_log, streak_tracking
-# - promotional_videos, otp_logs, online_users_config
-# - admin_users, app_config, app_version
+# This creates all 15 tables:
+# - users_profile, questions, referral_tracking, level_attempts
+# - question_responses, daily_xp_summary, video_watch_log
+# - lifeline_videos_watched, streak_tracking, promotional_videos
+# - otp_logs, online_users_config, admin_users, app_config, app_version
 ```
 
 **Database Reset (Use with caution):**
@@ -475,16 +628,35 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 
 ## Common Gotchas
 
+**Business Logic:**
 1. **@ symbol must be included in API responses** - Don't strip it on server, let Android parse
 2. **XP is added ONLY after video watch** - Not after answering questions
 3. **Level unlock requires video watch** - Not just answering questions
 4. **Accuracy threshold is 30%, not 60%** - Updated requirement
 5. **Referral XP goes to BOTH users** - Don't forget to update both `xp_total` and `daily_xp_summary`
 6. **First attempt uses 5 XP/correct, replays use 1 XP/correct** - Check `is_first_attempt` flag
-7. **MinIO uses internal hostname in Docker** - `minio` not `localhost` in production
-8. **PostgreSQL uses internal hostname in Docker** - `postgres` not `localhost` in production
-9. **axios dependency required** - WhatsApp OTP services need axios (added to package.json)
-10. **WhatsApp OTP graceful mode** - Even if one provider fails, OTP is considered sent if ANY provider succeeds
-11. **Rate limiting is configurable** - Can be disabled or adjusted via admin panel (stored in `app_config` table)
-12. **Database must be initialized** - Run `npm run migrate` before first use to create all 13 tables
-13. **package-lock.json is tracked** - Committed to git for consistent builds (use `npm ci` in production for speed)
+7. **Lifelines deduct on wrong answers only** - Not on correct answers or skips
+8. **Lifeline restoration requires ≥80% watch** - Same as promotional videos
+9. **Lifelines restore to FULL count** - Always resets to `app_config.lifelines_per_quiz` (default 3), not +1
+
+**Database & Connection Pool:**
+10. **NEVER nest transactions** - Pass `client` parameter to services, don't let them create new connections
+11. **Always release connections** - Use try/finally pattern, call `client.release()` in finally block
+12. **Connection timeout is 20 seconds** - Not 2 seconds! Requests wait up to 20s for available connection
+13. **Pool size is 50 connections** - Enough for moderate load, monitor pg_stat_activity for issues
+14. **Health check uses /health endpoint** - Docker health check must not use authenticated endpoints
+
+**Infrastructure:**
+15. **MinIO uses internal hostname in Docker** - `minio` not `localhost` in production
+16. **PostgreSQL uses internal hostname in Docker** - `postgres` not `localhost` in production
+17. **axios dependency required** - WhatsApp OTP services need axios (added to package.json)
+18. **WhatsApp OTP graceful mode** - Even if one provider fails, OTP is considered sent if ANY provider succeeds
+19. **Rate limiting is configurable** - Can be disabled or adjusted via admin panel (stored in `app_config` table)
+20. **Database must be initialized** - Run `npm run migrate` before first use to create all 15 tables
+21. **package-lock.json is tracked** - Committed to git for consistent builds (use `npm ci` in production for speed)
+
+**Referral System:**
+22. **Self-referral is blocked** - Users cannot use their own referral code
+23. **One referral per user** - Each user can only use a referral code once (UNIQUE constraint on referee_phone)
+24. **Referral tracking is permanent** - Logged in `referral_tracking` table for analytics and two-way lookup
+25. **Referral code is 5 digits** - Generated once, never changes (10000-99999 range)

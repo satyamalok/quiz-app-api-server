@@ -2,6 +2,7 @@
 -- Enhanced with: configurable rate limiting, online users range, lifelines system
 
 -- Drop existing tables if they exist
+DROP TABLE IF EXISTS referral_tracking CASCADE;
 DROP TABLE IF EXISTS lifeline_videos_watched CASCADE;
 DROP TABLE IF EXISTS question_responses CASCADE;
 DROP TABLE IF EXISTS video_watch_log CASCADE;
@@ -66,7 +67,31 @@ CREATE INDEX idx_users_district ON users_profile(district);
 CREATE INDEX idx_users_referral ON users_profile(referral_code);
 
 -- ============================================
--- Table 3: questions
+-- Table 3: referral_tracking (Two-way referral tracking)
+-- ============================================
+CREATE TABLE referral_tracking (
+    id SERIAL PRIMARY KEY,
+    referrer_phone VARCHAR(15) NOT NULL,
+    referee_phone VARCHAR(15) NOT NULL,
+    referral_code VARCHAR(5) NOT NULL,
+    xp_granted INTEGER NOT NULL DEFAULT 50,
+    referral_date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) NOT NULL DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (referrer_phone) REFERENCES users_profile(phone) ON DELETE CASCADE,
+    FOREIGN KEY (referee_phone) REFERENCES users_profile(phone) ON DELETE CASCADE,
+    UNIQUE(referee_phone),
+    CHECK (referrer_phone != referee_phone)
+);
+
+CREATE INDEX idx_referral_tracking_referrer ON referral_tracking(referrer_phone);
+CREATE INDEX idx_referral_tracking_referee ON referral_tracking(referee_phone);
+CREATE INDEX idx_referral_tracking_code ON referral_tracking(referral_code);
+CREATE INDEX idx_referral_tracking_date ON referral_tracking(referral_date DESC);
+
+-- ============================================
+-- Table 4: questions
 -- ============================================
 CREATE TABLE questions (
     sl SERIAL PRIMARY KEY,

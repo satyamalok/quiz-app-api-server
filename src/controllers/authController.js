@@ -72,10 +72,10 @@ async function verifyOTPHandler(req, res, next) {
       );
       user = newUserResult.rows[0];
 
-      // Process referral if code provided
+      // Process referral if code provided (pass client to reuse transaction)
       if (referral_code) {
         try {
-          referralBonus = await processReferral(phone, referral_code);
+          referralBonus = await processReferral(phone, referral_code, client);
 
           // Refresh user data to get updated XP
           const updatedUserResult = await client.query(

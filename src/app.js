@@ -58,6 +58,15 @@ app.use(session({
 // Static files
 app.use('/public', express.static(path.join(__dirname, '../public')));
 
+// Root-level health check (for Docker health checks - no authentication required)
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 // API Routes
 app.use('/api/v1', apiRoutes);
 
@@ -74,7 +83,8 @@ app.get('/', (req, res) => {
     endpoints: {
       api: '/api/v1',
       admin: '/admin',
-      health: '/api/v1/health'
+      health: '/health',
+      healthApi: '/api/v1/health'
     }
   });
 });
