@@ -31,6 +31,10 @@ CREATE TABLE app_config (
     -- Test Mode
     test_mode_enabled BOOLEAN NOT NULL DEFAULT FALSE,
 
+    -- WhatsApp Provider Settings
+    whatsapp_interakt_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    whatsapp_n8n_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+
     -- Other app settings
     referral_bonus_xp INTEGER NOT NULL DEFAULT 50,
     lifelines_per_quiz INTEGER NOT NULL DEFAULT 3,

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Referral Analytics - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>📊 Referral Analytics</h1>
+
+        <!-- Stats Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px;">
+            <!-- Total Referrals -->
+            <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; text-align: center; padding: 25px;">
+                <div style="font-size: 36px; font-weight: bold; margin-bottom: 8px;"><%= stats.totalReferrals %></div>
+                <div style="font-size: 14px; opacity: 0.9;">Total Referrals</div>
+            </div>
+
+            <!-- Total XP Granted -->
+            <div class="card" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; text-align: center; padding: 25px;">
+                <div style="font-size: 36px; font-weight: bold; margin-bottom: 8px;"><%= stats.totalXPGranted.toLocaleString() %></div>
+                <div style="font-size: 14px; opacity: 0.9;">Total XP Granted</div>
+            </div>
+
+            <!-- Unique Referrers -->
+            <div class="card" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; text-align: center; padding: 25px;">
+                <div style="font-size: 36px; font-weight: bold; margin-bottom: 8px;"><%= stats.uniqueReferrers %></div>
+                <div style="font-size: 14px; opacity: 0.9;">Active Referrers</div>
+            </div>
+
+            <!-- Recent 24h -->
+            <div class="card" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: white; text-align: center; padding: 25px;">
+                <div style="font-size: 36px; font-weight: bold; margin-bottom: 8px;"><%= stats.recent24h %></div>
+                <div style="font-size: 14px; opacity: 0.9;">Last 24 Hours</div>
+            </div>
+        </div>
+
+        <!-- Top Referrer Highlight -->
+        <% if (topReferrer) { %>
+        <div class="card" style="background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%); border-left: 5px solid #f39c12; margin-bottom: 30px;">
+            <h3 style="color: #856404; margin-top: 0;">🏆 Top Referrer</h3>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div>
+                    <div style="font-size: 12px; color: #856404; margin-bottom: 4px;">Name</div>
+                    <div style="font-weight: 600; color: #333;"><%= topReferrer.referrer_name || 'Anonymous' %></div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #856404; margin-bottom: 4px;">Phone</div>
+                    <div style="font-weight: 600; color: #333;"><%= topReferrer.referrer_phone %></div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #856404; margin-bottom: 4px;">Total Referrals</div>
+                    <div style="font-weight: 600; font-size: 20px; color: #d35400;"><%= topReferrer.referral_count %></div>
+                </div>
+                <div>
+                    <div style="font-size: 12px; color: #856404; margin-bottom: 4px;">Total XP Earned</div>
+                    <div style="font-weight: 600; font-size: 20px; color: #27ae60;"><%= topReferrer.total_xp %></div>
+                </div>
+            </div>
+        </div>
+        <% } %>
+
+        <!-- Top 10 Referrers -->
+        <div class="card">
+            <h2>🔝 Top 10 Referrers</h2>
+            <% if (topReferrers && topReferrers.length > 0) { %>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">Rank</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">Phone</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">Name</th>
+                            <th style="padding: 12px; text-align: right; font-weight: 600;">Referrals</th>
+                            <th style="padding: 12px; text-align: right; font-weight: 600;">Total XP</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% topReferrers.forEach((referrer, index) => { %>
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 12px;">
+                                <span style="display: inline-block; width: 28px; height: 28px; background: <%= index < 3 ? '#ffd700' : '#e0e0e0' %>; border-radius: 50%; text-align: center; line-height: 28px; font-weight: 600; color: <%= index < 3 ? '#fff' : '#666' %>;">
+                                    <%= index + 1 %>
+                                </span>
+                            </td>
+                            <td style="padding: 12px; font-family: monospace;"><%= referrer.referrer_phone %></td>
+                            <td style="padding: 12px;"><%= referrer.referrer_name || 'Anonymous' %></td>
+                            <td style="padding: 12px; text-align: right; font-weight: 600; color: #3498db;"><%= referrer.referral_count %></td>
+                            <td style="padding: 12px; text-align: right; font-weight: 600; color: #27ae60;"><%= referrer.total_xp %></td>
+                        </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+            <% } else { %>
+            <p style="color: #999; text-align: center; padding: 40px 0;">No referrals yet</p>
+            <% } %>
+        </div>
+
+        <!-- Recent Referrals -->
+        <div class="card">
+            <h2>🕒 Recent Referrals</h2>
+            <% if (recentReferrals && recentReferrals.length > 0) { %>
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">Date</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">Referrer</th>
+                            <th style="padding: 12px; text-align: left; font-weight: 600;">Referee (New User)</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600;">Code</th>
+                            <th style="padding: 12px; text-align: right; font-weight: 600;">XP Granted</th>
+                            <th style="padding: 12px; text-align: center; font-weight: 600;">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <% recentReferrals.forEach(ref => { %>
+                        <tr style="border-bottom: 1px solid #eee;">
+                            <td style="padding: 12px; font-size: 13px; color: #666;">
+                                <%= new Date(ref.referral_date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) %>
+                            </td>
+                            <td style="padding: 12px;">
+                                <div style="font-weight: 500;"><%= ref.referrer_name || 'Anonymous' %></div>
+                                <div style="font-size: 12px; color: #999; font-family: monospace;"><%= ref.referrer_phone %></div>
+                            </td>
+                            <td style="padding: 12px;">
+                                <div style="font-weight: 500;"><%= ref.referee_name || 'Anonymous' %></div>
+                                <div style="font-size: 12px; color: #999; font-family: monospace;"><%= ref.referee_phone %></div>
+                            </td>
+                            <td style="padding: 12px; text-align: center;">
+                                <code style="background: #f0f0f0; padding: 4px 8px; border-radius: 4px;"><%= ref.referral_code %></code>
+                            </td>
+                            <td style="padding: 12px; text-align: right; font-weight: 600; color: #27ae60;"><%= ref.xp_granted %></td>
+                            <td style="padding: 12px; text-align: center;">
+                                <span style="display: inline-block; padding: 4px 10px; background: <%= ref.status === 'active' ? '#d4edda' : '#fff3cd' %>; color: <%= ref.status === 'active' ? '#155724' : '#856404' %>; border-radius: 12px; font-size: 11px; font-weight: 600; text-transform: uppercase;">
+                                    <%= ref.status %>
+                                </span>
+                            </td>
+                        </tr>
+                        <% }); %>
+                    </tbody>
+                </table>
+            </div>
+            <% } else { %>
+            <p style="color: #999; text-align: center; padding: 40px 0;">No recent referrals</p>
+            <% } %>
+        </div>
+    </div>
+</body>
+</html>

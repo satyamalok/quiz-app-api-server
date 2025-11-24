@@ -128,14 +128,20 @@ const correctIndex = options.findIndex(opt => opt.startsWith('@')) + 1;
 - `restoreLifelines()` - Validates video watch, restores to full (transaction)
 - `getLifelineStatus()` - Returns current lifeline state
 
-### Level Unlock Logic
+### Level Unlock Logic (UPDATED 2025-11-24)
 
 **Requirements to unlock next level:**
-1. Must be **first attempt** of current level
+1. **ANY completed attempt** of current level (not just first attempt)
 2. Achieve **≥30% accuracy** (3/10 correct)
-3. Must **watch promotional video** (≥80% duration)
+3. Video watching is **NOT required** for unlock (only for XP doubling)
 
-Only unlocks if `nextLevel > current_level` (prevents unlocking backwards).
+**How it works:**
+- Level N+1 unlocks when ANY attempt of Level N reaches `completion_status='completed'` with ≥30% accuracy
+- Abandoned attempts are excluded from `is_first_attempt` calculation
+- Video watching only affects XP (doubles it), not level progression
+- Only unlocks if `nextLevel > current_level` (prevents unlocking backwards)
+
+**Code location:** `src/controllers/videoController.js` line 159
 
 ### Referral System (CRITICAL - Two-Way Tracking)
 
@@ -250,15 +256,21 @@ Only unlocks if `nextLevel > current_level` (prevents unlocking backwards).
    - OTP rate limiting (enable/disable, max requests per hour, max verification attempts)
    - Test mode (bypass OTP verification for testing)
    - Online users count range (min-max with auto-update interval)
-   - WhatsApp OTP service status (Interakt + n8n)
-4. **Question Upload** (`/admin/questions/upload`)
+   - **WhatsApp OTP provider toggles** (Interakt API, n8n webhook - runtime enable/disable)
+4. **Referral Analytics** (`/admin/referrals`) - Referral program dashboard:
+   - Total referrals, XP granted, unique referrers, 24h activity
+   - Top referrer highlight card with gold gradient
+   - Top 10 referrers ranked table (by referral count)
+   - Recent referrals activity table (last 10 with full details)
+   - Color-coded status badges, responsive layout
+5. **Question Upload** (`/admin/questions/upload`)
    - CSV bulk upload with preview
    - Individual form entry
    - Image upload to MinIO
    - Auto-prepend @ to correct option
-5. **Video Upload** (`/admin/videos/upload`) - Upload promotional videos per level
-6. **User Stats** (`/admin/users/stats`) - User analytics, top performers
-7. **Level Analytics** (`/admin/levels/analytics`) - Difficulty analysis, completion rates
+6. **Video Upload** (`/admin/videos/upload`) - Upload promotional videos per level
+7. **User Stats** (`/admin/users/stats`) - User analytics, top performers
+8. **Level Analytics** (`/admin/levels/analytics`) - Difficulty analysis, completion rates
 
 ## Project Structure
 
@@ -345,10 +357,23 @@ WHATSAPP_N8N_ENABLED=true
 N8N_WEBHOOK_URL=https://your-n8n.com/webhook/otp
 ```
 
-**Admin Panel Integration:**
-- Configuration page shows status of both providers
-- Real-time visibility into which methods are enabled/configured
+**Admin Panel Integration (Database-Driven Toggles):**
+- **Configuration page** (`/admin/config`) allows runtime enable/disable of providers
+- Settings stored in `app_config` table:
+  - `whatsapp_interakt_enabled` (BOOLEAN) - Toggle Interakt API on/off
+  - `whatsapp_n8n_enabled` (BOOLEAN) - Toggle n8n webhook on/off
+- Database settings **override** environment variables (graceful fallback to env vars if DB read fails)
+- No app restart required - changes take effect immediately
+- Real-time visibility: Shows API key/webhook configuration status with visual badges
+- Migration script: `scripts/add-whatsapp-provider-settings.sql` (for existing databases)
 - OTP Viewer shows all OTP requests with timestamps
+
+**How it works:**
+1. Admin toggles provider in Configuration UI (`/admin/config`)
+2. Settings saved to `app_config` table
+3. `whatsappOtpService.js` reads from database before sending OTP
+4. Database settings take precedence over `WHATSAPP_INTERAKT_ENABLED` / `WHATSAPP_N8N_ENABLED` env vars
+5. If database read fails, falls back to environment variables (graceful degradation)
 
 ### Error Response Format
 
@@ -639,10 +664,10 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 **Business Logic:**
 1. **@ symbol must be included in API responses** - Don't strip it on server, let Android parse
 2. **XP is added ONLY after video watch** - Not after answering questions
-3. **Level unlock requires video watch** - Not just answering questions
-4. **Accuracy threshold is 30%, not 60%** - Updated requirement
+3. **Level unlock does NOT require video watch** - Only needs ANY completed attempt with ≥30% accuracy (video only doubles XP)
+4. **Accuracy threshold is 30%, not 60%** - 3/10 correct unlocks next level
 5. **Referral XP goes to BOTH users** - Don't forget to update both `xp_total` and `daily_xp_summary`
-6. **First attempt uses 5 XP/correct, replays use 1 XP/correct** - Check `is_first_attempt` flag
+6. **First attempt uses 5 XP/correct, replays use 1 XP/correct** - Check `is_first_attempt` flag (abandoned attempts excluded from count)
 7. **Lifelines deduct on wrong answers only** - Not on correct answers or skips
 8. **Lifeline restoration requires ≥80% watch** - Same as promotional videos
 9. **Lifelines restore to FULL count** - Always resets to `app_config.lifelines_per_quiz` (default 3), not +1
@@ -660,12 +685,13 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 17. **PostgreSQL uses internal hostname in Docker** - `postgres` not `localhost` in production
 18. **axios dependency required** - WhatsApp OTP services need axios (added to package.json)
 19. **WhatsApp OTP graceful mode** - Even if one provider fails, OTP is considered sent if ANY provider succeeds
-20. **Rate limiting is configurable** - Can be disabled or adjusted via admin panel (stored in `app_config` table)
-21. **Database must be initialized** - Run `npm run migrate` before first use to create all 15 tables
-22. **package-lock.json is tracked** - Committed to git for consistent builds (use `npm ci` in production for speed)
+20. **WhatsApp provider toggles stored in database** - `app_config.whatsapp_interakt_enabled` and `whatsapp_n8n_enabled` override env vars (no restart needed)
+21. **Rate limiting is configurable** - Can be disabled or adjusted via admin panel (stored in `app_config` table)
+22. **Database must be initialized** - Run `npm run migrate` before first use to create all 15 tables
+23. **package-lock.json is tracked** - Committed to git for consistent builds (use `npm ci` in production for speed)
 
 **Referral System:**
-23. **Self-referral is blocked** - Users cannot use their own referral code
-24. **One referral per user** - Each user can only use a referral code once (UNIQUE constraint on referee_phone)
-25. **Referral tracking is permanent** - Logged in `referral_tracking` table for analytics and two-way lookup
-26. **Referral code is 5 digits** - Generated once, never changes (10000-99999 range)
+24. **Self-referral is blocked** - Users cannot use their own referral code
+25. **One referral per user** - Each user can only use a referral code once (UNIQUE constraint on referee_phone)
+26. **Referral tracking is permanent** - Logged in `referral_tracking` table for analytics and two-way lookup
+27. **Referral code is 5 digits** - Generated once, never changes (10000-99999 range)

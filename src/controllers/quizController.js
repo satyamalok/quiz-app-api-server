@@ -62,10 +62,10 @@ async function startLevel(req, res, next) {
       };
     }
 
-    // Check if this is first attempt
+    // Check if this is first attempt (exclude abandoned attempts)
     const attemptCountResult = await pool.query(
-      'SELECT COUNT(*) as count FROM level_attempts WHERE phone = $1 AND level = $2',
-      [phone, level]
+      'SELECT COUNT(*) as count FROM level_attempts WHERE phone = $1 AND level = $2 AND completion_status != $3',
+      [phone, level, 'abandoned']
     );
 
     const isFirstAttempt = parseInt(attemptCountResult.rows[0].count) === 0;

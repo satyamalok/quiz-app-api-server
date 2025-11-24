@@ -27,6 +27,7 @@ const {
   showAnalytics,
   upload
 } = require('./adminController');
+const { getReferralDashboard } = require('./referralAdminController');
 const { requireAdminAuth, redirectIfAuthenticated } = require('../middleware/adminAuth');
 
 // Login routes (public)
@@ -47,6 +48,9 @@ router.get('/otp-viewer', showOTPViewer);
 // Configuration
 router.get('/config', showConfig);
 router.post('/config/update', updateConfig);
+
+// Referral Analytics
+router.get('/referrals', getReferralDashboard);
 
 // User Statistics
 router.get('/users', showUsers);

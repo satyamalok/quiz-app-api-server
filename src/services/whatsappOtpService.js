@@ -1,13 +1,39 @@
 const interaktService = require('./interaktService');
 const n8nService = require('./n8nService');
+const pool = require('../config/database');
 
 /**
  * WhatsApp OTP Orchestrator Service
  * Coordinates multiple WhatsApp OTP sending methods (Interakt API + n8n webhook)
+ * Checks database settings first, then falls back to environment variables
  */
 
 const WHATSAPP_OTP_ENABLED = process.env.WHATSAPP_OTP_ENABLED === 'true';
 const OTP_REQUIRE_ALL_METHODS = process.env.OTP_REQUIRE_ALL_METHODS === 'true';
+
+/**
+ * Get provider settings from database
+ * @returns {Promise<Object>} Provider settings
+ */
+async function getProviderSettings() {
+  try {
+    const result = await pool.query('SELECT whatsapp_interakt_enabled, whatsapp_n8n_enabled FROM app_config WHERE id = 1');
+    if (result.rows.length > 0) {
+      return {
+        interaktEnabled: result.rows[0].whatsapp_interakt_enabled,
+        n8nEnabled: result.rows[0].whatsapp_n8n_enabled
+      };
+    }
+  } catch (err) {
+    console.warn('[WhatsApp OTP] Failed to get provider settings from database, using env vars:', err.message);
+  }
+
+  // Fallback to environment variables
+  return {
+    interaktEnabled: process.env.WHATSAPP_INTERAKT_ENABLED === 'true',
+    n8nEnabled: process.env.WHATSAPP_N8N_ENABLED === 'true'
+  };
+}
 
 /**
  * Send OTP via enabled WhatsApp methods
@@ -29,6 +55,9 @@ async function sendOTP(phoneNumber, otp) {
 
   console.log(`[WhatsApp OTP] Sending OTP to ${phoneNumber} via enabled methods...`);
 
+  // Get provider settings from database
+  const providerSettings = await getProviderSettings();
+
   const results = {
     interakt: null,
     n8n: null
@@ -37,8 +66,8 @@ async function sendOTP(phoneNumber, otp) {
   const promises = [];
   const methodsAttempted = [];
 
-  // Call Interakt service if enabled
-  if (interaktService.isEnabled()) {
+  // Call Interakt service if enabled (check database setting AND env config)
+  if (providerSettings.interaktEnabled && interaktService.isEnabled()) {
     methodsAttempted.push('interakt');
     promises.push(
       interaktService.sendWhatsAppOTP(phoneNumber, otp)
@@ -57,8 +86,8 @@ async function sendOTP(phoneNumber, otp) {
     );
   }
 
-  // Call n8n webhook if enabled
-  if (n8nService.isEnabled()) {
+  // Call n8n webhook if enabled (check database setting AND env config)
+  if (providerSettings.n8nEnabled && n8nService.isEnabled()) {
     methodsAttempted.push('n8n');
     promises.push(
       n8nService.sendToN8N(phoneNumber, otp)

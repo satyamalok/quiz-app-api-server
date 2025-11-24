@@ -46,64 +46,82 @@
             </div>
 
             <div class="card">
-                <h2>WhatsApp OTP Configuration</h2>
+                <h2>WhatsApp OTP Providers</h2>
                 <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
-                    This is a read-only view. Configure WhatsApp OTP settings in the <code>.env</code> file.
+                    Enable or disable WhatsApp OTP providers. API keys and URLs must be configured in <code>.env</code> file.
                 </p>
 
-                <table style="width: 100%; border-collapse: collapse;">
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 12px; font-weight: 600;">WhatsApp OTP Enabled:</td>
-                        <td style="padding: 12px;">
-                            <% if (whatsappStatus && whatsappStatus.enabled) { %>
-                                <span style="color: #27ae60; font-weight: 600;">✅ Enabled</span>
-                            <% } else { %>
-                                <span style="color: #e74c3c; font-weight: 600;">❌ Disabled</span>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="whatsapp_interakt_enabled" <%= appConfig.whatsapp_interakt_enabled ? 'checked' : '' %>>
+                        <strong>Enable Interakt API</strong>
+                    </label>
+                    <div style="margin-left: 24px; margin-top: 8px;">
+                        <% if (whatsappStatus && whatsappStatus.interakt && whatsappStatus.interakt.api_key_configured) { %>
+                            <span style="display: inline-block; padding: 4px 12px; background: #d4edda; color: #155724; border-radius: 4px; font-size: 12px; font-weight: 600;">
+                                ✓ API Key Configured
+                            </span>
+                            <% if (whatsappStatus.interakt.template) { %>
+                                <span style="color: #666; font-size: 12px; margin-left: 8px;">
+                                    Template: <code><%= whatsappStatus.interakt.template %></code>
+                                </span>
                             <% } %>
-                        </td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 12px; font-weight: 600;">Interakt API:</td>
-                        <td style="padding: 12px;">
-                            <% if (whatsappStatus && whatsappStatus.interakt && whatsappStatus.interakt.enabled) { %>
-                                <span style="color: #27ae60; font-weight: 600;">✅ Active</span>
-                                <br><small style="color: #666;">Template: <%= whatsappStatus.interakt.template %></small>
-                            <% } else { %>
-                                <span style="color: #e74c3c; font-weight: 600;">❌ Disabled</span>
-                            <% } %>
-                        </td>
-                    </tr>
-                    <tr style="border-bottom: 1px solid #ddd;">
-                        <td style="padding: 12px; font-weight: 600;">n8n Webhook:</td>
-                        <td style="padding: 12px;">
-                            <% if (whatsappStatus && whatsappStatus.n8n && whatsappStatus.n8n.enabled) { %>
-                                <span style="color: #27ae60; font-weight: 600;">✅ Active</span>
-                            <% } else { %>
-                                <span style="color: #e74c3c; font-weight: 600;">❌ Disabled</span>
-                            <% } %>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td style="padding: 12px; font-weight: 600;">Active Methods:</td>
-                        <td style="padding: 12px;">
-                            <% if (whatsappStatus && whatsappStatus.available_methods && whatsappStatus.available_methods.length > 0) { %>
-                                <span style="color: #27ae60; font-weight: 600;"><%= whatsappStatus.available_methods.join(', ') %></span>
-                            <% } else { %>
-                                <span style="color: #e74c3c;">None</span>
-                            <% } %>
-                        </td>
-                    </tr>
-                </table>
+                        <% } else { %>
+                            <span style="display: inline-block; padding: 4px 12px; background: #fff3cd; color: #856404; border-radius: 4px; font-size: 12px; font-weight: 600;">
+                                ⚠ API Key Not Configured
+                            </span>
+                        <% } %>
+                    </div>
+                </div>
 
-                <div style="margin-top: 15px; padding: 12px; background: #f8f9fa; border-left: 4px solid #3498db;">
-                    <strong>Note:</strong> To change WhatsApp configuration, edit the following variables in <code>.env</code>:
-                    <ul style="margin: 8px 0; padding-left: 20px;">
-                        <li><code>WHATSAPP_OTP_ENABLED</code> - Enable/disable WhatsApp OTP</li>
-                        <li><code>WHATSAPP_INTERAKT_ENABLED</code> - Enable/disable Interakt method</li>
-                        <li><code>WHATSAPP_N8N_ENABLED</code> - Enable/disable n8n webhook method</li>
-                        <li><code>INTERAKT_SECRET_KEY</code> - Interakt API secret</li>
-                        <li><code>N8N_WEBHOOK_URL</code> - n8n webhook URL</li>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="whatsapp_n8n_enabled" <%= appConfig.whatsapp_n8n_enabled ? 'checked' : '' %>>
+                        <strong>Enable n8n Webhook</strong>
+                    </label>
+                    <div style="margin-left: 24px; margin-top: 8px;">
+                        <% if (whatsappStatus && whatsappStatus.n8n && whatsappStatus.n8n.webhook_configured) { %>
+                            <span style="display: inline-block; padding: 4px 12px; background: #d4edda; color: #155724; border-radius: 4px; font-size: 12px; font-weight: 600;">
+                                ✓ Webhook URL Configured
+                            </span>
+                        <% } else { %>
+                            <span style="display: inline-block; padding: 4px 12px; background: #fff3cd; color: #856404; border-radius: 4px; font-size: 12px; font-weight: 600;">
+                                ⚠ Webhook URL Not Configured
+                            </span>
+                        <% } %>
+                    </div>
+                </div>
+
+                <div style="margin-top: 15px; padding: 12px; background: #e7f3ff; border-left: 4px solid #2196f3; border-radius: 4px;">
+                    <strong style="color: #1976d2;">ℹ️ Configuration Guide</strong>
+                    <p style="margin: 8px 0; font-size: 13px; color: #555;">
+                        These toggles enable/disable providers. To configure API keys and URLs, add these variables to your <code>.env</code> file:
+                    </p>
+                    <ul style="margin: 8px 0; padding-left: 20px; font-size: 13px; color: #555;">
+                        <li><code>WHATSAPP_OTP_ENABLED=true</code> - Master switch for WhatsApp OTP</li>
+                        <li><code>INTERAKT_SECRET_KEY=your_key_here</code> - Interakt API secret</li>
+                        <li><code>INTERAKT_TEMPLATE_NAME=template_name</code> - Interakt template</li>
+                        <li><code>N8N_WEBHOOK_URL=https://your-n8n.com/webhook/otp</code> - n8n webhook URL</li>
                     </ul>
+                </div>
+
+                <div style="margin-top: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                    <strong style="font-size: 13px;">Current Status:</strong>
+                    <% if (whatsappStatus && whatsappStatus.enabled) { %>
+                        <% if (whatsappStatus.available_methods && whatsappStatus.available_methods.length > 0) { %>
+                            <span style="color: #27ae60; font-weight: 600; margin-left: 8px;">
+                                ✅ Active (<%= whatsappStatus.available_methods.join(', ') %>)
+                            </span>
+                        <% } else { %>
+                            <span style="color: #e67e22; font-weight: 600; margin-left: 8px;">
+                                ⚠ Enabled but no providers configured
+                            </span>
+                        <% } %>
+                    <% } else { %>
+                        <span style="color: #e74c3c; font-weight: 600; margin-left: 8px;">
+                            ❌ WhatsApp OTP Disabled (Set WHATSAPP_OTP_ENABLED=true in .env)
+                        </span>
+                    <% } %>
                 </div>
             </div>
 

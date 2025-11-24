@@ -188,6 +188,8 @@ async function updateConfig(req, res) {
       otp_max_requests_per_hour,
       otp_max_verification_attempts,
       test_mode_enabled,
+      whatsapp_interakt_enabled,
+      whatsapp_n8n_enabled,
       online_count_min,
       online_count_max,
       update_interval_minutes
@@ -200,13 +202,17 @@ async function updateConfig(req, res) {
         otp_max_requests_per_hour = $2,
         otp_max_verification_attempts = $3,
         test_mode_enabled = $4,
+        whatsapp_interakt_enabled = $5,
+        whatsapp_n8n_enabled = $6,
         updated_at = NOW()
       WHERE id = 1
     `, [
       otp_rate_limiting_enabled === 'on',
       parseInt(otp_max_requests_per_hour),
       parseInt(otp_max_verification_attempts),
-      test_mode_enabled === 'on'
+      test_mode_enabled === 'on',
+      whatsapp_interakt_enabled === 'on',
+      whatsapp_n8n_enabled === 'on'
     ]);
 
     // Update online_users_config

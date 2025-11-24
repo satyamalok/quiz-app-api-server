@@ -152,11 +152,11 @@ async function completeVideo(req, res, next) {
         updated_at = NOW()
     `, [phone, finalXP]);
 
-    // Check level unlock (30% accuracy required)
+    // Check level unlock (30% accuracy required on any completed attempt)
     let levelUnlocked = false;
     let newCurrentLevel = null;
 
-    if (attempt.is_first_attempt && attempt.accuracy_percentage >= 30) {
+    if (attempt.completion_status === 'completed' && attempt.accuracy_percentage >= 30) {
       const nextLevel = attempt.level + 1;
 
       if (nextLevel <= 100) {
