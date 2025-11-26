@@ -50,6 +50,7 @@ function getQuestionColumns() {
     { value: 'subject', label: 'Subject', required: false },
     { value: 'topic', label: 'Topic', required: false },
     { value: 'difficulty', label: 'Difficulty', required: false },
+    { value: 'medium', label: 'Language Medium (english/hindi/both)', required: false },
     { value: 'skip', label: '-- Skip This Column --', required: false }
   ];
 }
@@ -80,6 +81,16 @@ function mapRowsToDatabase(rows, mapping) {
         if (mappedRow[optionKey] && !mappedRow[optionKey].startsWith('@')) {
           mappedRow[optionKey] = '@' + mappedRow[optionKey];
         }
+      }
+    }
+
+    // Normalize medium field (default to 'english' if not set or invalid)
+    if (mappedRow.medium) {
+      const normalizedMedium = mappedRow.medium.toLowerCase().trim();
+      if (['english', 'hindi', 'both'].includes(normalizedMedium)) {
+        mappedRow.medium = normalizedMedium;
+      } else {
+        mappedRow.medium = 'english'; // default for invalid values
       }
     }
 

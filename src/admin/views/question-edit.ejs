@@ -98,7 +98,7 @@
                     <small style="color: #666;">Upload new image to replace current (stored in MinIO explanations/ folder)</small>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 20px;">
                     <div class="form-group">
                         <label for="subject">Subject</label>
                         <input type="text" id="subject" name="subject" value="<%= question.subject || '' %>" placeholder="e.g., Math, GK, English">
@@ -116,6 +116,15 @@
                             <option value="easy" <%= question.difficulty === 'easy' ? 'selected' : '' %>>Easy</option>
                             <option value="medium" <%= question.difficulty === 'medium' ? 'selected' : '' %>>Medium</option>
                             <option value="hard" <%= question.difficulty === 'hard' ? 'selected' : '' %>>Hard</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="medium">Language Medium *</label>
+                        <select id="medium" name="medium" required>
+                            <option value="english" <%= question.medium === 'english' ? 'selected' : '' %>>English</option>
+                            <option value="hindi" <%= question.medium === 'hindi' ? 'selected' : '' %>>Hindi</option>
+                            <option value="both" <%= question.medium === 'both' ? 'selected' : '' %>>Both (Bilingual)</option>
                         </select>
                     </div>
                 </div>

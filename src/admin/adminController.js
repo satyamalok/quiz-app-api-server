@@ -351,9 +351,11 @@ async function updateConfig(req, res) {
       test_mode_enabled,
       whatsapp_interakt_enabled,
       whatsapp_n8n_enabled,
+      online_users_mode,
       online_count_min,
       online_count_max,
-      update_interval_minutes
+      update_interval_minutes,
+      active_minutes_threshold
     } = req.body;
 
     // Update app_config
@@ -377,12 +379,14 @@ async function updateConfig(req, res) {
     ]);
 
     // Update online_users_config
-    await updateOnlineConfig(
-      parseInt(online_count_min),
-      parseInt(online_count_max),
-      parseInt(update_interval_minutes),
-      req.session.adminUser.email
-    );
+    await updateOnlineConfig({
+      mode: online_users_mode,
+      min: parseInt(online_count_min),
+      max: parseInt(online_count_max),
+      intervalMinutes: parseInt(update_interval_minutes),
+      activeMinutesThreshold: parseInt(active_minutes_threshold) || 5,
+      updatedBy: req.session.adminUser.email
+    });
 
     // Reload config
     const appConfigResult = await pool.query('SELECT * FROM app_config WHERE id = 1');
@@ -754,13 +758,13 @@ async function bulkInsertQuestions(req, res) {
         INSERT INTO questions (
           level, question_order, question_text,
           option_1, option_2, option_3, option_4,
-          explanation_text, subject, topic, difficulty
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          explanation_text, subject, topic, difficulty, medium
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         ON CONFLICT (level, question_order) DO NOTHING
       `, [
         row.level, row.question_order, row.question_text,
         row.option_1, row.option_2, row.option_3, row.option_4,
-        row.explanation_text, row.subject, row.topic, row.difficulty
+        row.explanation_text, row.subject, row.topic, row.difficulty, row.medium || 'english'
       ]);
       insertedCount++;
     }
@@ -798,7 +802,7 @@ async function createQuestion(req, res) {
     const {
       level, question_order, question_text,
       option_1, option_2, option_3, option_4, correct_option,
-      explanation_text, subject, topic, difficulty
+      explanation_text, subject, topic, difficulty, medium
     } = req.body;
 
     // Add @ to correct option
@@ -825,12 +829,12 @@ async function createQuestion(req, res) {
       INSERT INTO questions (
         level, question_order, question_text, question_image_url,
         option_1, option_2, option_3, option_4,
-        explanation_text, explanation_url, subject, topic, difficulty
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        explanation_text, explanation_url, subject, topic, difficulty, medium
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     `, [
       level, question_order, question_text, questionImageUrl,
       options[0], options[1], options[2], options[3],
-      explanation_text, explanationUrl, subject, topic, difficulty
+      explanation_text, explanationUrl, subject, topic, difficulty, medium || 'english'
     ]);
 
     res.render('question-upload', {
@@ -966,7 +970,7 @@ async function updateQuestion(req, res) {
     const {
       level, question_order, question_text,
       option_1, option_2, option_3, option_4, correct_option,
-      explanation_text, subject, topic, difficulty
+      explanation_text, subject, topic, difficulty, medium
     } = req.body;
 
     // Get existing question to preserve image URLs if not updated
@@ -1002,12 +1006,12 @@ async function updateQuestion(req, res) {
       UPDATE questions SET
         level = $1, question_order = $2, question_text = $3, question_image_url = $4,
         option_1 = $5, option_2 = $6, option_3 = $7, option_4 = $8,
-        explanation_text = $9, explanation_url = $10, subject = $11, topic = $12, difficulty = $13
-      WHERE sl = $14
+        explanation_text = $9, explanation_url = $10, subject = $11, topic = $12, difficulty = $13, medium = $14
+      WHERE sl = $15
     `, [
       level, question_order, question_text, questionImageUrl,
       options[0], options[1], options[2], options[3],
-      explanation_text, explanationUrl, subject, topic, difficulty, id
+      explanation_text, explanationUrl, subject, topic, difficulty, medium || 'english', id
     ]);
 
     const result = await pool.query('SELECT * FROM questions WHERE sl = $1', [id]);

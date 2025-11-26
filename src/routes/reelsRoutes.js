@@ -9,7 +9,7 @@ const {
   getStats,
   getHearted
 } = require('../controllers/reelsController');
-const { authenticateJWT } = require('../middleware/auth');
+const authenticateJWT = require('../middleware/auth');
 
 // All reels routes require authentication
 router.use(authenticateJWT);

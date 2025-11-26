@@ -134,25 +134,61 @@
                 <h2>Online Users Settings</h2>
 
                 <div class="form-group">
-                    <label for="online_count_min">Minimum Online Count</label>
-                    <input type="number" id="online_count_min" name="online_count_min" value="<%= onlineConfig.online_count_min %>" min="0" required>
+                    <label for="online_users_mode">Mode</label>
+                    <select id="online_users_mode" name="online_users_mode" onchange="toggleOnlineModeSettings()">
+                        <option value="fake" <%= onlineConfig.mode === 'fake' ? 'selected' : '' %>>Fake (Random Number)</option>
+                        <option value="actual" <%= onlineConfig.mode === 'actual' ? 'selected' : '' %>>Actual (Real Activity)</option>
+                    </select>
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        <strong>Fake:</strong> Shows random number between min-max. <strong>Actual:</strong> Shows users active in last N minutes.
+                    </small>
                 </div>
 
-                <div class="form-group">
-                    <label for="online_count_max">Maximum Online Count</label>
-                    <input type="number" id="online_count_max" name="online_count_max" value="<%= onlineConfig.online_count_max %>" min="0" required>
+                <div id="fake-mode-settings" style="<%= onlineConfig.mode === 'actual' ? 'display: none;' : '' %>">
+                    <div class="form-group">
+                        <label for="online_count_min">Minimum Online Count</label>
+                        <input type="number" id="online_count_min" name="online_count_min" value="<%= onlineConfig.online_count_min %>" min="0" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="online_count_max">Maximum Online Count</label>
+                        <input type="number" id="online_count_max" name="online_count_max" value="<%= onlineConfig.online_count_max %>" min="0" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="update_interval_minutes">Update Interval (minutes)</label>
+                        <input type="number" id="update_interval_minutes" name="update_interval_minutes" value="<%= onlineConfig.update_interval_minutes %>" min="1" max="60" required>
+                    </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="update_interval_minutes">Update Interval (minutes)</label>
-                    <input type="number" id="update_interval_minutes" name="update_interval_minutes" value="<%= onlineConfig.update_interval_minutes %>" min="1" max="60" required>
+                <div id="actual-mode-settings" style="<%= onlineConfig.mode === 'fake' ? 'display: none;' : '' %>">
+                    <div class="form-group">
+                        <label for="active_minutes_threshold">Active Minutes Threshold</label>
+                        <input type="number" id="active_minutes_threshold" name="active_minutes_threshold" value="<%= onlineConfig.active_minutes_threshold || 5 %>" min="1" max="60" required>
+                        <small style="color: #666; display: block; margin-top: 5px;">
+                            Count users who were active in the last N minutes as "online"
+                        </small>
+                    </div>
                 </div>
 
-                <p style="color: #666; font-size: 14px; margin-top: 10px;">
-                    Current online count: <strong><%= onlineConfig.current_online_count %></strong>
-                    (updates every <%= onlineConfig.update_interval_minutes %> minutes between <%= onlineConfig.online_count_min %>-<%= onlineConfig.online_count_max %>)
+                <p style="color: #666; font-size: 14px; margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                    <strong>Current Mode:</strong> <%= onlineConfig.mode === 'actual' ? 'Actual' : 'Fake' %><br>
+                    <strong>Current Count:</strong> <%= onlineConfig.current_online_count %>
+                    <% if (onlineConfig.mode === 'fake') { %>
+                        (random between <%= onlineConfig.online_count_min %>-<%= onlineConfig.online_count_max %>, updates every <%= onlineConfig.update_interval_minutes %> min)
+                    <% } else { %>
+                        (users active in last <%= onlineConfig.active_minutes_threshold || 5 %> minutes)
+                    <% } %>
                 </p>
             </div>
+
+            <script>
+                function toggleOnlineModeSettings() {
+                    const mode = document.getElementById('online_users_mode').value;
+                    document.getElementById('fake-mode-settings').style.display = mode === 'fake' ? '' : 'none';
+                    document.getElementById('actual-mode-settings').style.display = mode === 'actual' ? '' : 'none';
+                }
+            </script>
 
             <button type="submit">Save Configuration</button>
         </form>
