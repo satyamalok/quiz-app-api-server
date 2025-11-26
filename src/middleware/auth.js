@@ -1,8 +1,9 @@
 const { verifyToken } = require('../config/jwt');
+const { updateUserActivity } = require('../services/onlineUsersService');
 
 /**
  * JWT authentication middleware
- * Verifies JWT token and attaches user info to request
+ * Verifies JWT token, attaches user info to request, and updates last_active_at
  */
 function authenticateJWT(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -22,6 +23,13 @@ function authenticateJWT(req, res, next) {
     req.user = {
       phone: decoded.phone
     };
+
+    // Update user's last active timestamp (non-blocking)
+    // This runs in the background and doesn't delay the response
+    updateUserActivity(decoded.phone).catch(() => {
+      // Silently ignore errors - activity tracking is non-critical
+    });
+
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {

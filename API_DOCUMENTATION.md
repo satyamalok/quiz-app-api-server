@@ -1,9 +1,9 @@
 # JNV Quiz App - Complete API Documentation
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Base URL**: `http://your-domain.com/api/v1`
 **Authentication**: JWT Bearer Token
-**Date**: November 24, 2025
+**Date**: November 26, 2025
 
 ---
 
@@ -19,6 +19,7 @@
    - [Video APIs](#4-video-apis)
    - [Statistics APIs](#5-statistics-apis)
    - [App Configuration APIs](#6-app-configuration-apis)
+   - [Reels APIs](#7-reels-apis) *(NEW)*
 5. [Common Workflows](#common-workflows)
 6. [Data Types & Enums](#data-types--enums)
 
@@ -34,6 +35,8 @@ This API powers the JNV Quiz App, a gamified learning platform with:
 - Video integration for XP bonuses and lifeline restoration
 - Leaderboards and streak tracking
 - Two-way referral tracking system (earn XP by referring friends)
+- **Language medium support** (Hindi/English questions)
+- **Video Reels** (TikTok/Shorts-style educational content) *(NEW)*
 
 ---
 
@@ -103,6 +106,7 @@ All errors follow this structure:
 | `ALREADY_REFERRED` | 400 | User already used a referral code |
 | `INVALID_LIMIT` | 400 | Pagination limit out of range (1-100) |
 | `INVALID_OFFSET` | 400 | Pagination offset must be >= 0 |
+| `REEL_NOT_FOUND` | 404 | Reel does not exist |
 
 ---
 
@@ -186,6 +190,7 @@ Verify OTP and login/register user.
   "name": "string (optional, for new users)",
   "district": "string (optional, for new users)",
   "state": "string (optional, for new users)",
+  "medium": "string (optional, 'hindi' or 'english', default: 'english')",
   "referral_code": "string (optional, 5 digits)"
 }
 ```
@@ -203,6 +208,7 @@ Verify OTP and login/register user.
     "name": "John Doe",
     "district": "Mumbai",
     "state": "Maharashtra",
+    "medium": "english",
     "referral_code": "12345",
     "profile_image_url": null,
     "xp_total": 50,
@@ -381,6 +387,7 @@ Authorization: Bearer <jwt_token>
     "name": "John Doe",
     "district": "Mumbai",
     "state": "Maharashtra",
+    "medium": "english",
     "referral_code": "12345",
     "profile_image_url": "https://minio.example.com/profiles/user123.jpg",
     "xp_total": 350,
@@ -886,6 +893,7 @@ Content-Type: application/json
 
 #### Success Response (200)
 
+**During Quiz (Questions 1-9):**
 ```json
 {
   "success": true,
@@ -902,6 +910,39 @@ Content-Type: application/json
     "remaining": 3,
     "can_continue": true,
     "can_watch_video_to_restore": false
+  }
+}
+```
+
+**On 10th Question (Quiz Complete):**
+```json
+{
+  "success": true,
+  "is_correct": true,
+  "correct_answer": 2,
+  "explanation_text": "Final answer explanation...",
+  "explanation_url": null,
+  "progress": {
+    "questions_attempted": 10,
+    "correct_answers": 8,
+    "accuracy_so_far": 80.0
+  },
+  "lifelines": {
+    "remaining": 2,
+    "can_continue": true,
+    "can_watch_video_to_restore": false
+  },
+  "quiz_completed": true,
+  "attempt": {
+    "attempt_id": 42,
+    "level": 1,
+    "completion_status": "completed",
+    "correct_answers": 8,
+    "accuracy": 80.0,
+    "xp_earned_base": 40,
+    "is_first_attempt": true,
+    "video_watched": false,
+    "can_unlock_next_level": true
   }
 }
 ```
@@ -1549,6 +1590,484 @@ curl -X GET http://localhost:3000/api/v1/app/online-count \
 
 ---
 
+## 7. REELS APIS *(NEW)*
+
+TikTok/Shorts-style short educational video feed system with engagement tracking.
+
+**Key Concepts:**
+- **Started**: User has viewed the reel (appears in feed, now marked as seen)
+- **Watched**: User watched >= threshold seconds (configurable, default 5s) - counts for analytics
+- **Hearts**: User liked the reel
+- **Feed Algorithm**: Newest reels first, excludes already-started reels (sliding window)
+
+### 7.1 Get Reels Feed
+
+Get next batch of reels for the user to watch.
+
+**Endpoint**: `GET /reels/feed`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+```
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | integer | No | 3 | Number of reels to fetch (1-10) |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "reels": [
+    {
+      "id": 42,
+      "title": "Quick Math Trick for JNV Exam",
+      "description": "Learn this amazing multiplication shortcut...",
+      "video_url": "https://minio.example.com/quiz/reels/abc123.mp4",
+      "thumbnail_url": "https://minio.example.com/quiz/reels/thumb_abc123.jpg",
+      "duration_seconds": 45,
+      "category": "tips",
+      "tags": ["math", "shortcuts", "exam-tips"],
+      "total_views": 1250,
+      "total_completions": 890,
+      "total_hearts": 342,
+      "created_at": "2025-11-25T10:30:00.000Z"
+    },
+    {
+      "id": 41,
+      "title": "History of Navodaya Vidyalaya",
+      "description": "A brief history of JNV schools in India...",
+      "video_url": "https://minio.example.com/quiz/reels/def456.mp4",
+      "thumbnail_url": null,
+      "duration_seconds": 60,
+      "category": "education",
+      "tags": ["history", "jnv"],
+      "total_views": 2100,
+      "total_completions": 1800,
+      "total_hearts": 567,
+      "created_at": "2025-11-24T15:20:00.000Z"
+    }
+  ],
+  "has_more": true,
+  "watch_threshold_seconds": 5
+}
+```
+
+**If no more reels available:**
+```json
+{
+  "success": true,
+  "reels": [],
+  "has_more": false,
+  "watch_threshold_seconds": 5
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/reels/feed?limit=3" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 7.2 Get Single Reel
+
+Get details of a specific reel by ID.
+
+**Endpoint**: `GET /reels/:id`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+```
+
+#### URL Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| id | integer | Yes | Reel ID |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "reel": {
+    "id": 42,
+    "title": "Quick Math Trick for JNV Exam",
+    "description": "Learn this amazing multiplication shortcut...",
+    "video_url": "https://minio.example.com/quiz/reels/abc123.mp4",
+    "thumbnail_url": "https://minio.example.com/quiz/reels/thumb_abc123.jpg",
+    "duration_seconds": 45,
+    "category": "tips",
+    "tags": ["math", "shortcuts", "exam-tips"],
+    "total_views": 1250,
+    "total_completions": 890,
+    "total_hearts": 342,
+    "is_active": true,
+    "created_at": "2025-11-25T10:30:00.000Z"
+  },
+  "user_progress": {
+    "started": true,
+    "watched": true,
+    "hearted": false,
+    "watch_count": 2,
+    "total_watch_time_seconds": 90,
+    "first_viewed_at": "2025-11-25T12:00:00.000Z",
+    "last_viewed_at": "2025-11-25T14:30:00.000Z"
+  }
+}
+```
+
+#### Error Responses
+
+**404 - Reel Not Found**
+```json
+{
+  "success": false,
+  "error": "REEL_NOT_FOUND",
+  "message": "Reel not found"
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET http://localhost:3000/api/v1/reels/42 \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 7.3 Mark Reel Started
+
+Mark reel as started (viewed) when user scrolls to it. Removes from future feed.
+
+**Endpoint**: `POST /reels/started`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "reel_id": "integer (required)"
+}
+```
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Reel marked as started",
+  "progress": {
+    "started": true,
+    "watched": false,
+    "hearted": false
+  }
+}
+```
+
+**If already started:**
+```json
+{
+  "success": true,
+  "message": "Reel already started",
+  "progress": {
+    "started": true,
+    "watched": true,
+    "hearted": false
+  }
+}
+```
+
+#### Error Responses
+
+**404 - Reel Not Found**
+```json
+{
+  "success": false,
+  "error": "REEL_NOT_FOUND",
+  "message": "Reel not found"
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X POST http://localhost:3000/api/v1/reels/started \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reel_id": 42
+  }'
+```
+
+---
+
+### 7.4 Mark Reel Watched
+
+Mark reel as fully watched after watching >= threshold seconds.
+
+**Endpoint**: `POST /reels/watched`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "reel_id": "integer (required)",
+  "watch_duration_seconds": "integer (required, must be >= threshold)"
+}
+```
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Reel marked as watched",
+  "progress": {
+    "started": true,
+    "watched": true,
+    "hearted": false,
+    "watch_count": 1,
+    "total_watch_time_seconds": 45
+  }
+}
+```
+
+#### Error Responses
+
+**400 - Insufficient Watch Time**
+```json
+{
+  "success": false,
+  "error": "INSUFFICIENT_WATCH_TIME",
+  "message": "Watch at least 5 seconds to mark as watched",
+  "watched_seconds": 3,
+  "required_seconds": 5
+}
+```
+
+**404 - Reel Not Found**
+```json
+{
+  "success": false,
+  "error": "REEL_NOT_FOUND",
+  "message": "Reel not found"
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X POST http://localhost:3000/api/v1/reels/watched \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reel_id": 42,
+    "watch_duration_seconds": 45
+  }'
+```
+
+---
+
+### 7.5 Heart/Unlike Reel
+
+Toggle heart (like) on a reel.
+
+**Endpoint**: `POST /reels/heart`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "reel_id": "integer (required)"
+}
+```
+
+#### Success Response (200)
+
+**When hearting:**
+```json
+{
+  "success": true,
+  "action": "hearted",
+  "message": "Reel hearted",
+  "new_heart_count": 343
+}
+```
+
+**When removing heart:**
+```json
+{
+  "success": true,
+  "action": "unhearted",
+  "message": "Heart removed",
+  "new_heart_count": 342
+}
+```
+
+#### Error Responses
+
+**404 - Reel Not Found**
+```json
+{
+  "success": false,
+  "error": "REEL_NOT_FOUND",
+  "message": "Reel not found"
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X POST http://localhost:3000/api/v1/reels/heart \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reel_id": 42
+  }'
+```
+
+---
+
+### 7.6 Get User Reel Stats
+
+Get user's overall reels engagement statistics.
+
+**Endpoint**: `GET /reels/stats`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+```
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "stats": {
+    "reels_started": 25,
+    "reels_watched": 20,
+    "reels_hearted": 8,
+    "total_watch_time_seconds": 1250,
+    "total_watch_time_formatted": "20 min 50 sec",
+    "average_watch_time_seconds": 62.5
+  }
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET http://localhost:3000/api/v1/reels/stats \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 7.7 Get Hearted Reels
+
+Get list of reels the user has hearted (liked).
+
+**Endpoint**: `GET /reels/hearted`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+```
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | integer | No | 20 | Number of reels to fetch (1-50) |
+| offset | integer | No | 0 | Offset for pagination |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "hearted_reels": [
+    {
+      "id": 42,
+      "title": "Quick Math Trick for JNV Exam",
+      "video_url": "https://minio.example.com/quiz/reels/abc123.mp4",
+      "thumbnail_url": "https://minio.example.com/quiz/reels/thumb_abc123.jpg",
+      "duration_seconds": 45,
+      "category": "tips",
+      "total_hearts": 343,
+      "hearted_at": "2025-11-25T14:30:00.000Z"
+    },
+    {
+      "id": 38,
+      "title": "GK Facts Every JNV Student Should Know",
+      "video_url": "https://minio.example.com/quiz/reels/ghi789.mp4",
+      "thumbnail_url": null,
+      "duration_seconds": 30,
+      "category": "education",
+      "total_hearts": 567,
+      "hearted_at": "2025-11-24T10:15:00.000Z"
+    }
+  ],
+  "total_hearted": 8,
+  "pagination": {
+    "limit": 20,
+    "offset": 0,
+    "has_more": false
+  }
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/reels/hearted?limit=20&offset=0" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
 ## Common Workflows
 
 ### 1. User Registration & First Quiz
@@ -1630,6 +2149,40 @@ sequenceDiagram
 - XP is added to both `xp_total` and `daily_xp_summary`
 - Referral is logged in `referral_tracking` for analytics
 
+### 5. Reels Viewing Flow *(NEW)*
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant API
+
+    App->>API: GET /reels/feed?limit=3
+    API->>App: 3 reels (newest first)
+
+    Note over App: User scrolls to first reel
+    App->>API: POST /reels/started (reel_id=42)
+    API->>App: Reel marked as started
+
+    Note over App: User watches for 5+ seconds
+    App->>API: POST /reels/watched (reel_id=42, watch_duration_seconds=45)
+    API->>App: Reel marked as watched
+
+    Note over App: User taps heart button
+    App->>API: POST /reels/heart (reel_id=42)
+    API->>App: Reel hearted (toggle)
+
+    Note over App: Prefetch more reels
+    App->>API: GET /reels/feed?limit=3
+    API->>App: Next 3 reels (excludes started ones)
+```
+
+**Key Points:**
+- Call `started` when reel comes into view (removes from future feed)
+- Call `watched` after user watches >= threshold seconds (5s default)
+- Feed returns newest reels that user hasn't started yet
+- Hearts are toggleable (tap again to remove)
+- Prefetch next batch before user reaches last reel in queue
+
 ---
 
 ## Data Types & Enums
@@ -1677,6 +2230,33 @@ active   - Referral is active and counted
 revoked  - Referral has been revoked (future use)
 ```
 
+### Reel Categories *(NEW)*
+
+```
+education   - Educational content
+motivation  - Motivational videos
+tips        - Tips & tricks for exams
+news        - News updates
+other       - Miscellaneous content
+```
+
+### Language Medium *(NEW)*
+
+**User Preference** (set during signup/profile):
+```
+english  - Prefer English language questions (default)
+hindi    - Prefer Hindi language questions
+```
+
+**Question Medium** (set when uploading questions):
+```
+english  - English-only questions
+hindi    - Hindi-only questions
+both     - Bilingual questions (shown to all users)
+```
+
+**Fallback Logic**: If no questions match user's preferred medium, system falls back to `english` or `both`, then to any available questions.
+
 ---
 
 ## Notes for Android Development
@@ -1693,6 +2273,20 @@ revoked  - Referral has been revoked (future use)
 10. **Referral Stats**: Show user's referral code prominently for sharing (QR code, share button)
 11. **Pagination**: Implement RecyclerView with pagination for referred users list
 12. **Deep Linking**: Consider implementing deep links with referral code pre-filled
+
+### Reels Implementation Notes *(NEW)*
+
+13. **Vertical Pager**: Use ViewPager2 with RecyclerView for smooth vertical scrolling like TikTok/Shorts
+14. **Prefetch Strategy**: Prefetch next 3 reels when user is 1 reel away from end of current batch
+15. **Auto-play on Scroll**: Auto-play video when reel comes into view, pause when scrolling away
+16. **Watch Time Tracking**: Track watch duration accurately using ExoPlayer's playback events
+17. **Started vs Watched**:
+    - Call `POST /reels/started` immediately when reel enters viewport
+    - Call `POST /reels/watched` only after 5+ seconds of actual watch time
+18. **Heart Animation**: Use LottieFiles or similar for heart animation on tap
+19. **Offline Queue**: Queue started/watched/heart API calls if offline, sync when back online
+20. **Video Caching**: Use ExoPlayer's cache for smooth playback of prefetched reels
+21. **Loop Playback**: Loop reels that are shorter than watch threshold to count views properly
 
 ---
 

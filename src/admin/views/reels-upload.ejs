@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Reels - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        /* Drop Zone */
+        .drop-zone {
+            border: 3px dashed #ccc;
+            border-radius: 10px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #fafafa;
+            margin-bottom: 20px;
+        }
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #007bff;
+            background: #e3f2fd;
+        }
+        .drop-zone h3 {
+            margin: 0 0 10px;
+            color: #333;
+        }
+        .drop-zone p {
+            color: #666;
+            margin: 0;
+        }
+        .drop-zone input[type="file"] {
+            display: none;
+        }
+
+        /* File List */
+        .file-list {
+            margin-top: 20px;
+        }
+        .file-item {
+            display: grid;
+            grid-template-columns: 120px 1fr 150px 150px 80px;
+            gap: 15px;
+            align-items: center;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            background: #fff;
+        }
+        .file-preview {
+            width: 120px;
+            height: 70px;
+            object-fit: cover;
+            border-radius: 5px;
+            background: #000;
+        }
+        .file-info {
+            overflow: hidden;
+        }
+        .file-name {
+            font-weight: bold;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .file-size {
+            color: #666;
+            font-size: 12px;
+        }
+        .file-item input, .file-item select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .remove-file {
+            background: #dc3545;
+            color: #fff;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .remove-file:hover {
+            background: #c82333;
+        }
+
+        /* Upload Progress */
+        .upload-progress {
+            display: none;
+            margin-top: 20px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #007bff;
+            transition: width 0.3s ease;
+        }
+        .progress-text {
+            text-align: center;
+            margin-top: 10px;
+            color: #666;
+        }
+
+        /* Summary */
+        .upload-summary {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .upload-summary strong {
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>Upload Reels</h1>
+            <a href="/admin/reels" class="btn" style="background: #6c757d;">Back to Reels</a>
+        </div>
+
+        <% if (message) { %>
+            <div class="success"><%= message %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="error"><%= error %></div>
+        <% } %>
+
+        <div class="card">
+            <h2>Bulk Upload (Drag & Drop)</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Upload multiple video reels at once. Supported formats: MP4, MOV, WebM. Max 100MB per file.
+            </p>
+
+            <form id="uploadForm" method="POST" action="/admin/reels/upload" enctype="multipart/form-data">
+                <!-- Drop Zone -->
+                <div class="drop-zone" id="dropZone">
+                    <h3>Drag & Drop Videos Here</h3>
+                    <p>or click to browse (select multiple files)</p>
+                    <input type="file" id="fileInput" name="videos" accept="video/*" multiple>
+                </div>
+
+                <!-- Summary -->
+                <div class="upload-summary" id="uploadSummary" style="display: none;">
+                    <strong id="fileCount">0</strong> files selected |
+                    Total size: <strong id="totalSize">0 MB</strong>
+                </div>
+
+                <!-- File List -->
+                <div class="file-list" id="fileList"></div>
+
+                <!-- Upload Progress -->
+                <div class="upload-progress" id="uploadProgress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <p class="progress-text" id="progressText">Uploading...</p>
+                </div>
+
+                <!-- Submit Button -->
+                <div id="submitContainer" style="display: none; margin-top: 20px;">
+                    <button type="submit" id="uploadBtn">Upload All Reels</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Tips</h2>
+            <ul style="color: #666; line-height: 1.8;">
+                <li>Vertical videos (9:16 aspect ratio) work best for reels</li>
+                <li>Keep videos short - ideally 15-60 seconds</li>
+                <li>You can edit titles and descriptions after upload</li>
+                <li>Reels are automatically set to "Active" status</li>
+                <li>Newest reels appear first in the user feed</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const uploadSummary = document.getElementById('uploadSummary');
+        const submitContainer = document.getElementById('submitContainer');
+        const uploadForm = document.getElementById('uploadForm');
+
+        let selectedFiles = [];
+
+        // Click to browse
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        // Drag events
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            const videoFiles = Array.from(files).filter(f => f.type.startsWith('video/'));
+
+            if (videoFiles.length === 0) {
+                alert('Please select video files only');
+                return;
+            }
+
+            selectedFiles = [...selectedFiles, ...videoFiles];
+            renderFileList();
+        }
+
+        function renderFileList() {
+            fileList.innerHTML = '';
+            let totalSize = 0;
+
+            selectedFiles.forEach((file, index) => {
+                totalSize += file.size;
+                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                item.innerHTML = `
+                    <video class="file-preview" muted>
+                        <source src="${URL.createObjectURL(file)}" type="${file.type}">
+                    </video>
+                    <div class="file-info">
+                        <div class="file-name">${file.name}</div>
+                        <div class="file-size">${sizeMB} MB</div>
+                    </div>
+                    <input type="text" name="titles" placeholder="Title (optional)" value="${file.name.replace(/\.[^/.]+$/, '')}">
+                    <select name="categories">
+                        <option value="education">Education</option>
+                        <option value="motivation">Motivation</option>
+                        <option value="tips">Tips & Tricks</option>
+                        <option value="news">News</option>
+                        <option value="other">Other</option>
+                    </select>
+                    <button type="button" class="remove-file" onclick="removeFile(${index})">Remove</button>
+                    <input type="hidden" name="durations" value="0">
+                `;
+                fileList.appendChild(item);
+
+                // Try to get video duration
+                const video = item.querySelector('video');
+                video.addEventListener('loadedmetadata', () => {
+                    const durationInput = item.querySelector('input[name="durations"]');
+                    durationInput.value = Math.round(video.duration);
+                });
+            });
+
+            // Update summary
+            document.getElementById('fileCount').textContent = selectedFiles.length;
+            document.getElementById('totalSize').textContent = (totalSize / (1024 * 1024)).toFixed(2) + ' MB';
+
+            uploadSummary.style.display = selectedFiles.length > 0 ? 'block' : 'none';
+            submitContainer.style.display = selectedFiles.length > 0 ? 'block' : 'none';
+
+            // Update file input with selected files
+            updateFileInput();
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            renderFileList();
+        }
+
+        function updateFileInput() {
+            // Create a new DataTransfer to update the file input
+            const dt = new DataTransfer();
+            selectedFiles.forEach(file => dt.items.add(file));
+            fileInput.files = dt.files;
+        }
+
+        // Form submission with progress
+        uploadForm.addEventListener('submit', function(e) {
+            if (selectedFiles.length === 0) {
+                e.preventDefault();
+                alert('Please select at least one video');
+                return;
+            }
+
+            document.getElementById('uploadBtn').disabled = true;
+            document.getElementById('uploadBtn').textContent = 'Uploading...';
+            document.getElementById('uploadProgress').style.display = 'block';
+
+            // Simulate progress (actual progress would need XMLHttpRequest)
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 10;
+                if (progress > 90) progress = 90;
+                document.getElementById('progressFill').style.width = progress + '%';
+                document.getElementById('progressText').textContent = `Uploading... ${Math.round(progress)}%`;
+            }, 500);
+        });
+    </script>
+</body>
+</html>

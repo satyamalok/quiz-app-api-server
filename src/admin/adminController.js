@@ -1235,6 +1235,62 @@ async function deleteVideo(req, res) {
   }
 }
 
+/**
+ * POST /admin/videos/:id/duplicate
+ * Duplicate video to another level/category (reuses same video URL)
+ */
+async function duplicateVideo(req, res) {
+  try {
+    const { id } = req.params;
+    const { level, category } = req.body;
+
+    // Get source video
+    const sourceResult = await pool.query(
+      'SELECT * FROM promotional_videos WHERE id = $1',
+      [id]
+    );
+
+    if (sourceResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Source video not found' });
+    }
+
+    const source = sourceResult.rows[0];
+
+    // Validate level
+    const targetLevel = parseInt(level);
+    if (isNaN(targetLevel) || targetLevel < 1 || targetLevel > 100) {
+      return res.status(400).json({ success: false, error: 'Level must be between 1 and 100' });
+    }
+
+    // Insert duplicate with same video_url but new level/category
+    const result = await pool.query(`
+      INSERT INTO promotional_videos (
+        level, video_name, video_url, duration_seconds, category, description, is_active, created_at, updated_at
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, NOW(), NOW()
+      ) RETURNING id
+    `, [
+      targetLevel,
+      source.video_name,
+      source.video_url,
+      source.duration_seconds,
+      category || source.category,
+      source.description,
+      source.is_active
+    ]);
+
+    res.json({
+      success: true,
+      message: 'Video duplicated successfully',
+      new_video_id: result.rows[0].id
+    });
+
+  } catch (err) {
+    console.error('Duplicate video error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
 // ========================================
 // ANALYTICS
 // ========================================
@@ -1299,6 +1355,7 @@ module.exports = {
   showEditVideo,
   updateVideo,
   deleteVideo,
+  duplicateVideo,
   // Analytics
   showAnalytics,
   upload

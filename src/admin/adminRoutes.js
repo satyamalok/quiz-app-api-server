@@ -31,11 +31,24 @@ const {
   showEditVideo,
   updateVideo,
   deleteVideo,
+  duplicateVideo,
   // Analytics
   showAnalytics,
   upload
 } = require('./adminController');
 const { getReferralDashboard } = require('./referralAdminController');
+const {
+  showReels,
+  showUploadPage: showReelsUpload,
+  uploadReels,
+  showEditReel,
+  updateReel,
+  toggleReelStatus,
+  deleteReel,
+  bulkAction: reelsBulkAction,
+  showAnalytics: showReelsAnalytics,
+  upload: reelsUpload
+} = require('./reelsAdminController');
 const { requireAdminAuth, redirectIfAuthenticated } = require('../middleware/adminAuth');
 
 // Login routes (public)
@@ -93,9 +106,21 @@ router.get('/videos', showVideos);
 router.post('/videos/upload', upload.single('video_file'), uploadVideo);
 router.get('/videos/:id/edit', showEditVideo);
 router.post('/videos/:id/update', updateVideo);
+router.post('/videos/:id/duplicate', duplicateVideo);
 router.delete('/videos/:id', deleteVideo);
 
 // Analytics
 router.get('/analytics', showAnalytics);
+
+// Reels Management
+router.get('/reels', showReels);
+router.get('/reels/upload', showReelsUpload);
+router.post('/reels/upload', reelsUpload.array('videos', 20), uploadReels);
+router.get('/reels/analytics', showReelsAnalytics);
+router.get('/reels/:id/edit', showEditReel);
+router.post('/reels/:id/update', updateReel);
+router.post('/reels/:id/toggle', toggleReelStatus);
+router.delete('/reels/:id', deleteReel);
+router.post('/reels/bulk-action', reelsBulkAction);
 
 module.exports = router;

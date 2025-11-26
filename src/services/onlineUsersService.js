@@ -1,20 +1,36 @@
 const pool = require('../config/database');
+const { SQL_IST_NOW } = require('../utils/timezone');
 
 /**
- * Get current online users count (random within configured range)
+ * Get current online users count based on configured mode (fake or actual)
  * @returns {Promise<number>} Current online users count
  */
 async function getOnlineCount() {
   try {
-    const result = await pool.query(
-      'SELECT current_online_count FROM online_users_config WHERE id = 1'
+    // Get config to determine mode
+    const configResult = await pool.query(
+      'SELECT mode, current_online_count, active_minutes_threshold FROM online_users_config WHERE id = 1'
     );
 
-    if (result.rows.length === 0) {
+    if (configResult.rows.length === 0) {
       return 0;
     }
 
-    return result.rows[0].current_online_count;
+    const { mode, current_online_count, active_minutes_threshold } = configResult.rows[0];
+
+    if (mode === 'actual') {
+      // Count users active within the threshold
+      const result = await pool.query(`
+        SELECT COUNT(*) as count
+        FROM users_profile
+        WHERE last_active_at IS NOT NULL
+          AND last_active_at > NOW() - INTERVAL '${active_minutes_threshold} minutes'
+      `);
+      return parseInt(result.rows[0].count);
+    }
+
+    // Fake mode - return the current random count
+    return current_online_count;
   } catch (err) {
     console.error('Get online count error:', err);
     return 0;
@@ -81,33 +97,57 @@ async function getOnlineConfig() {
 
 /**
  * Update online users configuration
- * @param {number} min - Minimum online count
- * @param {number} max - Maximum online count
- * @param {number} intervalMinutes - Update interval in minutes
- * @param {string} updatedBy - Who updated (admin email)
+ * @param {Object} config - Configuration options
+ * @param {string} config.mode - Mode: 'fake' or 'actual'
+ * @param {number} config.min - Minimum online count (for fake mode)
+ * @param {number} config.max - Maximum online count (for fake mode)
+ * @param {number} config.intervalMinutes - Update interval in minutes (for fake mode)
+ * @param {number} config.activeMinutesThreshold - Active threshold in minutes (for actual mode)
+ * @param {string} config.updatedBy - Who updated (admin email)
  * @returns {Promise<Object>} Updated config
  */
-async function updateOnlineConfig(min, max, intervalMinutes, updatedBy = 'admin') {
+async function updateOnlineConfig({ mode, min, max, intervalMinutes, activeMinutesThreshold, updatedBy = 'admin' }) {
   try {
     const result = await pool.query(`
       UPDATE online_users_config
       SET
-        online_count_min = $1,
-        online_count_max = $2,
-        update_interval_minutes = $3,
-        updated_by = $4,
-        last_updated_at = NOW()
+        mode = COALESCE($1, mode),
+        online_count_min = COALESCE($2, online_count_min),
+        online_count_max = COALESCE($3, online_count_max),
+        update_interval_minutes = COALESCE($4, update_interval_minutes),
+        active_minutes_threshold = COALESCE($5, active_minutes_threshold),
+        updated_by = $6,
+        last_updated_at = ${SQL_IST_NOW}
       WHERE id = 1
       RETURNING *
-    `, [min, max, intervalMinutes, updatedBy]);
+    `, [mode, min, max, intervalMinutes, activeMinutesThreshold, updatedBy]);
 
-    // Also update current count to be within new range
-    await updateOnlineCount();
+    // Also update current count to be within new range (if fake mode)
+    if (mode === 'fake' || !mode) {
+      await updateOnlineCount();
+    }
 
     return result.rows[0];
   } catch (err) {
     console.error('Update online config error:', err);
     throw err;
+  }
+}
+
+/**
+ * Update user's last active timestamp
+ * Called on every authenticated API request
+ * @param {string} phone - User's phone number
+ */
+async function updateUserActivity(phone) {
+  try {
+    await pool.query(
+      `UPDATE users_profile SET last_active_at = ${SQL_IST_NOW} WHERE phone = $1`,
+      [phone]
+    );
+  } catch (err) {
+    // Don't throw - this is a non-critical operation
+    console.error('Update user activity error:', err);
   }
 }
 
@@ -147,5 +187,6 @@ module.exports = {
   updateOnlineCount,
   getOnlineConfig,
   updateOnlineConfig,
+  updateUserActivity,
   startAutoUpdateJob
 };

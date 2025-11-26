@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { SQL_IST_NOW } = require('../utils/timezone');
 
 /**
  * Initialize lifelines for a level attempt
@@ -33,7 +34,7 @@ async function deductLifeline(attemptId, client = null) {
       SET
         lifelines_remaining = GREATEST(lifelines_remaining - 1, 0),
         lifelines_used = lifelines_used + 1,
-        updated_at = NOW()
+        updated_at = ${SQL_IST_NOW}
       WHERE id = $1
       RETURNING lifelines_remaining, lifelines_used
     `, [attemptId]);
@@ -126,24 +127,24 @@ async function restoreLifelines(attemptId, phone, videoId, videoUrl, watchDurati
     const configResult = await client.query('SELECT lifelines_per_quiz FROM app_config WHERE id = 1');
     const lifelineCount = configResult.rows[0]?.lifelines_per_quiz || 3;
 
-    // Restore lifelines
+    // Restore lifelines with IST timestamp
     await client.query(`
       UPDATE level_attempts
       SET
         lifelines_remaining = $1,
         lifeline_videos_watched = lifeline_videos_watched + 1,
-        updated_at = NOW()
+        updated_at = ${SQL_IST_NOW}
       WHERE id = $2
     `, [lifelineCount, attemptId]);
 
-    // Log the lifeline video watch
+    // Log the lifeline video watch with IST timestamps
     await client.query(`
       INSERT INTO lifeline_videos_watched (
         phone, attempt_id, level, video_id, video_url,
-        watch_started_at, watch_completed_at, watch_duration_seconds, lifelines_restored
+        watch_started_at, watch_completed_at, watch_duration_seconds, lifelines_restored, created_at
       ) VALUES (
         $1, $2, $3, $4, $5,
-        NOW() - INTERVAL '${watchDuration} seconds', NOW(), $6, $7
+        ${SQL_IST_NOW} - INTERVAL '${watchDuration} seconds', ${SQL_IST_NOW}, $6, $7, ${SQL_IST_NOW}
       )
     `, [phone, attemptId, level, videoId, videoUrl, watchDuration, lifelineCount]);
 

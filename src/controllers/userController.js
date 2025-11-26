@@ -3,6 +3,7 @@ const multer = require('multer');
 const { uploadFile } = require('../services/uploadService');
 const { getStreak } = require('../services/streakService');
 const { getReferralStats, getReferredUsers } = require('../services/referralService');
+const { getISTDate, SQL_IST_NOW } = require('../utils/timezone');
 
 // Multer setup for memory storage
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }); // 10MB limit
@@ -30,12 +31,13 @@ async function getProfile(req, res, next) {
     // Get streak info
     const streak = await getStreak(phone);
 
-    // Get today's XP
+    // Get today's XP using IST date
+    const todayIST = getISTDate();
     const todayXPResult = await pool.query(`
       SELECT total_xp_today
       FROM daily_xp_summary
-      WHERE phone = $1 AND date = CURRENT_DATE
-    `, [phone]);
+      WHERE phone = $1 AND date = $2
+    `, [phone, todayIST]);
 
     const xpToday = todayXPResult.rows.length > 0 ? todayXPResult.rows[0].total_xp_today : 0;
 
@@ -46,6 +48,7 @@ async function getProfile(req, res, next) {
         name: user.name,
         district: user.district,
         state: user.state,
+        medium: user.medium,
         referral_code: user.referral_code,
         profile_image_url: user.profile_image_url,
         xp_total: user.xp_total,
@@ -68,12 +71,12 @@ async function getProfile(req, res, next) {
 
 /**
  * PATCH /api/v1/user/profile
- * Update user profile (name, district, state, profile_image)
+ * Update user profile (name, district, state, medium, profile_image)
  */
 async function updateProfile(req, res, next) {
   try {
     const { phone } = req.user;
-    const { name, district, state } = req.body;
+    const { name, district, state, medium } = req.body;
     const file = req.file; // From multer
 
     let profileImageUrl = null;
@@ -107,6 +110,16 @@ async function updateProfile(req, res, next) {
       paramCount++;
     }
 
+    // Validate and add medium if provided
+    if (medium !== undefined) {
+      if (!['hindi', 'english'].includes(medium)) {
+        throw { code: 'INVALID_MEDIUM', message: 'Medium must be "hindi" or "english"' };
+      }
+      updates.push(`medium = $${paramCount}`);
+      values.push(medium);
+      paramCount++;
+    }
+
     if (profileImageUrl) {
       updates.push(`profile_image_url = $${paramCount}`);
       values.push(profileImageUrl);
@@ -117,7 +130,7 @@ async function updateProfile(req, res, next) {
       throw { code: 'NO_UPDATES', message: 'No fields to update' };
     }
 
-    updates.push(`updated_at = NOW()`);
+    updates.push(`updated_at = ${SQL_IST_NOW}`);
     values.push(phone);
 
     const query = `
@@ -137,6 +150,7 @@ async function updateProfile(req, res, next) {
         name: result.rows[0].name,
         district: result.rows[0].district,
         state: result.rows[0].state,
+        medium: result.rows[0].medium,
         profile_image_url: result.rows[0].profile_image_url
       }
     });

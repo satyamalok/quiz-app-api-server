@@ -1,6 +1,7 @@
 const pool = require('../config/database');
-const { calculateBaseXP, calculateAccuracy } = require('../services/xpService');
+const { calculateBaseXP, calculateAccuracy, addXPToUser } = require('../services/xpService');
 const { deductLifeline, getLifelineStatus } = require('../services/lifelineService');
+const { SQL_IST_NOW, SQL_IST_DATE, SQL_IST_TIME } = require('../utils/timezone');
 
 /**
  * GET /api/v1/user/level-history
@@ -42,9 +43,9 @@ async function startLevel(req, res, next) {
     const { phone } = req.user;
     const { level } = req.body;
 
-    // Check if level is unlocked
+    // Check if level is unlocked and get user's medium preference
     const userResult = await pool.query(
-      'SELECT current_level FROM users_profile WHERE phone = $1',
+      'SELECT current_level, medium FROM users_profile WHERE phone = $1',
       [phone]
     );
 
@@ -53,6 +54,7 @@ async function startLevel(req, res, next) {
     }
 
     const currentLevel = userResult.rows[0].current_level;
+    const userMedium = userResult.rows[0].medium || 'english';
 
     if (level > currentLevel) {
       throw {
@@ -70,29 +72,62 @@ async function startLevel(req, res, next) {
 
     const isFirstAttempt = parseInt(attemptCountResult.rows[0].count) === 0;
 
-    // Fetch 10 questions for this level
-    const questionsResult = await pool.query(`
+    // Fetch 10 questions for this level matching user's medium
+    // Priority: user's medium or 'both' > fallback to 'english' or 'both' > fallback to any
+    let questionsResult = await pool.query(`
       SELECT
         sl, level, question_order,
         question_text, question_image_url,
         option_1, option_2, option_3, option_4,
         explanation_text, explanation_url,
-        subject, topic
+        subject, topic, medium
       FROM questions
-      WHERE level = $1
+      WHERE level = $1 AND (medium = $2 OR medium = 'both')
       ORDER BY question_order ASC
-    `, [level]);
+    `, [level, userMedium]);
+
+    // Fallback 1: If no questions found, try 'english' or 'both'
+    if (questionsResult.rows.length === 0 && userMedium !== 'english') {
+      questionsResult = await pool.query(`
+        SELECT
+          sl, level, question_order,
+          question_text, question_image_url,
+          option_1, option_2, option_3, option_4,
+          explanation_text, explanation_url,
+          subject, topic, medium
+        FROM questions
+        WHERE level = $1 AND (medium = 'english' OR medium = 'both')
+        ORDER BY question_order ASC
+      `, [level]);
+    }
+
+    // Fallback 2: If still no questions, get any questions for this level
+    if (questionsResult.rows.length === 0) {
+      questionsResult = await pool.query(`
+        SELECT
+          sl, level, question_order,
+          question_text, question_image_url,
+          option_1, option_2, option_3, option_4,
+          explanation_text, explanation_url,
+          subject, topic, medium
+        FROM questions
+        WHERE level = $1
+        ORDER BY question_order ASC
+      `, [level]);
+    }
 
     if (questionsResult.rows.length === 0) {
       throw { code: 'QUESTIONS_NOT_FOUND', message: 'No questions found for this level' };
     }
 
-    // Create level attempt record
+    // Create level attempt record with IST timestamps
     const attemptResult = await pool.query(`
       INSERT INTO level_attempts (
-        phone, level, is_first_attempt, lifelines_remaining, completion_status
+        phone, level, is_first_attempt, lifelines_remaining, completion_status,
+        attempt_date, attempt_time, created_at, updated_at
       ) VALUES (
-        $1, $2, $3, 3, 'in_progress'
+        $1, $2, $3, 3, 'in_progress',
+        ${SQL_IST_DATE}, ${SQL_IST_TIME}, ${SQL_IST_NOW}, ${SQL_IST_NOW}
       ) RETURNING id
     `, [phone, level, isFirstAttempt]);
 
@@ -156,17 +191,17 @@ async function answerQuestion(req, res, next) {
     const correctIndex = options.findIndex(opt => opt.startsWith('@')) + 1; // 1-indexed
     const isCorrect = (user_answer === correctIndex);
 
-    // Insert answer record
+    // Insert answer record with IST timestamp
     await client.query(`
       INSERT INTO question_responses (
         attempt_id, phone, question_id, level,
-        user_answer, is_correct, time_taken_seconds, answered_at
+        user_answer, is_correct, time_taken_seconds, answered_at, created_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, NOW()
+        $1, $2, $3, $4, $5, $6, $7, ${SQL_IST_NOW}, ${SQL_IST_NOW}
       )
     `, [attempt_id, phone, question_id, question.level, user_answer, isCorrect, time_taken_seconds || null]);
 
-    // Update attempt progress
+    // Update attempt progress with IST timestamp
     await client.query(`
       UPDATE level_attempts
       SET
@@ -177,7 +212,7 @@ async function answerQuestion(req, res, next) {
           THEN ROUND(((correct_answers + CASE WHEN $1 THEN 1 ELSE 0 END)::numeric / (questions_attempted + 1)) * 100, 2)
           ELSE 0
         END,
-        updated_at = NOW()
+        updated_at = ${SQL_IST_NOW}
       WHERE id = $2
     `, [isCorrect, attempt_id]);
 
@@ -197,24 +232,64 @@ async function answerQuestion(req, res, next) {
 
     const attempt = attemptResult.rows[0];
 
-    // Calculate base XP if all questions answered
+    // Initialize quiz completion response data
+    let quizCompleted = false;
+    let levelUnlocked = false;
+    let newCurrentLevel = null;
+    let baseXP = 0;
+
+    // Auto-complete quiz when all 10 questions answered
     if (attempt.questions_attempted === 10) {
-      const isFirstAttempt = await client.query(
-        'SELECT is_first_attempt FROM level_attempts WHERE id = $1',
+      quizCompleted = true;
+
+      // Get attempt details for XP calculation
+      const attemptDetails = await client.query(
+        'SELECT is_first_attempt, level, accuracy_percentage FROM level_attempts WHERE id = $1',
         [attempt_id]
       );
 
-      const baseXP = calculateBaseXP(attempt.correct_answers, isFirstAttempt.rows[0].is_first_attempt);
+      const attemptData = attemptDetails.rows[0];
+      baseXP = calculateBaseXP(attempt.correct_answers, attemptData.is_first_attempt);
 
-      await client.query(
-        'UPDATE level_attempts SET xp_earned_base = $1 WHERE id = $2',
-        [baseXP, attempt_id]
-      );
+      // Mark level as completed and store base XP with IST timestamp
+      await client.query(`
+        UPDATE level_attempts
+        SET xp_earned_base = $1, completion_status = 'completed', updated_at = ${SQL_IST_NOW}
+        WHERE id = $2
+      `, [baseXP, attempt_id]);
+
+      // Add base XP to user's total and daily summary
+      await addXPToUser(phone, baseXP, client);
+
+      // Check level unlock (30% accuracy required)
+      if (attempt.accuracy_percentage >= 30) {
+        const nextLevel = attemptData.level + 1;
+
+        if (nextLevel <= 100) {
+          const userResult = await client.query(
+            'SELECT current_level FROM users_profile WHERE phone = $1',
+            [phone]
+          );
+
+          const currentLevel = userResult.rows[0].current_level;
+
+          if (nextLevel > currentLevel) {
+            await client.query(
+              `UPDATE users_profile SET current_level = $1, updated_at = ${SQL_IST_NOW} WHERE phone = $2`,
+              [nextLevel, phone]
+            );
+
+            levelUnlocked = true;
+            newCurrentLevel = nextLevel;
+          }
+        }
+      }
     }
 
     await client.query('COMMIT');
 
-    res.json({
+    // Build response
+    const response = {
       success: true,
       is_correct: isCorrect,
       correct_answer: correctIndex,
@@ -230,7 +305,24 @@ async function answerQuestion(req, res, next) {
         can_continue: lifelineStatus.can_continue,
         can_watch_video_to_restore: lifelineStatus.can_watch_video && lifelineStatus.lifelines_remaining === 0
       }
-    });
+    };
+
+    // Add quiz completion details if quiz is completed
+    if (quizCompleted) {
+      response.quiz_completed = true;
+      response.quiz_result = {
+        base_xp_earned: baseXP,
+        potential_bonus_xp: baseXP, // Same as base (doubles XP)
+        level_unlocked: levelUnlocked,
+        ...(levelUnlocked && { new_current_level: newCurrentLevel }),
+        can_watch_video_to_double_xp: true,
+        message: levelUnlocked
+          ? `Level completed! Watch video to double your ${baseXP} XP.`
+          : `Quiz completed with ${attempt.accuracy_percentage}% accuracy. Watch video to double your ${baseXP} XP.`
+      };
+    }
+
+    res.json(response);
 
   } catch (err) {
     await client.query('ROLLBACK');
@@ -253,7 +345,7 @@ async function abandonLevel(req, res, next) {
       UPDATE level_attempts
       SET
         completion_status = 'abandoned',
-        updated_at = NOW()
+        updated_at = ${SQL_IST_NOW}
       WHERE id = $1 AND phone = $2
     `, [attempt_id, phone]);
 

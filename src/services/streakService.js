@@ -1,7 +1,8 @@
 const pool = require('../config/database');
+const { getISTDate, getISTTimestamp, SQL_IST_NOW, SQL_IST_DATE } = require('../utils/timezone');
 
 /**
- * Update user's streak
+ * Update user's streak using IST dates
  * @param {string} phone - User's phone number
  * @returns {Promise<Object>} Streak update result
  */
@@ -14,25 +15,29 @@ async function updateStreak(phone) {
     );
 
     if (streakResult.rows.length === 0) {
-      // Create streak record if doesn't exist
+      // Create streak record if doesn't exist with IST date
+      const todayIST = getISTDate();
       await pool.query(
-        'INSERT INTO streak_tracking (phone, current_streak, longest_streak, last_activity_date) VALUES ($1, 1, 1, CURRENT_DATE)',
-        [phone]
+        `INSERT INTO streak_tracking (phone, current_streak, longest_streak, last_activity_date, created_at, updated_at) VALUES ($1, 1, 1, $2, ${SQL_IST_NOW}, ${SQL_IST_NOW})`,
+        [phone, todayIST]
       );
       return { updated: true, current_streak: 1, longest_streak: 1 };
     }
 
     const { current_streak, longest_streak, last_activity_date } = streakResult.rows[0];
-    const today = new Date().toISOString().split('T')[0];
+
+    // Get today and yesterday in IST
+    const todayIST = getISTDate();
     const lastActive = last_activity_date ? last_activity_date.toISOString().split('T')[0] : null;
 
     // If already active today, no change
-    if (lastActive === today) {
+    if (lastActive === todayIST) {
       return { updated: false, current_streak, longest_streak };
     }
 
-    // Calculate yesterday's date
-    const yesterday = new Date();
+    // Calculate yesterday's date in IST
+    const istTimestamp = getISTTimestamp();
+    const yesterday = new Date(istTimestamp);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = yesterday.toISOString().split('T')[0];
 
@@ -48,16 +53,16 @@ async function updateStreak(phone) {
 
     const newLongest = Math.max(longest_streak, newStreak);
 
-    // Update streak
+    // Update streak with IST date
     await pool.query(`
       UPDATE streak_tracking
       SET
         current_streak = $1,
         longest_streak = $2,
-        last_activity_date = CURRENT_DATE,
-        updated_at = NOW()
-      WHERE phone = $3
-    `, [newStreak, newLongest, phone]);
+        last_activity_date = $3,
+        updated_at = ${SQL_IST_NOW}
+      WHERE phone = $4
+    `, [newStreak, newLongest, todayIST, phone]);
 
     return {
       updated: true,

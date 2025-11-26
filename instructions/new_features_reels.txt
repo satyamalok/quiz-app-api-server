@@ -1,0 +1,71 @@
+Completely New Features - Video Reels like Shorts
+
+Context - in the android app, i want to give a feature where the stdents will be able to watch the reels or videos from our teachers where they will be teaching concepts in short. the idea is that the reels or video will be in vertical format, stored in our minio, served to student from latest to oldest and will have option to give heart with swipe feature. i am discussing the backend implementation for this feature below.
+
+These below Features are need from the user experience perspective: This is just a high level plan overview. 
+
+Reels are served in descending order (newest first).
+
+Each reel has an auto-increment reel_id for ordering.
+
+Users always get the highest reel_id not yet seen.
+
+If new reels are added later, user starts from newest again.
+
+After finishing new reels, user continues to older reels automatically.
+
+A dedicated user_reel_progress table stores viewing records.
+
+Each reel watch creates a new row (user_id, reel_id, timestamps).
+
+Two states: started and watched.
+
+“Started” = user saw reel even for 0.5–1 second.
+
+“Watched” = user crossed threshold (e.g., 5 sec).
+
+Serving logic uses started, not threshold, to skip old reels.
+
+Threshold is only for analytics, not for skipping logic.
+
+This avoids users getting “stuck” on a reel.
+
+User progression never resets unless admin wants it.
+
+Deactivated reels are skipped by the serving logic.
+
+Deleted reels are removed from the serving list entirely.
+
+Partial watch events can be tracked but not required for flow.
+
+Users never see the same reel again unless they finish all reels.
+
+Admin metadata (title/description) does not affect order.
+
+The design scales to unlimited reels and millions of users.
+
+These below features are from backend perspective or admin dashboard:
+
+Bulk upload 5–20 reels at once (drag & drop).
+
+Automatic file renaming + MinIO upload + public URL generation.
+
+Auto-increment reel ID for serving order.
+
+Editable metadata (title, description, tags, category).
+
+Activate / deactivate any reel.
+
+Able to see any reel from the dashboard in the modal only.
+
+Bulk actions (activate/deactivate/ many reels).
+
+Sorting & filtering (latest, most watched, active only, etc.).
+
+Analytics per reel (views, completions, watch time).
+
+User engagement analytics (per-user watch stats).
+
+Drop-off rate or average watch duration insights.
+
+Note - plan all these features, implementation with APIs and discuss with me first. also you can plan the api in a way that the user gets the next 2 to 3 reels url in advance so that the experience does not feel laggy at all.

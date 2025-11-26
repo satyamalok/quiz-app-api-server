@@ -3,6 +3,7 @@ const { generateToken } = require('../config/jwt');
 const { sendOTP, verifyOTP } = require('../services/otpService');
 const { generateReferralCode, processReferral } = require('../services/referralService');
 const { updateStreak } = require('../services/streakService');
+const { SQL_IST_NOW, SQL_IST_DATE, SQL_IST_TIME } = require('../utils/timezone');
 
 /**
  * POST /api/v1/auth/send-otp
@@ -29,7 +30,7 @@ async function verifyOTPHandler(req, res, next) {
   const client = await pool.connect();
 
   try {
-    const { phone, otp, name, district, state, referral_code } = req.body;
+    const { phone, otp, name, district, state, medium, referral_code } = req.body;
 
     // Verify OTP
     await verifyOTP(phone, otp);
@@ -53,17 +54,20 @@ async function verifyOTPHandler(req, res, next) {
       // Generate unique referral code
       const newReferralCode = await generateReferralCode();
 
-      // Create user
-      await client.query(`
-        INSERT INTO users_profile (phone, name, district, state, referral_code, referred_by, xp_total, current_level)
-        VALUES ($1, $2, $3, $4, $5, $6, 0, 1)
-      `, [phone, name || null, district || null, state || null, newReferralCode, referral_code || null]);
+      // Validate medium value (default to 'english' if invalid)
+      const validMedium = ['hindi', 'english'].includes(medium) ? medium : 'english';
 
-      // Create streak record
-      await client.query(
-        'INSERT INTO streak_tracking (phone, current_streak, longest_streak) VALUES ($1, 0, 0)',
-        [phone]
-      );
+      // Create user with IST timestamps
+      await client.query(`
+        INSERT INTO users_profile (phone, name, district, state, medium, referral_code, referred_by, xp_total, current_level, date_joined, time_joined, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 1, ${SQL_IST_DATE}, ${SQL_IST_TIME}, ${SQL_IST_NOW}, ${SQL_IST_NOW})
+      `, [phone, name || null, district || null, state || null, validMedium, newReferralCode, referral_code || null]);
+
+      // Create streak record with IST timestamps
+      await client.query(`
+        INSERT INTO streak_tracking (phone, current_streak, longest_streak, created_at, updated_at)
+        VALUES ($1, 0, 0, ${SQL_IST_NOW}, ${SQL_IST_NOW})
+      `, [phone]);
 
       // Fetch created user
       const newUserResult = await client.query(
@@ -105,6 +109,7 @@ async function verifyOTPHandler(req, res, next) {
       name: user.name,
       district: user.district,
       state: user.state,
+      medium: user.medium,
       referral_code: user.referral_code,
       profile_image_url: user.profile_image_url,
       xp_total: user.xp_total,

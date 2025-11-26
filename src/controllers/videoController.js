@@ -1,6 +1,7 @@
 const pool = require('../config/database');
 const { addXPToUser } = require('../services/xpService');
 const { restoreLifelines } = require('../services/lifelineService');
+const { getISTDate, SQL_IST_NOW } = require('../utils/timezone');
 
 /**
  * GET /api/v1/video/url?level=N&category=promotional
@@ -47,7 +48,7 @@ async function getVideoURL(req, res, next) {
 
 /**
  * POST /api/v1/video/complete
- * Mark video as watched and double XP
+ * Mark video as watched and double XP (bonus XP only - base XP already added on quiz completion)
  */
 async function completeVideo(req, res, next) {
   const client = await pool.connect();
@@ -72,6 +73,11 @@ async function completeVideo(req, res, next) {
     }
 
     const attempt = attemptResult.rows[0];
+
+    // Verify quiz is completed before allowing video watch
+    if (attempt.completion_status !== 'completed') {
+      throw { code: 'QUIZ_NOT_COMPLETED', message: 'Complete all 10 questions before watching the video' };
+    }
 
     // Check if video already watched
     if (attempt.video_watched) {
@@ -101,99 +107,69 @@ async function completeVideo(req, res, next) {
       };
     }
 
-    // Calculate XP
+    // Calculate bonus XP (base XP already added on quiz completion)
     const baseXP = attempt.xp_earned_base;
     const bonusXP = baseXP; // Equal to base (doubles the XP)
     const finalXP = baseXP + bonusXP;
 
-    // Update level_attempts
+    // Update level_attempts with final XP and mark video as watched
     await client.query(`
       UPDATE level_attempts
       SET
         video_watched = TRUE,
         xp_earned_final = $1,
-        completion_status = 'completed',
-        updated_at = NOW()
+        updated_at = ${SQL_IST_NOW}
       WHERE id = $2
     `, [finalXP, attempt_id]);
 
-    // Update attempt object to reflect the changes (needed for unlock logic below)
-    attempt.completion_status = 'completed';
-
-    // Log video watch
+    // Log video watch with IST timestamps
     await client.query(`
       INSERT INTO video_watch_log (
         phone, attempt_id, level, video_id, video_url,
         watch_started_at, watch_completed_at,
-        watch_duration_seconds, xp_bonus_granted
+        watch_duration_seconds, xp_bonus_granted, created_at
       ) VALUES (
         $1, $2, $3, $4, $5,
-        NOW() - INTERVAL '${watch_duration_seconds} seconds', NOW(),
-        $6, $7
+        ${SQL_IST_NOW} - INTERVAL '${watch_duration_seconds} seconds', ${SQL_IST_NOW},
+        $6, $7, ${SQL_IST_NOW}
       )
     `, [phone, attempt_id, attempt.level, video_id, video.video_url, watch_duration_seconds, bonusXP]);
 
-    // Update user's total XP
+    // Update user's total XP (only bonus XP - base was already added on quiz completion)
     await client.query(`
       UPDATE users_profile
       SET
         xp_total = xp_total + $1,
         total_ads_watched = total_ads_watched + 1,
-        updated_at = NOW()
+        updated_at = ${SQL_IST_NOW}
       WHERE phone = $2
-    `, [finalXP, phone]);
+    `, [bonusXP, phone]);
 
-    // Update daily XP summary
+    // Update daily XP summary (only bonus XP and videos watched) with IST date
+    const today = getISTDate();
     await client.query(`
-      INSERT INTO daily_xp_summary (phone, date, total_xp_today, levels_completed_today, videos_watched_today)
-      VALUES ($1, CURRENT_DATE, $2, 1, 1)
+      INSERT INTO daily_xp_summary (phone, date, total_xp_today, videos_watched_today, created_at, updated_at)
+      VALUES ($1, $2, $3, 1, ${SQL_IST_NOW}, ${SQL_IST_NOW})
       ON CONFLICT (phone, date)
       DO UPDATE SET
-        total_xp_today = daily_xp_summary.total_xp_today + $2,
-        levels_completed_today = daily_xp_summary.levels_completed_today + 1,
+        total_xp_today = daily_xp_summary.total_xp_today + $3,
         videos_watched_today = daily_xp_summary.videos_watched_today + 1,
-        updated_at = NOW()
-    `, [phone, finalXP]);
-
-    // Check level unlock (30% accuracy required on any completed attempt)
-    let levelUnlocked = false;
-    let newCurrentLevel = null;
-
-    if (attempt.completion_status === 'completed' && attempt.accuracy_percentage >= 30) {
-      const nextLevel = attempt.level + 1;
-
-      if (nextLevel <= 100) {
-        const userResult = await client.query(
-          'SELECT current_level FROM users_profile WHERE phone = $1',
-          [phone]
-        );
-
-        const currentLevel = userResult.rows[0].current_level;
-
-        if (nextLevel > currentLevel) {
-          await client.query(
-            'UPDATE users_profile SET current_level = $1 WHERE phone = $2',
-            [nextLevel, phone]
-          );
-
-          levelUnlocked = true;
-          newCurrentLevel = nextLevel;
-        }
-      }
-    }
+        updated_at = ${SQL_IST_NOW}
+    `, [phone, today, bonusXP]);
 
     // Get user's new total XP
     const userResult = await client.query(
-      'SELECT xp_total FROM users_profile WHERE phone = $1',
+      'SELECT xp_total, current_level FROM users_profile WHERE phone = $1',
       [phone]
     );
 
     const newTotalXP = userResult.rows[0].xp_total;
+    const currentLevel = userResult.rows[0].current_level;
 
-    // Get today's XP
+    // Get today's XP using IST date
     const todayXPResult = await client.query(
-      'SELECT total_xp_today FROM daily_xp_summary WHERE phone = $1 AND date = CURRENT_DATE',
-      [phone]
+      'SELECT total_xp_today FROM daily_xp_summary WHERE phone = $1 AND date = $2',
+      [phone, today]
     );
 
     const newXPToday = todayXPResult.rows[0].total_xp_today;
@@ -211,8 +187,7 @@ async function completeVideo(req, res, next) {
       user_progress: {
         new_total_xp: newTotalXP,
         new_xp_today: newXPToday,
-        level_unlocked: levelUnlocked,
-        ...(levelUnlocked && { new_current_level: newCurrentLevel })
+        current_level: currentLevel
       }
     });
 

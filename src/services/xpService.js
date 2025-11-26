@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { getISTDate, SQL_IST_NOW } = require('../utils/timezone');
 
 /**
  * Calculate XP for level attempt
@@ -21,21 +22,21 @@ async function addXPToUser(phone, xpToAdd, client = null) {
   const db = client || pool;
 
   try {
-    // Update user's total XP
+    // Update user's total XP with IST timestamp
     await db.query(
-      'UPDATE users_profile SET xp_total = xp_total + $1, updated_at = NOW() WHERE phone = $2',
+      `UPDATE users_profile SET xp_total = xp_total + $1, updated_at = ${SQL_IST_NOW} WHERE phone = $2`,
       [xpToAdd, phone]
     );
 
-    // Update daily XP summary
-    const today = new Date().toISOString().split('T')[0];
+    // Update daily XP summary using IST date
+    const today = getISTDate();
     await db.query(`
-      INSERT INTO daily_xp_summary (phone, date, total_xp_today)
-      VALUES ($1, $2, $3)
+      INSERT INTO daily_xp_summary (phone, date, total_xp_today, created_at, updated_at)
+      VALUES ($1, $2, $3, ${SQL_IST_NOW}, ${SQL_IST_NOW})
       ON CONFLICT (phone, date)
       DO UPDATE SET
         total_xp_today = daily_xp_summary.total_xp_today + $3,
-        updated_at = NOW()
+        updated_at = ${SQL_IST_NOW}
     `, [phone, today, xpToAdd]);
 
   } catch (err) {

@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { getISTDate, SQL_IST_NOW } = require('../utils/timezone');
 
 /**
  * Generate unique 5-digit referral code
@@ -81,35 +82,35 @@ async function processReferral(newUserPhone, referralCode, client = null) {
     // Get referral bonus XP from env or default to 50
     const bonusXP = parseInt(process.env.REFERRAL_BONUS_XP) || 50;
 
-    // Give XP to new user
+    // Give XP to new user with IST timestamp
     await client.query(
-      'UPDATE users_profile SET xp_total = xp_total + $1 WHERE phone = $2',
+      `UPDATE users_profile SET xp_total = xp_total + $1, updated_at = ${SQL_IST_NOW} WHERE phone = $2`,
       [bonusXP, newUserPhone]
     );
 
-    // Give XP to referrer
+    // Give XP to referrer with IST timestamp
     await client.query(
-      'UPDATE users_profile SET xp_total = xp_total + $1 WHERE phone = $2',
+      `UPDATE users_profile SET xp_total = xp_total + $1, updated_at = ${SQL_IST_NOW} WHERE phone = $2`,
       [bonusXP, referrerPhone]
     );
 
-    // Update daily XP for both users
-    const today = new Date().toISOString().split('T')[0];
+    // Update daily XP for both users using IST date
+    const today = getISTDate();
 
     for (const phone of [newUserPhone, referrerPhone]) {
       await client.query(`
-        INSERT INTO daily_xp_summary (phone, date, total_xp_today)
-        VALUES ($1, $2, $3)
+        INSERT INTO daily_xp_summary (phone, date, total_xp_today, created_at, updated_at)
+        VALUES ($1, $2, $3, ${SQL_IST_NOW}, ${SQL_IST_NOW})
         ON CONFLICT (phone, date)
-        DO UPDATE SET total_xp_today = daily_xp_summary.total_xp_today + $3
+        DO UPDATE SET total_xp_today = daily_xp_summary.total_xp_today + $3, updated_at = ${SQL_IST_NOW}
       `, [phone, today, bonusXP]);
     }
 
-    // Insert into referral_tracking table for two-way tracking
+    // Insert into referral_tracking table for two-way tracking with IST timestamps
     await client.query(`
       INSERT INTO referral_tracking (
-        referrer_phone, referee_phone, referral_code, xp_granted, status
-      ) VALUES ($1, $2, $3, $4, 'active')
+        referrer_phone, referee_phone, referral_code, xp_granted, status, referral_date, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, 'active', ${SQL_IST_NOW}, ${SQL_IST_NOW}, ${SQL_IST_NOW})
     `, [referrerPhone, newUserPhone, referralCode, bonusXP]);
 
     // Only commit if we're managing our own transaction

@@ -22,7 +22,7 @@ JNV Quiz App - A gamified quiz application backend for Jawahar Navodaya Vidyalay
 ### Initial Setup
 ```bash
 npm install                    # Install dependencies (generates package-lock.json)
-npm run migrate                # Run database migrations (creates all 13 tables)
+npm run migrate                # Run database migrations (creates all 15 tables)
 # or: node scripts/migrate.js
 ```
 
@@ -55,9 +55,9 @@ docker-compose up -d
 
 ## Critical Architecture Details
 
-### Database Schema (15 Tables)
+### Database Schema (17 Tables)
 
-The application uses 15 interconnected tables. Key relationships:
+The application uses 17 interconnected tables. Key relationships:
 
 1. **users_profile** - Core user data with unique 5-digit `referral_code`
 2. **questions** - 100 levels × 10 questions, uses **@ symbol prefix** for correct answers
@@ -68,12 +68,14 @@ The application uses 15 interconnected tables. Key relationships:
 7. **video_watch_log** - Tracks promotional video watches
 8. **lifeline_videos_watched** - Tracks lifeline restoration videos
 9. **streak_tracking** - User activity streaks
-10. **promotional_videos** - One video per level (1-100)
+10. **promotional_videos** - Videos per level (supports multiple videos per level with different categories)
 11. **otp_logs** - OTP generation and verification
-12. **online_users_config** - Configurable fake online count range (single row)
+12. **online_users_config** - Online users count with fake/actual mode toggle (single row)
 13. **admin_users** - Admin authentication (separate from JWT)
-14. **app_config** - Application-wide configuration (OTP rate limiting, test mode, lifelines per quiz, etc.)
+14. **app_config** - Application-wide configuration (OTP rate limiting, test mode, lifelines, reels settings)
 15. **app_version** - App version control and force update configuration
+16. **reels** - Video reels (TikTok/Shorts style) with views, hearts, completion tracking
+17. **user_reel_progress** - User viewing progress per reel (started/watched status, hearts)
 
 ### Correct Answer Format (CRITICAL)
 
@@ -128,7 +130,21 @@ const correctIndex = options.findIndex(opt => opt.startsWith('@')) + 1;
 - `restoreLifelines()` - Validates video watch, restores to full (transaction)
 - `getLifelineStatus()` - Returns current lifeline state
 
-### Level Unlock Logic (UPDATED 2025-11-24)
+### Quiz Auto-Complete on 10th Question (UPDATED 2025-11-26)
+
+**Flow:**
+1. User answers 10th question via `POST /question/answer`
+2. Quiz auto-completes immediately (no separate submit button needed)
+3. Base XP is calculated and added to user's total
+4. Level unlocks if accuracy ≥30%
+5. Response includes `quiz_completed: true` with XP details
+6. User can optionally watch video to double XP
+
+**Why auto-complete?** Users see correct answers after each question, so there's no point in a submit button.
+
+**Code location:** `src/controllers/quizController.js` in `answerQuestion()` function
+
+### Level Unlock Logic (UPDATED 2025-11-26)
 
 **Requirements to unlock next level:**
 1. **ANY completed attempt** of current level (not just first attempt)
@@ -137,11 +153,12 @@ const correctIndex = options.findIndex(opt => opt.startsWith('@')) + 1;
 
 **How it works:**
 - Level N+1 unlocks when ANY attempt of Level N reaches `completion_status='completed'` with ≥30% accuracy
+- Quiz auto-completes when 10th question is answered
 - Abandoned attempts are excluded from `is_first_attempt` calculation
 - Video watching only affects XP (doubles it), not level progression
 - Only unlocks if `nextLevel > current_level` (prevents unlocking backwards)
 
-**Code location:** `src/controllers/videoController.js` line 159
+**Code location:** `src/controllers/quizController.js` (level unlock now happens in `answerQuestion()` on 10th question)
 
 ### Referral System (CRITICAL - Two-Way Tracking)
 
@@ -184,13 +201,182 @@ const correctIndex = options.findIndex(opt => opt.startsWith('@')) + 1;
 - List of users referred with details (name, XP, level, date)
 - Who referred you (if applicable)
 
+### IST Timezone (UPDATED 2025-11-26)
+
+**All timestamps stored in IST (Indian Standard Time):**
+
+**Utility file:** `src/utils/timezone.js`
+
+```javascript
+const SQL_IST_NOW = "NOW() AT TIME ZONE 'Asia/Kolkata'";
+const SQL_IST_DATE = "(NOW() AT TIME ZONE 'Asia/Kolkata')::DATE";
+const SQL_IST_TIME = "(NOW() AT TIME ZONE 'Asia/Kolkata')::TIME";
+function getISTDate() { /* Returns IST date string YYYY-MM-DD */ }
+function getISTTimestamp() { /* Returns IST timestamp string */ }
+```
+
+**Usage in SQL queries:**
+```sql
+-- Insert with IST
+INSERT INTO level_attempts (..., attempt_date, attempt_time, created_at)
+VALUES (..., (NOW() AT TIME ZONE 'Asia/Kolkata')::DATE, (NOW() AT TIME ZONE 'Asia/Kolkata')::TIME, NOW() AT TIME ZONE 'Asia/Kolkata')
+
+-- Daily XP lookup uses IST date
+SELECT * FROM daily_xp_summary WHERE date = (NOW() AT TIME ZONE 'Asia/Kolkata')::DATE
+```
+
+**Why IST?** Primary user base is in India (JNV students). Storing IST directly avoids timezone conversion complexity on client side.
+
+### Online Users Count (fake/actual mode) (UPDATED 2025-11-26)
+
+**Two modes for online user count:**
+
+1. **Fake mode** (default): Returns random number within configured range
+   - `online_count_min` and `online_count_max` define range
+   - `update_interval_minutes` controls how often count changes
+
+2. **Actual mode**: Returns real active user count
+   - Tracks `last_active_at` in `users_profile` table
+   - `active_minutes_threshold` defines what counts as "active" (default: 5 minutes)
+   - Auth middleware updates `last_active_at` on every authenticated request
+
+**Database schema (`online_users_config`):**
+```sql
+mode VARCHAR(10) NOT NULL DEFAULT 'fake' CHECK (mode IN ('fake', 'actual'))
+online_count_min INTEGER NOT NULL DEFAULT 100
+online_count_max INTEGER NOT NULL DEFAULT 500
+active_minutes_threshold INTEGER NOT NULL DEFAULT 5
+```
+
+**API:** `GET /app/online-count` - Returns count (mode is hidden from client)
+
+**Admin toggle:** Available in Configuration page (`/admin/config`)
+
+### Language Medium Support (UPDATED 2025-11-26)
+
+**Supports Hindi/English questions with user preference:**
+
+**User profile:**
+- `users_profile.medium` - User's preferred language ('hindi' or 'english', default: 'english')
+- Set during signup via `POST /auth/verify-otp` with `medium` parameter
+- Can be updated via `PATCH /user/profile`
+
+**Questions:**
+- `questions.medium` - Question language ('hindi', 'english', or 'both')
+- 'both' means question is bilingual or language-neutral
+
+**Question fetching fallback chain:**
+1. Try user's preferred medium OR 'both'
+2. If no questions found, try 'english' OR 'both'
+3. If still no questions, return any questions for that level
+
+**Code location:** `src/controllers/quizController.js` in `startLevel()` function
+
+**Migration:** `scripts/add-language-medium.sql`
+
+### Video Duplication (UPDATED 2025-11-26)
+
+**Allows same video to be used for multiple levels/categories:**
+
+**Admin panel features:**
+- **Modal preview**: Click "Preview" to watch video in modal (not new tab)
+- **Duplicate button**: Create copy of video for different level/category
+
+**Duplicate endpoint:** `POST /admin/videos/:id/duplicate`
+```json
+{
+  "level": 5,
+  "category": "promotional"
+}
+```
+
+**How it works:**
+- Copies video metadata (name, URL, duration, description)
+- Reuses same `video_url` (no re-upload needed)
+- New level and/or category can be specified
+- Each duplicate gets unique `id`
+
+**Categories:** promotional, shorts, lifeline, tutorial, other
+
+### Video Reels Feature (NEW 2025-11-26)
+
+**TikTok/Shorts-style vertical video feed for educational content.**
+
+**Core Concept:**
+- Teachers upload short educational videos (15-60 seconds)
+- Students swipe through feed, newest first
+- Once a reel is "started", it won't appear again in user's feed
+- Users can heart/like reels
+- Configurable watch threshold for analytics
+
+**Database Tables:**
+
+1. **reels** - Video metadata
+   - `id` (auto-increment for ordering)
+   - `title`, `description`, `video_url`, `thumbnail_url`
+   - `duration_seconds`, `category`, `tags[]`
+   - `is_active` (for soft-delete/hide)
+   - `total_views`, `total_completions`, `total_hearts`, `total_watch_time_seconds`
+
+2. **user_reel_progress** - Per-user viewing tracking
+   - `phone`, `reel_id` (unique constraint)
+   - `status` ('started' or 'watched')
+   - `is_hearted` (boolean)
+   - `watch_duration_seconds`
+   - Timestamps: `started_at`, `watched_at`, `last_watched_at`
+
+**Feed Algorithm:**
+1. Get active reels user hasn't started yet
+2. Order by `id DESC` (newest first)
+3. Return `reels_prefetch_count` reels (default 3)
+4. Once user calls `/reels/started`, reel is removed from their feed
+5. When all reels are seen, feed returns empty (user has finished)
+
+**Two-State Tracking:**
+- **Started**: User saw the reel (even for 0.5 seconds) - used for feed progression
+- **Watched**: User crossed threshold (default 5 seconds) - used for analytics only
+
+**API Endpoints:**
+
+```
+GET  /api/v1/reels/feed      - Get next batch of reels
+GET  /api/v1/reels/:id       - Get specific reel
+POST /api/v1/reels/started   - Mark reel as started (removes from feed)
+POST /api/v1/reels/watched   - Mark reel as watched (analytics)
+POST /api/v1/reels/heart     - Toggle heart on reel
+GET  /api/v1/reels/stats     - Get user's reel stats
+GET  /api/v1/reels/hearted   - Get user's hearted reels
+```
+
+**Configuration (app_config):**
+- `reel_watch_threshold_seconds` (default 5) - Seconds to qualify as "watched"
+- `reels_prefetch_count` (default 3) - Number of reels per API call
+
+**Admin Panel:**
+- `/admin/reels` - List with filters (status, category, sort)
+- `/admin/reels/upload` - Bulk drag & drop upload (up to 20 at once)
+- `/admin/reels/:id/edit` - Edit metadata
+- `/admin/reels/analytics` - Engagement dashboard
+- Bulk actions: activate/deactivate/delete multiple
+- Modal preview for all videos
+
+**Code Files:**
+- `src/services/reelsService.js` - Business logic
+- `src/controllers/reelsController.js` - API handlers
+- `src/routes/reelsRoutes.js` - Route definitions
+- `src/admin/reelsAdminController.js` - Admin panel
+- `src/admin/views/reels-*.ejs` - Admin views
+
+**Migration:** `scripts/add-reels-feature.sql`
+
 ### File Uploads (MinIO)
 
-**Bucket structure:** `quiz/` with 4 folders:
+**Bucket structure:** `quiz/` with 5 folders:
 - `questions/` - Question images
 - `explanations/` - Explanation images
 - `videos/` - Promotional videos (one per level)
 - `profiles/` - User profile pictures
+- `reels/` - Video reels (TikTok/Shorts style)
 
 **Naming:** All files renamed to `{UUID}{extension}` (e.g., `a1b2c3d4-e5f6-7890-abcd-ef1234567890.mp4`)
 
@@ -201,15 +387,15 @@ const correctIndex = options.findIndex(opt => opt.startsWith('@')) + 1;
 **Base URL:** `/api/v1`
 **Auth:** `Authorization: Bearer <jwt_token>` (6 months expiry)
 
-### 21 Main Endpoints
+### 28 Main Endpoints
 
 **Authentication (2):**
 - `POST /auth/send-otp` - Generate 6-digit OTP (5 min expiry, max 3/hour)
 - `POST /auth/verify-otp` - Verify OTP, create/login user, process referral
 
 **User (4):**
-- `GET /user/profile` - Complete user profile with streak
-- `PATCH /user/profile` - Update name/district/state/profile_image
+- `GET /user/profile` - Complete user profile with streak and medium
+- `PATCH /user/profile` - Update name/district/state/medium/profile_image
 - `GET /user/referral-stats` - Get referral statistics (total referrals, XP earned, who referred me)
 - `GET /user/referred-users?limit=50&offset=0` - Get list of users I referred (paginated)
 
@@ -240,6 +426,15 @@ const correctIndex = options.findIndex(opt => opt.startsWith('@')) + 1;
 **Level Resume (1):**
 - `GET /level/resume` - Find and resume incomplete level
 
+**Reels (7):**
+- `GET /reels/feed` - Get next batch of reels (sliding window)
+- `GET /reels/:id` - Get specific reel
+- `POST /reels/started` - Mark reel as started
+- `POST /reels/watched` - Mark reel as watched (threshold crossed)
+- `POST /reels/heart` - Toggle heart on reel
+- `GET /reels/stats` - Get user's reel viewing stats
+- `GET /reels/hearted` - Get user's hearted reels (paginated)
+
 ## Admin Panel
 
 **Separate authentication:** Session-based (NOT JWT)
@@ -255,7 +450,7 @@ const correctIndex = options.findIndex(opt => opt.startsWith('@')) + 1;
 3. **Configuration** (`/admin/config`) - App-wide configuration:
    - OTP rate limiting (enable/disable, max requests per hour, max verification attempts)
    - Test mode (bypass OTP verification for testing)
-   - Online users count range (min-max with auto-update interval)
+   - Online users count (fake/actual mode toggle, range for fake mode, active threshold for actual mode)
    - **WhatsApp OTP provider toggles** (Interakt API, n8n webhook - runtime enable/disable)
 4. **Referral Analytics** (`/admin/referrals`) - Referral program dashboard:
    - Total referrals, XP granted, unique referrers, 24h activity
@@ -268,17 +463,20 @@ const correctIndex = options.findIndex(opt => opt.startsWith('@')) + 1;
    - Individual form entry
    - Image upload to MinIO
    - Auto-prepend @ to correct option
-6. **Video Upload** (`/admin/videos/upload`) - Upload promotional videos per level
+6. **Video Upload** (`/admin/videos/upload`) - Upload promotional videos per level, duplicate existing videos, modal preview
 7. **User Stats** (`/admin/users/stats`) - User analytics, top performers
 8. **Level Analytics** (`/admin/levels/analytics`) - Difficulty analysis, completion rates
+9. **Reels Management** (`/admin/reels`) - List, filter, sort, bulk actions
+10. **Reels Upload** (`/admin/reels/upload`) - Bulk drag & drop upload (up to 20 files)
+11. **Reels Analytics** (`/admin/reels/analytics`) - Engagement metrics, top reels, user stats
 
 ## Project Structure
 
 ```
 src/
 ├── config/          # database.js, minio.js, jwt.js
-├── controllers/     # One per API group (auth, user, level, quiz, video, leaderboard, stats, admin)
-├── services/        # Business logic (otp, whatsappOtp, interakt, n8n, xp, level, referral, upload, streak)
+├── controllers/     # One per API group (auth, user, level, quiz, video, leaderboard, stats, reels)
+├── services/        # Business logic (otp, whatsappOtp, interakt, n8n, xp, level, referral, upload, streak, reels)
 ├── middleware/      # auth.js, adminAuth.js, validation.js, errorHandler.js, rateLimiter.js
 ├── routes/          # Express routes mapping
 ├── admin/
@@ -594,11 +792,12 @@ npm run migrate
 # Method 2: Direct execution
 node scripts/migrate.js
 
-# This creates all 15 tables:
+# This creates all 17 tables:
 # - users_profile, questions, referral_tracking, level_attempts
 # - question_responses, daily_xp_summary, video_watch_log
 # - lifeline_videos_watched, streak_tracking, promotional_videos
 # - otp_logs, online_users_config, admin_users, app_config, app_version
+# - reels, user_reel_progress
 ```
 
 **Database Reset (Use with caution):**
@@ -663,7 +862,7 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 
 **Business Logic:**
 1. **@ symbol must be included in API responses** - Don't strip it on server, let Android parse
-2. **XP is added ONLY after video watch** - Not after answering questions
+2. **Base XP is added on quiz completion (10th question)** - Video watch only adds bonus XP (doubles it)
 3. **Level unlock does NOT require video watch** - Only needs ANY completed attempt with ≥30% accuracy (video only doubles XP)
 4. **Accuracy threshold is 30%, not 60%** - 3/10 correct unlocks next level
 5. **Referral XP goes to BOTH users** - Don't forget to update both `xp_total` and `daily_xp_summary`
@@ -687,7 +886,7 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 19. **WhatsApp OTP graceful mode** - Even if one provider fails, OTP is considered sent if ANY provider succeeds
 20. **WhatsApp provider toggles stored in database** - `app_config.whatsapp_interakt_enabled` and `whatsapp_n8n_enabled` override env vars (no restart needed)
 21. **Rate limiting is configurable** - Can be disabled or adjusted via admin panel (stored in `app_config` table)
-22. **Database must be initialized** - Run `npm run migrate` before first use to create all 15 tables
+22. **Database must be initialized** - Run `npm run migrate` before first use to create all 17 tables
 23. **package-lock.json is tracked** - Committed to git for consistent builds (use `npm ci` in production for speed)
 
 **Referral System:**
@@ -695,3 +894,17 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 25. **One referral per user** - Each user can only use a referral code once (UNIQUE constraint on referee_phone)
 26. **Referral tracking is permanent** - Logged in `referral_tracking` table for analytics and two-way lookup
 27. **Referral code is 5 digits** - Generated once, never changes (10000-99999 range)
+
+**New Features (2025-11-26):**
+28. **Quiz auto-completes on 10th question** - No separate submit button, level unlocks immediately if ≥30% accuracy
+29. **All timestamps are IST** - Use `SQL_IST_NOW`, `SQL_IST_DATE`, `SQL_IST_TIME` from `src/utils/timezone.js`
+30. **Online users mode is hidden** - Client doesn't know if count is fake or actual (controlled via admin panel)
+31. **Medium fallback chain** - User's medium → english → any (ensures questions are always found)
+32. **Video duplication reuses URL** - No file re-upload needed, just creates new DB record with same video_url
+
+**Video Reels (2025-11-26):**
+33. **Reels use "started" for progression** - Not "watched". User won't see reel again once started
+34. **Reels feed is newest first** - Uses `id DESC` ordering, not created_at
+35. **Watch threshold is for analytics only** - Doesn't affect feed progression (5 seconds default)
+36. **Prefetch 3 reels per API call** - Configurable via `app_config.reels_prefetch_count`
+37. **Reels upload to /reels folder** - Separate from promotional videos (use `uploadFile(file, 'reels')`)

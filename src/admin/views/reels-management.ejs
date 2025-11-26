@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reels Management - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin: 0;
+            font-size: 24px;
+            color: #333;
+        }
+        .stat-card p {
+            margin: 5px 0 0;
+            color: #666;
+            font-size: 12px;
+        }
+
+        /* Filters */
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filters select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        /* Bulk Actions */
+        .bulk-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        .bulk-actions button {
+            padding: 8px 15px;
+            font-size: 13px;
+        }
+        .select-all-container {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        /* Table */
+        .reel-thumbnail {
+            width: 80px;
+            height: 45px;
+            object-fit: cover;
+            border-radius: 4px;
+            background: #000;
+            cursor: pointer;
+        }
+        .reel-title {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .status-badge {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .actions-cell {
+            white-space: nowrap;
+        }
+        .actions-cell button, .actions-cell a {
+            padding: 4px 8px;
+            font-size: 11px;
+            margin: 2px;
+        }
+
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal-content {
+            background: #000;
+            border-radius: 10px;
+            max-width: 400px;
+            width: 90%;
+            max-height: 90vh;
+            overflow: hidden;
+            position: relative;
+        }
+        .modal-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255,255,255,0.2);
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #fff;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            z-index: 10;
+        }
+        .modal-close:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .modal-body video {
+            width: 100%;
+            max-height: 80vh;
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>Reels Management</h1>
+            <div>
+                <a href="/admin/reels/upload" class="btn" style="margin-right: 10px;">Upload Reels</a>
+                <a href="/admin/reels/analytics" class="btn" style="background: #6f42c1;">Analytics</a>
+            </div>
+        </div>
+
+        <% if (message) { %>
+            <div class="success"><%= message %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="error"><%= error %></div>
+        <% } %>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3><%= stats.total_reels %></h3>
+                <p>Total Reels</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= stats.active_reels %></h3>
+                <p>Active</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= parseInt(stats.total_views).toLocaleString() %></h3>
+                <p>Total Views</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= parseInt(stats.total_completions).toLocaleString() %></h3>
+                <p>Completions</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= parseInt(stats.total_hearts).toLocaleString() %></h3>
+                <p>Hearts</p>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <form method="GET" class="filters">
+            <select name="status" onchange="this.form.submit()">
+                <option value="">All Status</option>
+                <option value="active" <%= filters.status === 'active' ? 'selected' : '' %>>Active</option>
+                <option value="inactive" <%= filters.status === 'inactive' ? 'selected' : '' %>>Inactive</option>
+            </select>
+            <select name="category" onchange="this.form.submit()">
+                <option value="">All Categories</option>
+                <% categories.forEach(cat => { %>
+                    <option value="<%= cat %>" <%= filters.category === cat ? 'selected' : '' %>><%= cat %></option>
+                <% }) %>
+            </select>
+            <select name="sort" onchange="this.form.submit()">
+                <option value="">Newest First</option>
+                <option value="oldest" <%= filters.sort === 'oldest' ? 'selected' : '' %>>Oldest First</option>
+                <option value="most_viewed" <%= filters.sort === 'most_viewed' ? 'selected' : '' %>>Most Viewed</option>
+                <option value="most_hearted" <%= filters.sort === 'most_hearted' ? 'selected' : '' %>>Most Hearted</option>
+                <option value="most_completed" <%= filters.sort === 'most_completed' ? 'selected' : '' %>>Most Completed</option>
+            </select>
+            <a href="/admin/reels" style="color: #666;">Clear Filters</a>
+        </form>
+
+        <!-- Bulk Actions -->
+        <div class="bulk-actions">
+            <div class="select-all-container">
+                <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                <label for="selectAll">Select All</label>
+            </div>
+            <button onclick="bulkAction('activate')" style="background: #28a745;">Activate Selected</button>
+            <button onclick="bulkAction('deactivate')" style="background: #ffc107; color: #000;">Deactivate Selected</button>
+            <button onclick="bulkAction('delete')" style="background: #dc3545;">Delete Selected</button>
+        </div>
+
+        <!-- Reels Table -->
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th style="width: 30px;"></th>
+                        <th style="width: 90px;">Preview</th>
+                        <th>Title</th>
+                        <th style="width: 100px;">Category</th>
+                        <th style="width: 80px;">Views</th>
+                        <th style="width: 80px;">Complete</th>
+                        <th style="width: 80px;">Hearts</th>
+                        <th style="width: 80px;">Status</th>
+                        <th style="width: 180px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (reels.length === 0) { %>
+                        <tr>
+                            <td colspan="9" style="text-align: center; padding: 40px;">
+                                No reels found. <a href="/admin/reels/upload">Upload some reels</a>
+                            </td>
+                        </tr>
+                    <% } else { %>
+                        <% reels.forEach(reel => { %>
+                            <tr>
+                                <td>
+                                    <input type="checkbox" class="reel-checkbox" value="<%= reel.id %>">
+                                </td>
+                                <td>
+                                    <video class="reel-thumbnail" onclick="previewReel('<%= reel.video_url %>', '<%= reel.title || 'Reel #' + reel.id %>')" muted>
+                                        <source src="<%= reel.video_url %>" type="video/mp4">
+                                    </video>
+                                </td>
+                                <td>
+                                    <div class="reel-title" title="<%= reel.title || 'Untitled' %>">
+                                        <strong><%= reel.title || 'Untitled' %></strong>
+                                    </div>
+                                    <small style="color: #666;">#<%= reel.id %> | <%= reel.duration_seconds %>s</small>
+                                </td>
+                                <td>
+                                    <span style="padding: 3px 8px; background: #e3f2fd; color: #1976d2; border-radius: 3px; font-size: 11px;">
+                                        <%= reel.category %>
+                                    </span>
+                                </td>
+                                <td><%= reel.total_views %></td>
+                                <td>
+                                    <%= reel.total_completions %>
+                                    <small style="color: #666;">(<%= reel.completion_rate %>%)</small>
+                                </td>
+                                <td><%= reel.total_hearts %></td>
+                                <td>
+                                    <span class="status-badge <%= reel.is_active ? 'status-active' : 'status-inactive' %>">
+                                        <%= reel.is_active ? 'Active' : 'Inactive' %>
+                                    </span>
+                                </td>
+                                <td class="actions-cell">
+                                    <button onclick="previewReel('<%= reel.video_url %>', '<%= reel.title || 'Reel #' + reel.id %>')" class="btn">Play</button>
+                                    <a href="/admin/reels/<%= reel.id %>/edit" class="btn" style="background: #28a745;">Edit</a>
+                                    <button onclick="toggleStatus(<%= reel.id %>)" style="background: <%= reel.is_active ? '#ffc107' : '#28a745' %>; color: <%= reel.is_active ? '#000' : '#fff' %>;">
+                                        <%= reel.is_active ? 'Deactivate' : 'Activate' %>
+                                    </button>
+                                    <button onclick="deleteReel(<%= reel.id %>)" style="background: #dc3545;">Delete</button>
+                                </td>
+                            </tr>
+                        <% }) %>
+                    <% } %>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Video Preview Modal -->
+    <div class="modal-overlay" id="previewModal">
+        <div class="modal-content">
+            <button class="modal-close" onclick="closePreview()">&times;</button>
+            <div class="modal-body">
+                <video id="previewVideo" controls autoplay>
+                    <source src="" type="video/mp4">
+                </video>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Preview Modal
+        function previewReel(url, title) {
+            const video = document.getElementById('previewVideo');
+            video.src = url;
+            document.getElementById('previewModal').classList.add('active');
+            video.play();
+        }
+
+        function closePreview() {
+            const video = document.getElementById('previewVideo');
+            video.pause();
+            video.src = '';
+            document.getElementById('previewModal').classList.remove('active');
+        }
+
+        // Close modal on overlay click
+        document.getElementById('previewModal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('previewModal')) {
+                closePreview();
+            }
+        });
+
+        // Close modal on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closePreview();
+        });
+
+        // Select All
+        function toggleSelectAll() {
+            const checked = document.getElementById('selectAll').checked;
+            document.querySelectorAll('.reel-checkbox').forEach(cb => cb.checked = checked);
+        }
+
+        // Get selected IDs
+        function getSelectedIds() {
+            return Array.from(document.querySelectorAll('.reel-checkbox:checked')).map(cb => cb.value);
+        }
+
+        // Bulk Action
+        function bulkAction(action) {
+            const ids = getSelectedIds();
+            if (ids.length === 0) {
+                alert('Please select at least one reel');
+                return;
+            }
+
+            const confirmMsg = action === 'delete'
+                ? `Are you sure you want to delete ${ids.length} reel(s)? This cannot be undone.`
+                : `Are you sure you want to ${action} ${ids.length} reel(s)?`;
+
+            if (!confirm(confirmMsg)) return;
+
+            fetch('/admin/reels/bulk-action', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, reel_ids: ids })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(err => alert('Error: ' + err.message));
+        }
+
+        // Toggle Status
+        function toggleStatus(id) {
+            fetch(`/admin/reels/${id}/toggle`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(err => alert('Error: ' + err.message));
+        }
+
+        // Delete Reel
+        function deleteReel(id) {
+            if (!confirm('Are you sure you want to delete this reel?')) return;
+
+            fetch(`/admin/reels/${id}`, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(err => alert('Error: ' + err.message));
+        }
+    </script>
+</body>
+</html>

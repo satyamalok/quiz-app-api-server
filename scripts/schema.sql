@@ -2,6 +2,8 @@
 -- Enhanced with: configurable rate limiting, online users range, lifelines system
 
 -- Drop existing tables if they exist
+DROP TABLE IF EXISTS user_reel_progress CASCADE;
+DROP TABLE IF EXISTS reels CASCADE;
 DROP TABLE IF EXISTS referral_tracking CASCADE;
 DROP TABLE IF EXISTS lifeline_videos_watched CASCADE;
 DROP TABLE IF EXISTS question_responses CASCADE;
@@ -39,6 +41,10 @@ CREATE TABLE app_config (
     referral_bonus_xp INTEGER NOT NULL DEFAULT 50,
     lifelines_per_quiz INTEGER NOT NULL DEFAULT 3,
 
+    -- Reels settings
+    reel_watch_threshold_seconds INTEGER NOT NULL DEFAULT 5,
+    reels_prefetch_count INTEGER NOT NULL DEFAULT 3,
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -54,6 +60,7 @@ CREATE TABLE users_profile (
     name VARCHAR(100),
     district VARCHAR(100),
     state VARCHAR(100),
+    medium VARCHAR(10) NOT NULL DEFAULT 'english' CHECK (medium IN ('hindi', 'english')),
     referral_code VARCHAR(5) UNIQUE NOT NULL,
     referred_by VARCHAR(5),
     profile_image_url VARCHAR(500),
@@ -62,6 +69,7 @@ CREATE TABLE users_profile (
     xp_total INTEGER NOT NULL DEFAULT 0,
     current_level INTEGER NOT NULL DEFAULT 1 CHECK (current_level >= 1 AND current_level <= 100),
     total_ads_watched INTEGER NOT NULL DEFAULT 0,
+    last_active_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -69,6 +77,7 @@ CREATE TABLE users_profile (
 CREATE INDEX idx_users_xp_total ON users_profile(xp_total DESC);
 CREATE INDEX idx_users_district ON users_profile(district);
 CREATE INDEX idx_users_referral ON users_profile(referral_code);
+CREATE INDEX idx_users_last_active ON users_profile(last_active_at DESC);
 
 -- ============================================
 -- Table 3: referral_tracking (Two-way referral tracking)
@@ -112,12 +121,15 @@ CREATE TABLE questions (
     subject VARCHAR(50),
     topic VARCHAR(100),
     difficulty VARCHAR(20),
+    medium VARCHAR(10) NOT NULL DEFAULT 'both' CHECK (medium IN ('hindi', 'english', 'both')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (level, question_order)
+    UNIQUE (level, question_order, medium)
 );
 
 CREATE INDEX idx_questions_level ON questions(level);
 CREATE INDEX idx_questions_subject ON questions(subject);
+CREATE INDEX idx_questions_medium ON questions(medium);
+CREATE INDEX idx_questions_level_medium ON questions(level, medium);
 
 -- ============================================
 -- Table 4: level_attempts (WITH lifelines tracking)
@@ -274,21 +286,23 @@ CREATE INDEX idx_otp_phone ON otp_logs(phone);
 CREATE INDEX idx_otp_expires ON otp_logs(expires_at);
 
 -- ============================================
--- Table 11: online_users_config (WITH range and auto-update)
+-- Table 11: online_users_config (WITH range, auto-update, and mode toggle)
 -- ============================================
 CREATE TABLE online_users_config (
     id SERIAL PRIMARY KEY CHECK (id = 1),
+    mode VARCHAR(10) NOT NULL DEFAULT 'fake' CHECK (mode IN ('fake', 'actual')),
     online_count_min INTEGER NOT NULL DEFAULT 100,
     online_count_max INTEGER NOT NULL DEFAULT 500,
     current_online_count INTEGER NOT NULL DEFAULT 0,
     update_interval_minutes INTEGER NOT NULL DEFAULT 5,
+    active_minutes_threshold INTEGER NOT NULL DEFAULT 5,
     last_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_by VARCHAR(100)
 );
 
 -- Insert default record
-INSERT INTO online_users_config (id, online_count_min, online_count_max, current_online_count)
-VALUES (1, 100, 500, 250);
+INSERT INTO online_users_config (id, mode, online_count_min, online_count_max, current_online_count, active_minutes_threshold)
+VALUES (1, 'fake', 100, 500, 250, 5);
 
 -- ============================================
 -- Table 12: admin_users
@@ -327,12 +341,63 @@ CREATE INDEX idx_lifeline_videos_phone ON lifeline_videos_watched(phone);
 CREATE INDEX idx_lifeline_videos_attempt ON lifeline_videos_watched(attempt_id);
 
 -- ============================================
+-- Table 14: reels (Video Reels like TikTok/Shorts)
+-- ============================================
+CREATE TABLE reels (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(200),
+    description TEXT,
+    video_url VARCHAR(500) NOT NULL,
+    thumbnail_url VARCHAR(500),
+    duration_seconds INTEGER NOT NULL DEFAULT 0,
+    category VARCHAR(50) DEFAULT 'education',
+    tags TEXT[], -- PostgreSQL array for flexible tagging
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    total_views INTEGER NOT NULL DEFAULT 0,
+    total_completions INTEGER NOT NULL DEFAULT 0,
+    total_hearts INTEGER NOT NULL DEFAULT 0,
+    total_watch_time_seconds BIGINT NOT NULL DEFAULT 0,
+    uploaded_by VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_reels_active_id ON reels(is_active, id DESC);
+CREATE INDEX idx_reels_category ON reels(category);
+CREATE INDEX idx_reels_created ON reels(created_at DESC);
+
+-- ============================================
+-- Table 15: user_reel_progress (User viewing tracking)
+-- ============================================
+CREATE TABLE user_reel_progress (
+    id SERIAL PRIMARY KEY,
+    phone VARCHAR(15) NOT NULL,
+    reel_id INTEGER NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'started' CHECK (status IN ('started', 'watched')),
+    watch_duration_seconds INTEGER DEFAULT 0,
+    is_hearted BOOLEAN NOT NULL DEFAULT FALSE,
+    started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    watched_at TIMESTAMP, -- Set when threshold crossed
+    last_watched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (phone) REFERENCES users_profile(phone) ON DELETE CASCADE,
+    FOREIGN KEY (reel_id) REFERENCES reels(id) ON DELETE CASCADE,
+    UNIQUE(phone, reel_id) -- One progress record per user per reel
+);
+
+CREATE INDEX idx_user_reel_phone ON user_reel_progress(phone);
+CREATE INDEX idx_user_reel_reel ON user_reel_progress(reel_id);
+CREATE INDEX idx_user_reel_phone_status ON user_reel_progress(phone, status);
+CREATE INDEX idx_user_reel_hearted ON user_reel_progress(reel_id, is_hearted) WHERE is_hearted = TRUE;
+
+-- ============================================
 -- Success Message
 -- ============================================
 DO $$
 BEGIN
-    RAISE NOTICE 'Database schema created successfully with 13 tables!';
-    RAISE NOTICE '✓ app_config (configurable rate limiting)';
+    RAISE NOTICE 'Database schema created successfully with 15 tables!';
+    RAISE NOTICE '✓ app_config (configurable settings)';
     RAISE NOTICE '✓ users_profile';
     RAISE NOTICE '✓ questions';
     RAISE NOTICE '✓ level_attempts (with lifelines)';
@@ -342,7 +407,9 @@ BEGIN
     RAISE NOTICE '✓ streak_tracking';
     RAISE NOTICE '✓ promotional_videos';
     RAISE NOTICE '✓ otp_logs';
-    RAISE NOTICE '✓ online_users_config (with range)';
+    RAISE NOTICE '✓ online_users_config (fake/actual mode)';
     RAISE NOTICE '✓ admin_users';
     RAISE NOTICE '✓ lifeline_videos_watched';
+    RAISE NOTICE '✓ reels (video reels)';
+    RAISE NOTICE '✓ user_reel_progress (viewing tracking)';
 END $$;

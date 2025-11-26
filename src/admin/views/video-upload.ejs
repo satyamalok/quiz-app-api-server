@@ -5,6 +5,71 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Management - JNV Quiz Admin</title>
     <%- include('partials/head') %>
+    <style>
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal-content {
+            background: #fff;
+            border-radius: 10px;
+            max-width: 800px;
+            width: 90%;
+            max-height: 90vh;
+            overflow: hidden;
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid #ddd;
+        }
+        .modal-header h3 {
+            margin: 0;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 24px;
+            cursor: pointer;
+            color: #666;
+        }
+        .modal-close:hover {
+            color: #000;
+        }
+        .modal-body {
+            padding: 20px;
+        }
+        .modal-body video {
+            width: 100%;
+            max-height: 60vh;
+            background: #000;
+        }
+
+        /* Duplicate Modal */
+        .duplicate-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .duplicate-form .form-group {
+            margin-bottom: 0;
+        }
+    </style>
 </head>
 <body>
     <%- include('partials/nav') %>
@@ -24,6 +89,7 @@
             <h2>Upload Video</h2>
             <p style="color: #666; margin-bottom: 15px;">
                 Upload videos for any level. Multiple videos can have the same level with different categories.
+                You can also duplicate existing videos to other levels.
             </p>
 
             <form method="POST" action="/admin/videos/upload" enctype="multipart/form-data">
@@ -83,7 +149,7 @@
                         <th style="width: 100px;">Category</th>
                         <th style="width: 100px;">Duration</th>
                         <th style="width: 80px;">Status</th>
-                        <th style="width: 200px;">Actions</th>
+                        <th style="width: 280px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -108,7 +174,8 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <a href="<%= video.video_url %>" target="_blank" class="btn" style="padding: 5px 10px; font-size: 12px;">Preview</a>
+                                    <button onclick="previewVideo('<%= video.video_url %>', '<%= video.video_name %>')" class="btn" style="padding: 5px 10px; font-size: 12px;">Preview</button>
+                                    <button onclick="showDuplicateModal(<%= video.id %>, '<%= video.video_name %>', <%= video.level %>)" class="btn" style="padding: 5px 10px; font-size: 12px; background: #17a2b8;">Duplicate</button>
                                     <a href="/admin/videos/<%= video.id %>/edit" class="btn" style="padding: 5px 10px; font-size: 12px; background: #28a745;">Edit</a>
                                     <button onclick="deleteVideo(<%= video.id %>)" style="background: #dc3545; padding: 5px 10px; font-size: 12px;">Delete</button>
                                 </td>
@@ -120,7 +187,119 @@
         </div>
     </div>
 
+    <!-- Video Preview Modal -->
+    <div class="modal-overlay" id="previewModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="previewTitle">Video Preview</h3>
+                <button class="modal-close" onclick="closePreviewModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <video id="previewVideo" controls>
+                    <source src="" type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+            </div>
+        </div>
+    </div>
+
+    <!-- Duplicate Video Modal -->
+    <div class="modal-overlay" id="duplicateModal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h3>Duplicate Video</h3>
+                <button class="modal-close" onclick="closeDuplicateModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: #666; margin-bottom: 15px;">
+                    Create a copy of "<span id="duplicateVideoName"></span>" for a different level or category.
+                    This will reuse the same video file.
+                </p>
+                <form id="duplicateForm" onsubmit="submitDuplicate(event)">
+                    <input type="hidden" id="duplicateSourceId" name="source_id">
+                    <div class="duplicate-form">
+                        <div class="form-group">
+                            <label for="duplicateLevel">New Level *</label>
+                            <input type="number" id="duplicateLevel" name="level" min="1" max="100" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="duplicateCategory">Category *</label>
+                            <select id="duplicateCategory" name="category" required>
+                                <option value="promotional">Promotional</option>
+                                <option value="shorts">Shorts</option>
+                                <option value="lifeline">Lifeline</option>
+                                <option value="tutorial">Tutorial</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div style="margin-top: 20px; display: flex; gap: 10px;">
+                        <button type="submit">Duplicate Video</button>
+                        <button type="button" onclick="closeDuplicateModal()" style="background: #6c757d;">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script>
+        // Video Preview Modal
+        function previewVideo(url, name) {
+            document.getElementById('previewTitle').textContent = name;
+            const video = document.getElementById('previewVideo');
+            video.src = url;
+            document.getElementById('previewModal').classList.add('active');
+            video.play();
+        }
+
+        function closePreviewModal() {
+            const video = document.getElementById('previewVideo');
+            video.pause();
+            video.src = '';
+            document.getElementById('previewModal').classList.remove('active');
+        }
+
+        // Duplicate Video Modal
+        function showDuplicateModal(id, name, currentLevel) {
+            document.getElementById('duplicateSourceId').value = id;
+            document.getElementById('duplicateVideoName').textContent = name;
+            document.getElementById('duplicateLevel').value = currentLevel + 1;
+            document.getElementById('duplicateModal').classList.add('active');
+        }
+
+        function closeDuplicateModal() {
+            document.getElementById('duplicateModal').classList.remove('active');
+        }
+
+        function submitDuplicate(e) {
+            e.preventDefault();
+            const sourceId = document.getElementById('duplicateSourceId').value;
+            const level = document.getElementById('duplicateLevel').value;
+            const category = document.getElementById('duplicateCategory').value;
+
+            fetch(`/admin/videos/${sourceId}/duplicate`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ level, category })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Video duplicated successfully!');
+                    location.reload();
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to duplicate video'));
+                }
+            })
+            .catch(err => {
+                alert('Error duplicating video');
+                console.error(err);
+            });
+        }
+
+        // Delete Video
         function deleteVideo(id) {
             if (!confirm('Are you sure you want to delete this video?')) return;
 
@@ -138,6 +317,24 @@
             })
             .catch(err => alert('Error deleting video'));
         }
+
+        // Close modals on overlay click
+        document.querySelectorAll('.modal-overlay').forEach(modal => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    closePreviewModal();
+                    closeDuplicateModal();
+                }
+            });
+        });
+
+        // Close modals on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closePreviewModal();
+                closeDuplicateModal();
+            }
+        });
     </script>
 </body>
 </html>
