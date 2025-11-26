@@ -252,6 +252,8 @@ active_minutes_threshold INTEGER NOT NULL DEFAULT 5
 
 **Admin toggle:** Available in Configuration page (`/admin/config`)
 
+**Admin dashboard:** Shows real-time count in both modes (calculates actual count for actual mode, not cached value)
+
 ### Language Medium Support (UPDATED 2025-11-26)
 
 **Supports Hindi/English questions with user preference:**
@@ -908,3 +910,26 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 35. **Watch threshold is for analytics only** - Doesn't affect feed progression (5 seconds default)
 36. **Prefetch 3 reels per API call** - Configurable via `app_config.reels_prefetch_count`
 37. **Reels upload to /reels folder** - Separate from promotional videos (use `uploadFile(file, 'reels')`)
+38. **Actual online count needs API activity** - `last_active_at` only updates on authenticated API calls, not OTP verification
+
+## Load Testing (Future)
+
+**Recommended tools:**
+- **k6** - Modern, JavaScript-based, easy scenarios
+- **Artillery** - Node.js native, YAML config
+- **Apache JMeter** - Enterprise, GUI-based
+
+**Current capacity (8GB VPS):**
+- DB pool: `max: 50` connections (can increase to 100)
+- Node.js: Single process (~1000-3000 req/sec)
+- Estimated: Can handle ~2000 concurrent users with tuning
+
+**Scaling options:**
+1. Increase DB pool to `max: 100`
+2. Use PM2 cluster mode (2-4 workers)
+3. Add Redis for caching (leaderboard, online count)
+
+**Key endpoints to test:**
+- Auth flow (OTP send/verify)
+- Quiz flow (start level, answer questions)
+- Read-heavy (leaderboard, profile, reels feed)
