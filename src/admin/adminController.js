@@ -760,7 +760,7 @@ async function bulkInsertQuestions(req, res) {
           option_1, option_2, option_3, option_4,
           explanation_text, subject, topic, difficulty, medium
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-        ON CONFLICT (level, question_order) DO NOTHING
+        ON CONFLICT (level, question_order, medium) DO NOTHING
       `, [
         row.level, row.question_order, row.question_text,
         row.option_1, row.option_2, row.option_3, row.option_4,
