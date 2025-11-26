@@ -321,13 +321,26 @@ async function showConfig(req, res) {
     const appConfigResult = await pool.query('SELECT * FROM app_config WHERE id = 1');
     const onlineConfigResult = await pool.query('SELECT * FROM online_users_config WHERE id = 1');
 
+    const onlineConfig = onlineConfigResult.rows[0];
+
+    // For actual mode, calculate real count instead of showing cached fake count
+    if (onlineConfig && onlineConfig.mode === 'actual') {
+      const activeUsersResult = await pool.query(`
+        SELECT COUNT(*) as count
+        FROM users_profile
+        WHERE last_active_at IS NOT NULL
+          AND last_active_at > NOW() - INTERVAL '${onlineConfig.active_minutes_threshold || 5} minutes'
+      `);
+      onlineConfig.current_online_count = parseInt(activeUsersResult.rows[0].count);
+    }
+
     // Get WhatsApp OTP service status
     const whatsappStatus = whatsappOtpService.getStatus();
 
     res.render('config', {
       admin: req.session.adminUser,
       appConfig: appConfigResult.rows[0],
-      onlineConfig: onlineConfigResult.rows[0],
+      onlineConfig: onlineConfig,
       whatsappStatus: whatsappStatus,
       message: null
     });
@@ -392,13 +405,26 @@ async function updateConfig(req, res) {
     const appConfigResult = await pool.query('SELECT * FROM app_config WHERE id = 1');
     const onlineConfigResult = await pool.query('SELECT * FROM online_users_config WHERE id = 1');
 
+    const onlineConfig = onlineConfigResult.rows[0];
+
+    // For actual mode, calculate real count instead of showing cached fake count
+    if (onlineConfig && onlineConfig.mode === 'actual') {
+      const activeUsersResult = await pool.query(`
+        SELECT COUNT(*) as count
+        FROM users_profile
+        WHERE last_active_at IS NOT NULL
+          AND last_active_at > NOW() - INTERVAL '${onlineConfig.active_minutes_threshold || 5} minutes'
+      `);
+      onlineConfig.current_online_count = parseInt(activeUsersResult.rows[0].count);
+    }
+
     // Get WhatsApp OTP service status
     const whatsappStatus = whatsappOtpService.getStatus();
 
     res.render('config', {
       admin: req.session.adminUser,
       appConfig: appConfigResult.rows[0],
-      onlineConfig: onlineConfigResult.rows[0],
+      onlineConfig: onlineConfig,
       whatsappStatus: whatsappStatus,
       message: 'Configuration updated successfully!'
     });
