@@ -23,6 +23,7 @@ Thumbs.db
 
 # Testing
 coverage/
+load-tests/
 
 # Build
 dist/
