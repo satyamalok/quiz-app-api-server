@@ -6,19 +6,30 @@ const PORT = process.env.PORT || 3000;
 
 // Start server
 const server = app.listen(PORT, () => {
+  const workerId = process.env.NODE_APP_INSTANCE || 'main';
+  
   console.log('\n==============================================');
   console.log('  JNV QUIZ APP - API SERVER');
   console.log('==============================================\n');
-  console.log(`✓ Server running on port ${PORT}`);
-  console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`✓ API Base URL: http://localhost:${PORT}/api/v1`);
-  console.log(`✓ Admin Panel: http://localhost:${PORT}/admin`);
+  console.log('✓ Server running on port ' + PORT);
+  console.log('✓ Worker: ' + workerId);
+  console.log('✓ Environment: ' + (process.env.NODE_ENV || 'development'));
+  console.log('✓ API Base URL: http://localhost:' + PORT + '/api/v1');
+  console.log('✓ Admin Panel: http://localhost:' + PORT + '/admin');
   console.log('\n==============================================\n');
 
-  // Start background jobs
-  console.log('Starting background jobs...\n');
-  startAutoUpdateJob();
-  console.log('\n==============================================\n');
+  // Start background jobs only on primary worker (worker 0)
+  // PM2 sets NODE_APP_INSTANCE for each worker (0, 1, 2, 3...)
+  const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
+  
+  if (isPrimaryWorker) {
+    console.log('Starting background jobs (primary worker)...\n');
+    startAutoUpdateJob();
+  } else {
+    console.log('Skipping background jobs (handled by primary worker)\n');
+  }
+  
+  console.log('==============================================\n');
 });
 
 // Graceful shutdown

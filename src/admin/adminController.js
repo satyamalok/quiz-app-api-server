@@ -1388,5 +1388,66 @@ module.exports = {
   duplicateVideo,
   // Analytics
   showAnalytics,
+  // DB Stats
+  getDbStats,
   upload
 };
+
+// ========================================
+// DB STATS MONITORING (for PM2 cluster mode)
+// ========================================
+
+/**
+ * GET /admin/db-stats
+ * Connection pool statistics for monitoring
+ */
+async function getDbStats(req, res) {
+  try {
+    // Pool statistics from node-postgres
+    const poolStats = {
+      totalConnections: pool.totalCount,
+      idleConnections: pool.idleCount,
+      waitingRequests: pool.waitingCount,
+      maxConnections: pool.options.max,
+    };
+
+    // Query PostgreSQL for actual connection info
+    const result = await pool.query(
+      "SELECT " +
+      "count(*) FILTER (WHERE state = 'active') as active, " +
+      "count(*) FILTER (WHERE state = 'idle') as idle, " +
+      "count(*) FILTER (WHERE state = 'idle in transaction') as idle_in_transaction, " +
+      "count(*) as total " +
+      "FROM pg_stat_activity WHERE datname = $1",
+      [process.env.DB_NAME]
+    );
+
+    const dbStats = result.rows[0];
+    const utilization = poolStats.maxConnections > 0 
+      ? ((poolStats.totalConnections / poolStats.maxConnections) * 100).toFixed(1)
+      : '0';
+
+    res.json({
+      success: true,
+      data: {
+        pool: poolStats,
+        database: {
+          activeConnections: parseInt(dbStats.active) || 0,
+          idleConnections: parseInt(dbStats.idle) || 0,
+          idleInTransaction: parseInt(dbStats.idle_in_transaction) || 0,
+          totalConnections: parseInt(dbStats.total) || 0,
+        },
+        worker: process.env.NODE_APP_INSTANCE || 'main',
+        pm2Instances: process.env.PM2_INSTANCES || '1',
+        utilization: utilization + '%',
+      }
+    });
+  } catch (error) {
+    console.error('DB stats error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch DB stats',
+      message: error.message
+    });
+  }
+}

@@ -34,6 +34,8 @@ const {
   duplicateVideo,
   // Analytics
   showAnalytics,
+  // DB Stats
+  getDbStats,
   upload
 } = require('./adminController');
 const { getReferralDashboard } = require('./referralAdminController');
@@ -111,6 +113,9 @@ router.delete('/videos/:id', deleteVideo);
 
 // Analytics
 router.get('/analytics', showAnalytics);
+
+// DB Stats (for PM2 cluster monitoring)
+router.get('/db-stats', getDbStats);
 
 // Reels Management
 router.get('/reels', showReels);

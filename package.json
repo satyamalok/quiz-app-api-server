@@ -6,6 +6,13 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "prod": "pm2 start ecosystem.config.js --env production",
+    "prod:stop": "pm2 stop quiz-api",
+    "prod:restart": "pm2 restart quiz-api",
+    "prod:reload": "pm2 reload quiz-api",
+    "prod:logs": "pm2 logs quiz-api",
+    "prod:status": "pm2 status",
+    "prod:monit": "pm2 monit",
     "migrate": "node scripts/migrate.js",
     "reset": "node scripts/reset.js",
     "seed": "node scripts/seed.js"
