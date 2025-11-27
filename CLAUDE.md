@@ -22,7 +22,7 @@ JNV Quiz App - A gamified quiz application backend for Jawahar Navodaya Vidyalay
 ### Initial Setup
 ```bash
 npm install                    # Install dependencies (generates package-lock.json)
-npm run migrate                # Run database migrations (creates all 15 tables)
+npm run migrate                # Run database migrations (creates all 17 tables)
 # or: node scripts/migrate.js
 ```
 
@@ -72,8 +72,8 @@ The application uses 17 interconnected tables. Key relationships:
 11. **otp_logs** - OTP generation and verification
 12. **online_users_config** - Online users count with fake/actual mode toggle (single row)
 13. **admin_users** - Admin authentication (separate from JWT)
-14. **app_config** - Application-wide configuration (OTP rate limiting, test mode, lifelines, reels settings)
-15. **app_version** - App version control and force update configuration
+14. **session** - Admin session storage for PM2 cluster mode (PostgreSQL-backed)
+15. **app_config** - Application-wide configuration (OTP rate limiting, test mode, lifelines, reels settings)
 16. **reels** - Video reels (TikTok/Shorts style) with views, hearts, completion tracking
 17. **user_reel_progress** - User viewing progress per reel (started/watched status, hearts)
 
@@ -472,6 +472,26 @@ GET  /api/v1/reels/hearted   - Get user's hearted reels
 10. **Reels Upload** (`/admin/reels/upload`) - Bulk drag & drop upload (up to 20 files)
 11. **Reels Analytics** (`/admin/reels/analytics`) - Engagement metrics, top reels, user stats
 
+### Admin Session Storage (PostgreSQL)
+
+Admin sessions are stored in PostgreSQL (not memory) to support PM2 cluster mode:
+
+**Why PostgreSQL sessions?**
+- PM2 cluster mode runs multiple Node.js workers
+- Memory-based sessions don't share across workers → random logouts
+- PostgreSQL `session` table is shared by all workers
+
+**How it works:**
+- Uses `connect-pg-simple` package
+- Sessions stored in `session` table (sid, sess JSON, expire timestamp)
+- Auto-cleanup of expired sessions every 15 minutes
+- Session cookie: `admin.sid`, 24-hour expiry
+
+**Migration for existing databases:**
+```bash
+psql -h localhost -U admin -d quizdb -f scripts/add-session-table.sql
+```
+
 ## Project Structure
 
 ```
@@ -847,6 +867,7 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 - csv-parser - CSV file parsing
 - ejs - Template engine for admin panel
 - express-session - Session management
+- **connect-pg-simple** - PostgreSQL session store (for PM2 cluster mode)
 - cookie-parser - Cookie parsing
 - morgan - HTTP request logger
 - **axios** - HTTP client for WhatsApp OTP services (Interakt + n8n)

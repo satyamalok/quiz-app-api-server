@@ -3,9 +3,12 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 const cookieParser = require('cookie-parser');
 const path = require('path');
 require('dotenv').config();
+
+const pool = require('./config/database');
 
 const errorHandler = require('./middleware/errorHandler');
 const apiRoutes = require('./routes');
@@ -41,16 +44,21 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Session for admin panel
+// Session for admin panel (PostgreSQL store for PM2 cluster mode)
 app.use(session({
+  store: new pgSession({
+    pool: pool,
+    tableName: 'session',
+    pruneSessionInterval: 60 * 15 // Cleanup expired sessions every 15 minutes
+  }),
   secret: process.env.SESSION_SECRET,
-  name: 'admin.sid', // Named session cookie for better debugging
+  name: 'admin.sid',
   resave: false,
   saveUninitialized: false,
   cookie: {
     secure: false, // Set to false - app runs on HTTP internally, Nginx handles HTTPS externally
     httpOnly: true,
-    sameSite: 'lax', // Prevents browser from blocking cookies
+    sameSite: 'lax',
     maxAge: 24 * 60 * 60 * 1000 // 24 hours
   }
 }));

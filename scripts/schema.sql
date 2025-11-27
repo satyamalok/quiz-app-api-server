@@ -18,6 +18,7 @@ DROP TABLE IF EXISTS users_profile CASCADE;
 DROP TABLE IF EXISTS admin_users CASCADE;
 DROP TABLE IF EXISTS online_users_config CASCADE;
 DROP TABLE IF EXISTS app_config CASCADE;
+DROP TABLE IF EXISTS session CASCADE;
 
 -- ============================================
 -- Table 1: app_config (NEW - Configurable Settings)
@@ -319,7 +320,19 @@ CREATE TABLE admin_users (
 );
 
 -- ============================================
--- Table 13: lifeline_videos_watched (NEW - Track lifeline restoration)
+-- Table 13: session (Admin session storage for PM2 cluster mode)
+-- ============================================
+CREATE TABLE session (
+    sid VARCHAR NOT NULL COLLATE "default",
+    sess JSON NOT NULL,
+    expire TIMESTAMP(6) NOT NULL,
+    PRIMARY KEY (sid)
+);
+
+CREATE INDEX idx_session_expire ON session(expire);
+
+-- ============================================
+-- Table 14: lifeline_videos_watched (Track lifeline restoration)
 -- ============================================
 CREATE TABLE lifeline_videos_watched (
     id SERIAL PRIMARY KEY,
@@ -341,7 +354,7 @@ CREATE INDEX idx_lifeline_videos_phone ON lifeline_videos_watched(phone);
 CREATE INDEX idx_lifeline_videos_attempt ON lifeline_videos_watched(attempt_id);
 
 -- ============================================
--- Table 14: reels (Video Reels like TikTok/Shorts)
+-- Table 15: reels (Video Reels like TikTok/Shorts)
 -- ============================================
 CREATE TABLE reels (
     id SERIAL PRIMARY KEY,
@@ -367,7 +380,7 @@ CREATE INDEX idx_reels_category ON reels(category);
 CREATE INDEX idx_reels_created ON reels(created_at DESC);
 
 -- ============================================
--- Table 15: user_reel_progress (User viewing tracking)
+-- Table 16: user_reel_progress (User viewing tracking)
 -- ============================================
 CREATE TABLE user_reel_progress (
     id SERIAL PRIMARY KEY,
@@ -396,7 +409,7 @@ CREATE INDEX idx_user_reel_hearted ON user_reel_progress(reel_id, is_hearted) WH
 -- ============================================
 DO $$
 BEGIN
-    RAISE NOTICE 'Database schema created successfully with 15 tables!';
+    RAISE NOTICE 'Database schema created successfully with 16 tables!';
     RAISE NOTICE '✓ app_config (configurable settings)';
     RAISE NOTICE '✓ users_profile';
     RAISE NOTICE '✓ questions';
@@ -409,6 +422,7 @@ BEGIN
     RAISE NOTICE '✓ otp_logs';
     RAISE NOTICE '✓ online_users_config (fake/actual mode)';
     RAISE NOTICE '✓ admin_users';
+    RAISE NOTICE '✓ session (admin sessions for PM2 cluster)';
     RAISE NOTICE '✓ lifeline_videos_watched';
     RAISE NOTICE '✓ reels (video reels)';
     RAISE NOTICE '✓ user_reel_progress (viewing tracking)';
