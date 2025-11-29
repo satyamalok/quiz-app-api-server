@@ -20,6 +20,7 @@
    - [Statistics APIs](#5-statistics-apis)
    - [App Configuration APIs](#6-app-configuration-apis)
    - [Reels APIs](#7-reels-apis) *(NEW)*
+   - [Quiz Levels Metadata APIs](#8-quiz-levels-metadata-apis-unauthenticated) *(NEW - Unauthenticated)*
 5. [Common Workflows](#common-workflows)
 6. [Data Types & Enums](#data-types--enums)
 
@@ -2065,6 +2066,182 @@ Authorization: Bearer <jwt_token>
 curl -X GET "http://localhost:3000/api/v1/reels/hearted?limit=20&offset=0" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
+
+---
+
+## 8. QUIZ LEVELS METADATA APIS (UNAUTHENTICATED)
+
+These endpoints allow the Android app to cache quiz level metadata locally without requiring authentication. This enables faster app startup and offline display of level information.
+
+**Key Benefits:**
+- No JWT token required
+- Client can cache levels and only fetch when version changes
+- Reduces authenticated API calls during app launch
+
+### 8.1 Get All Levels
+
+Get all quiz levels with version information for caching.
+
+**Endpoint**: `GET /levels`
+**Authentication**: None (Public endpoint)
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "levels": [
+    {
+      "level_number": 1,
+      "title": "Level 1",
+      "subtitle": "Getting Started",
+      "duration_seconds": 300
+    },
+    {
+      "level_number": 2,
+      "title": "Level 2",
+      "subtitle": "Basic Concepts",
+      "duration_seconds": 300
+    },
+    {
+      "level_number": 3,
+      "title": "Level 3",
+      "subtitle": "Building Knowledge",
+      "duration_seconds": 300
+    }
+  ],
+  "version": 1,
+  "last_updated_at": "2025-11-28T10:30:00.000Z",
+  "total_levels": 100
+}
+```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| levels | array | List of active quiz levels |
+| levels[].level_number | integer | Level number (1-100) |
+| levels[].title | string | Display title for the level |
+| levels[].subtitle | string | Optional subtitle or description |
+| levels[].duration_seconds | integer | Time limit for the level in seconds |
+| version | integer | Current levels version (increments when levels change) |
+| last_updated_at | string | ISO timestamp of last levels update |
+| total_levels | integer | Total number of active levels |
+
+#### cURL Example
+
+```bash
+curl -X GET http://localhost:3000/api/v1/levels
+```
+
+---
+
+### 8.2 Check Levels Update
+
+Check if levels have changed since client's cached version. Use this to avoid downloading full levels list on every app launch.
+
+**Endpoint**: `GET /levels/check`
+**Authentication**: None (Public endpoint)
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| version | integer | No | 0 | Client's cached version number |
+
+#### Success Response - No Update Needed (200)
+
+```json
+{
+  "success": true,
+  "changed": false,
+  "current_version": 1
+}
+```
+
+#### Success Response - Update Available (200)
+
+```json
+{
+  "success": true,
+  "changed": true,
+  "new_version": 2,
+  "last_updated_at": "2025-11-29T10:30:00.000Z",
+  "levels": [
+    {
+      "level_number": 1,
+      "title": "Level 1",
+      "subtitle": "Getting Started",
+      "duration_seconds": 300
+    },
+    {
+      "level_number": 2,
+      "title": "Level 2",
+      "subtitle": "Basic Concepts",
+      "duration_seconds": 300
+    }
+  ],
+  "total_levels": 100
+}
+```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| changed | boolean | Whether levels have changed since client's version |
+| current_version | integer | (Only if changed=false) Current server version |
+| new_version | integer | (Only if changed=true) New version to cache |
+| last_updated_at | string | (Only if changed=true) Timestamp of update |
+| levels | array | (Only if changed=true) Full list of new levels |
+| total_levels | integer | (Only if changed=true) Total number of levels |
+
+#### cURL Examples
+
+```bash
+# Check with version 0 (first app launch)
+curl -X GET "http://localhost:3000/api/v1/levels/check?version=0"
+
+# Check with cached version 1
+curl -X GET "http://localhost:3000/api/v1/levels/check?version=1"
+
+# Check with current version (no update)
+curl -X GET "http://localhost:3000/api/v1/levels/check?version=2"
+```
+
+---
+
+### Levels Caching Strategy (Android Implementation)
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant LocalCache
+    participant API
+
+    Note over App: App Launch
+    App->>LocalCache: Get cached version
+    LocalCache->>App: version=1
+
+    App->>API: GET /levels/check?version=1
+    alt No update needed
+        API->>App: changed=false
+        App->>LocalCache: Use cached levels
+    else Update available
+        API->>App: changed=true, levels=[...]
+        App->>LocalCache: Save new levels + version
+        App->>App: Display updated levels
+    end
+```
+
+**Implementation Notes:**
+
+1. **First Launch**: Call `GET /levels` to fetch all levels, cache them with version
+2. **Subsequent Launches**: Call `GET /levels/check?version=X` with cached version
+3. **If changed=false**: Use cached levels (no network overhead)
+4. **If changed=true**: Update local cache with new levels and version
+5. **Offline Mode**: Always display cached levels if available
 
 ---
 

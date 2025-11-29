@@ -13,11 +13,11 @@ const levelsRoutes = require('./levelsRoutes');
 // Mount routes
 router.use('/auth', authRoutes);
 router.use('/user', userRoutes);
+router.use('/levels', levelsRoutes); // Quiz levels metadata (unauthenticated) - MUST be before quizRoutes
 router.use('/', quizRoutes); // Includes /level/* and /question/*
 router.use('/video', videoRoutes);
 router.use('/', statsRoutes); // Includes /leaderboard/*, /app/*
 router.use('/reels', reelsRoutes); // Video reels feature
-router.use('/levels', levelsRoutes); // Quiz levels metadata (unauthenticated)
 
 // Health check
 router.get('/health', (req, res) => {

@@ -122,9 +122,9 @@ function validateMappedRows(mappedRows) {
       errors.push(`Row ${rowNum}: Question order must be between 1-10`);
     }
 
-    if (!row.question_text) {
-      errors.push(`Row ${rowNum}: Missing question_text`);
-    }
+    // Question text OR question image is required (not both mandatory)
+    // Empty question_text is allowed if question_image_url will be added later
+    // This allows bulk upload of placeholder questions for image-only questions
 
     // Check all 4 options exist
     for (let i = 1; i <= 4; i++) {

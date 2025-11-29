@@ -34,8 +34,8 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="question_text">Question Text *</label>
-                    <textarea id="question_text" name="question_text" rows="3" required><%= question.question_text || '' %></textarea>
+                    <label for="question_text">Question Text <small style="color: #666; font-weight: normal;">(optional if image provided)</small></label>
+                    <textarea id="question_text" name="question_text" rows="3"><%= question.question_text || '' %></textarea>
                 </div>
 
                 <div class="form-group">
