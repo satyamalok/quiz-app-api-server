@@ -1,11 +1,34 @@
 const pool = require('../config/database');
 const whatsappOtpService = require('./whatsappOtpService');
 
+// Sticky OTP configuration for Google Play Store review
+// This phone number will always get the same OTP (for app review purposes)
+const STICKY_OTP_PHONE = process.env.STICKY_OTP_PHONE || '9888888888';
+const STICKY_OTP_CODE = process.env.STICKY_OTP_CODE || '123456';
+
+/**
+ * Check if phone is the sticky OTP phone (for Google Play review)
+ * @param {string} phone - Phone number
+ * @returns {boolean}
+ */
+function isStickyOTPPhone(phone) {
+  // Normalize phone number (remove leading zeros, country code, etc.)
+  const normalizedPhone = phone.replace(/^(\+91|91|0+)/, '').trim();
+  const normalizedStickyPhone = STICKY_OTP_PHONE.replace(/^(\+91|91|0+)/, '').trim();
+  return normalizedPhone === normalizedStickyPhone;
+}
+
 /**
  * Generate 6-digit OTP
+ * @param {string} phone - Phone number (optional, for sticky OTP check)
  * @returns {string} 6-digit OTP
  */
-function generateOTP() {
+function generateOTP(phone = null) {
+  // If this is the sticky OTP phone, return the fixed OTP
+  if (phone && isStickyOTPPhone(phone)) {
+    console.log(`[OTP] Using sticky OTP for Google Play review phone: ${phone}`);
+    return STICKY_OTP_CODE;
+  }
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
@@ -49,8 +72,8 @@ async function sendOTP(phone, ipAddress = null) {
       }
     }
 
-    // Generate OTP
-    const otp = generateOTP();
+    // Generate OTP (passes phone for sticky OTP check)
+    const otp = generateOTP(phone);
     const expiresAt = new Date(Date.now() + otpExpiryMinutes * 60 * 1000);
 
     // Store OTP in database
@@ -129,6 +152,12 @@ async function sendOTP(phone, ipAddress = null) {
  */
 async function verifyOTP(phone, otp) {
   try {
+    // Check for sticky OTP (Google Play review phone)
+    if (isStickyOTPPhone(phone) && otp === STICKY_OTP_CODE) {
+      console.log(`[OTP] Sticky OTP verified for Google Play review phone: ${phone}`);
+      return true;
+    }
+
     // Get app configuration
     const config = await getAppConfig();
 

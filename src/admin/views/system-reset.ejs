@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Reset - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .danger-zone {
+            background: #fff5f5;
+            border: 2px solid #dc3545;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .category-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .category-card:hover {
+            border-color: #007bff;
+        }
+        .category-card input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+        }
+        .category-info {
+            flex: 1;
+        }
+        .category-info h3 {
+            margin: 0 0 5px 0;
+            font-size: 16px;
+        }
+        .category-info p {
+            margin: 0;
+            color: #666;
+            font-size: 13px;
+        }
+        .count-badge {
+            background: #e9ecef;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .confirm-input {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        .confirm-input:focus {
+            border-color: #dc3545;
+            outline: none;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>System Reset</h1>
+
+        <div class="danger-zone">
+            <h2 style="color: #dc3545; margin-top: 0;">⚠️ Danger Zone</h2>
+            <p style="color: #666;">
+                This page allows you to selectively reset data in the database.
+                <strong>These actions are IRREVERSIBLE.</strong> Use with extreme caution.
+            </p>
+        </div>
+
+        <!-- Selective Reset -->
+        <div class="card">
+            <h2>Selective Reset</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Select the data categories you want to delete:
+            </p>
+
+            <form id="selectiveResetForm">
+                <div class="category-card">
+                    <input type="checkbox" name="categories" value="users" id="cat-users">
+                    <div class="category-info">
+                        <h3><label for="cat-users">All Users</label></h3>
+                        <p>Delete all user accounts and their related data (progress, XP, referrals, etc.)</p>
+                    </div>
+                    <span class="count-badge"><%= counts.users %> users</span>
+                </div>
+
+                <div class="category-card">
+                    <input type="checkbox" name="categories" value="quiz_progress" id="cat-progress">
+                    <div class="category-info">
+                        <h3><label for="cat-progress">Quiz Progress Only</label></h3>
+                        <p>Reset all quiz attempts, XP, and levels to zero (keeps user accounts)</p>
+                    </div>
+                    <span class="count-badge"><%= counts.level_attempts %> attempts</span>
+                </div>
+
+                <div class="category-card">
+                    <input type="checkbox" name="categories" value="questions" id="cat-questions">
+                    <div class="category-info">
+                        <h3><label for="cat-questions">Questions</label></h3>
+                        <p>Delete all quiz questions</p>
+                    </div>
+                    <span class="count-badge"><%= counts.questions %> questions</span>
+                </div>
+
+                <div class="category-card">
+                    <input type="checkbox" name="categories" value="videos" id="cat-videos">
+                    <div class="category-info">
+                        <h3><label for="cat-videos">Promotional Videos</label></h3>
+                        <p>Delete all promotional video records (files in MinIO not affected)</p>
+                    </div>
+                    <span class="count-badge"><%= counts.videos %> videos</span>
+                </div>
+
+                <div class="category-card">
+                    <input type="checkbox" name="categories" value="reels" id="cat-reels">
+                    <div class="category-info">
+                        <h3><label for="cat-reels">Reels</label></h3>
+                        <p>Delete all video reels and user progress (files in MinIO not affected)</p>
+                    </div>
+                    <span class="count-badge"><%= counts.reels %> reels</span>
+                </div>
+
+                <div class="category-card">
+                    <input type="checkbox" name="categories" value="reel_progress" id="cat-reel-progress">
+                    <div class="category-info">
+                        <h3><label for="cat-reel-progress">Reel Progress Only</label></h3>
+                        <p>Clear user reel viewing history (keeps reels, users can see them again)</p>
+                    </div>
+                    <span class="count-badge"><%= counts.reel_progress %> records</span>
+                </div>
+
+                <div class="category-card">
+                    <input type="checkbox" name="categories" value="referrals" id="cat-referrals">
+                    <div class="category-info">
+                        <h3><label for="cat-referrals">Referral Data</label></h3>
+                        <p>Delete all referral tracking records</p>
+                    </div>
+                    <span class="count-badge"><%= counts.referrals %> referrals</span>
+                </div>
+
+                <div class="category-card">
+                    <input type="checkbox" name="categories" value="otp_logs" id="cat-otp">
+                    <div class="category-info">
+                        <h3><label for="cat-otp">OTP Logs</label></h3>
+                        <p>Delete all OTP request and verification logs</p>
+                    </div>
+                    <span class="count-badge"><%= counts.otp_logs %> logs</span>
+                </div>
+
+                <div class="category-card">
+                    <input type="checkbox" name="categories" value="levels_metadata" id="cat-levels">
+                    <div class="category-info">
+                        <h3><label for="cat-levels">Level Metadata</label></h3>
+                        <p>Delete all quiz level metadata (titles, durations, etc.)</p>
+                    </div>
+                    <span class="count-badge">Level config</span>
+                </div>
+
+                <div class="warning-box">
+                    <strong>To confirm, type:</strong> RESET DATABASE
+                    <input type="text" id="confirmText" class="confirm-input" placeholder="Type confirmation text here...">
+                </div>
+
+                <button type="submit" class="btn" style="background: #dc3545; padding: 12px 30px;">
+                    Reset Selected Data
+                </button>
+            </form>
+        </div>
+
+        <!-- Complete Reset -->
+        <div class="card" style="border: 2px solid #dc3545;">
+            <h2 style="color: #dc3545;">Nuclear Option: Reset Everything</h2>
+            <p style="color: #666;">
+                This will delete ALL data from the database and start fresh.
+                User accounts, questions, videos, reels - everything will be gone.
+            </p>
+
+            <div class="warning-box" style="background: #f8d7da; border-color: #dc3545;">
+                <strong style="color: #dc3545;">Type exactly:</strong> RESET ALL DATA PERMANENTLY
+                <input type="text" id="confirmAllText" class="confirm-input" placeholder="Type confirmation text here...">
+            </div>
+
+            <button onclick="resetAll()" class="btn" style="background: #6c0000; padding: 12px 30px;">
+                DELETE EVERYTHING
+            </button>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <a href="/admin/dashboard" style="color: #0066cc; text-decoration: none;">← Back to Dashboard</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('selectiveResetForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const checkboxes = document.querySelectorAll('input[name="categories"]:checked');
+            if (checkboxes.length === 0) {
+                alert('Please select at least one category to reset');
+                return;
+            }
+
+            const confirmText = document.getElementById('confirmText').value;
+            if (confirmText !== 'RESET DATABASE') {
+                alert('Please type exactly: RESET DATABASE');
+                return;
+            }
+
+            if (!confirm('Are you SURE you want to proceed with the reset? This cannot be undone!')) {
+                return;
+            }
+
+            const categories = Array.from(checkboxes).map(cb => cb.value);
+
+            try {
+                const response = await fetch('/admin/system/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ categories, confirm_text: confirmText })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('Reset completed successfully!\n\n' + JSON.stringify(result.results, null, 2));
+                    location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (err) {
+                alert('Error performing reset');
+            }
+        });
+
+        async function resetAll() {
+            const confirmText = document.getElementById('confirmAllText').value;
+            if (confirmText !== 'RESET ALL DATA PERMANENTLY') {
+                alert('Please type exactly: RESET ALL DATA PERMANENTLY');
+                return;
+            }
+
+            if (!confirm('WARNING: This will delete ALL data from the database!')) {
+                return;
+            }
+            if (!confirm('This is your FINAL warning. Are you absolutely certain?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/admin/system/reset-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirm_text: confirmText })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (err) {
+                alert('Error performing complete reset');
+            }
+        }
+    </script>
+</body>
+</html>

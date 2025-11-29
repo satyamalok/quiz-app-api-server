@@ -63,15 +63,20 @@
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="question_text">Question Text *</label>
-                    <textarea id="question_text" name="question_text" rows="3" required></textarea>
+                <div style="padding: 10px; background: #fff3cd; border-radius: 5px; margin-bottom: 15px; border: 1px solid #ffc107;">
+                    <strong style="color: #856404;">Note:</strong>
+                    <span style="color: #856404;">Either Question Text OR Question Image is required (or both). Use image-only for questions that are entirely visual.</span>
                 </div>
 
                 <div class="form-group">
-                    <label for="question_image">Question Image (optional)</label>
+                    <label for="question_text">Question Text</label>
+                    <textarea id="question_text" name="question_text" rows="3" placeholder="Enter question text (or leave empty for image-only questions)"></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="question_image">Question Image</label>
                     <input type="file" id="question_image" name="question_image" accept="image/*">
-                    <small style="color: #666;">Upload image to display with the question (stored in MinIO questions/ folder)</small>
+                    <small style="color: #666;">Upload image to display with the question. For image-only questions, leave text empty and upload image.</small>
                 </div>
 
                 <div class="form-group">

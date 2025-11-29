@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Level - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>Create New Level</h1>
+
+        <% if (message) { %>
+            <div class="success"><%= message %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="error"><%= error %></div>
+        <% } %>
+
+        <div class="card">
+            <h2>Level Details</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Create a new quiz level. This information will be shown to users in the app.
+            </p>
+
+            <form method="POST" action="/admin/levels/create">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label for="level_number">Level Number *</label>
+                        <input type="number" id="level_number" name="level_number"
+                               value="<%= suggestedLevel %>" min="1" max="100" required>
+                        <small style="color: #666;">Must be between 1-100 and unique</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="duration_seconds">Duration (seconds) *</label>
+                        <input type="number" id="duration_seconds" name="duration_seconds"
+                               value="300" min="60" max="3600" required>
+                        <small style="color: #666;">Quiz duration in seconds (e.g., 300 = 5 minutes)</small>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="title">Title *</label>
+                    <input type="text" id="title" name="title" placeholder="e.g., The Beginning" required maxlength="200">
+                    <small style="color: #666;">Main title shown to users</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="subtitle">Subtitle</label>
+                    <input type="text" id="subtitle" name="subtitle" placeholder="e.g., Start your JNV journey" maxlength="300">
+                    <small style="color: #666;">Optional description or tagline</small>
+                </div>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="is_active" checked>
+                        Active (visible to users)
+                    </label>
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button type="submit">Create Level</button>
+                    <a href="/admin/levels" class="btn" style="background: #6c757d; text-decoration: none;">Cancel</a>
+                </div>
+            </form>
+        </div>
+
+        <div class="card" style="background: #f8f9fa;">
+            <h3>Duration Guide</h3>
+            <ul style="margin: 10px 0 0 20px; color: #666;">
+                <li><strong>180 seconds</strong> = 3 minutes (quick quiz)</li>
+                <li><strong>300 seconds</strong> = 5 minutes (standard)</li>
+                <li><strong>600 seconds</strong> = 10 minutes (longer quiz)</li>
+                <li><strong>900 seconds</strong> = 15 minutes (comprehensive)</li>
+            </ul>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <a href="/admin/levels" style="color: #0066cc; text-decoration: none;">← Back to Levels</a>
+        </div>
+    </div>
+</body>
+</html>

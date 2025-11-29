@@ -134,22 +134,54 @@ async function showDashboard(req, res) {
  */
 async function showOTPViewer(req, res) {
   try {
+    // Fetch OTP logs with timestamps converted to IST for display
     const result = await pool.query(`
-      SELECT phone, otp_code, generated_at, expires_at, is_verified, attempts
+      SELECT
+        phone,
+        otp_code,
+        generated_at AT TIME ZONE 'Asia/Kolkata' as generated_at,
+        expires_at AT TIME ZONE 'Asia/Kolkata' as expires_at,
+        is_verified,
+        attempts
       FROM otp_logs
       ORDER BY generated_at DESC
       LIMIT 50
     `);
 
+    // Format timestamps for display in IST
+    const otpLogs = result.rows.map(log => ({
+      ...log,
+      generated_at_formatted: formatISTDate(log.generated_at),
+      expires_at_formatted: formatISTDate(log.expires_at)
+    }));
+
     res.render('otp-viewer', {
       admin: req.session.adminUser,
-      otpLogs: result.rows
+      otpLogs
     });
 
   } catch (err) {
     console.error('OTP viewer error:', err);
     res.status(500).send('Error loading OTP logs');
   }
+}
+
+/**
+ * Format date to IST string for display
+ */
+function formatISTDate(date) {
+  if (!date) return '-';
+  const d = new Date(date);
+  return d.toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true
+  });
 }
 
 /**
@@ -478,17 +510,50 @@ async function showUsers(req, res) {
 
 /**
  * GET /admin/users/list
- * List all users with search and pagination
+ * List all users with search, filters, and pagination
  */
 async function listAllUsers(req, res) {
   try {
-    const { search, page = 1, sort = 'xp_total' } = req.query;
+    const { search, page = 1, sort = 'xp_total', filter = 'all' } = req.query;
     const limit = 50;
     const offset = (page - 1) * limit;
+
+    // Get filter counts for all categories (IST timezone)
+    const filterCountsResult = await pool.query(`
+      SELECT
+        COUNT(*) as total,
+        COUNT(CASE WHEN date_joined::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date THEN 1 END) as joined_today,
+        COUNT(CASE WHEN date_joined >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '7 days' THEN 1 END) as joined_this_week,
+        COUNT(CASE WHEN date_joined >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days' THEN 1 END) as joined_this_month,
+        COUNT(CASE WHEN last_active_at IS NOT NULL AND last_active_at >= NOW() - INTERVAL '5 minutes' THEN 1 END) as active_now,
+        COUNT(CASE WHEN last_active_at IS NOT NULL AND last_active_at::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date THEN 1 END) as active_today,
+        COUNT(CASE WHEN last_active_at IS NOT NULL AND last_active_at >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '7 days' THEN 1 END) as active_this_week,
+        COUNT(CASE WHEN current_level > 1 THEN 1 END) as has_progress,
+        COUNT(CASE WHEN referred_by IS NOT NULL THEN 1 END) as referred_users
+      FROM users_profile
+    `);
+    const filterCounts = filterCountsResult.rows[0];
 
     let query = 'SELECT * FROM users_profile WHERE 1=1';
     const params = [];
     let paramCount = 1;
+
+    // Apply filter based on category
+    const filterConditions = {
+      'all': '',
+      'joined_today': ` AND date_joined::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date`,
+      'joined_this_week': ` AND date_joined >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '7 days'`,
+      'joined_this_month': ` AND date_joined >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days'`,
+      'active_now': ` AND last_active_at IS NOT NULL AND last_active_at >= NOW() - INTERVAL '5 minutes'`,
+      'active_today': ` AND last_active_at IS NOT NULL AND last_active_at::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date`,
+      'active_this_week': ` AND last_active_at IS NOT NULL AND last_active_at >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '7 days'`,
+      'has_progress': ` AND current_level > 1`,
+      'referred_users': ` AND referred_by IS NOT NULL`
+    };
+
+    if (filterConditions[filter]) {
+      query += filterConditions[filter];
+    }
 
     // Search filter
     if (search) {
@@ -502,7 +567,8 @@ async function listAllUsers(req, res) {
       'xp_total': 'xp_total DESC',
       'current_level': 'current_level DESC',
       'date_joined': 'date_joined DESC',
-      'name': 'name ASC'
+      'name': 'name ASC',
+      'last_active': 'last_active_at DESC NULLS LAST'
     };
     const orderBy = validSorts[sort] || 'xp_total DESC';
     query += ` ORDER BY ${orderBy} LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
@@ -510,11 +576,17 @@ async function listAllUsers(req, res) {
 
     const result = await pool.query(query, params);
 
-    // Get total count for pagination
+    // Get total count for pagination (with same filters applied)
     let countQuery = 'SELECT COUNT(*) FROM users_profile WHERE 1=1';
     const countParams = [];
+    let countParamNum = 1;
+
+    if (filterConditions[filter]) {
+      countQuery += filterConditions[filter];
+    }
+
     if (search) {
-      countQuery += ` AND (phone LIKE $1 OR name ILIKE $1 OR referral_code LIKE $1)`;
+      countQuery += ` AND (phone LIKE $${countParamNum} OR name ILIKE $${countParamNum} OR referral_code LIKE $${countParamNum})`;
       countParams.push(`%${search}%`);
     }
 
@@ -525,7 +597,18 @@ async function listAllUsers(req, res) {
     res.render('user-list', {
       admin: req.session.adminUser,
       users: result.rows,
-      filters: { search, sort },
+      filters: { search, sort, filter },
+      filterCounts: {
+        total: parseInt(filterCounts.total),
+        joined_today: parseInt(filterCounts.joined_today),
+        joined_this_week: parseInt(filterCounts.joined_this_week),
+        joined_this_month: parseInt(filterCounts.joined_this_month),
+        active_now: parseInt(filterCounts.active_now),
+        active_today: parseInt(filterCounts.active_today),
+        active_this_week: parseInt(filterCounts.active_this_week),
+        has_progress: parseInt(filterCounts.has_progress),
+        referred_users: parseInt(filterCounts.referred_users)
+      },
       pagination: {
         currentPage: parseInt(page),
         totalPages,
@@ -831,12 +914,7 @@ async function createQuestion(req, res) {
       explanation_text, subject, topic, difficulty, medium
     } = req.body;
 
-    // Add @ to correct option
-    const options = [option_1, option_2, option_3, option_4];
-    const correctIndex = parseInt(correct_option) - 1;
-    options[correctIndex] = '@' + options[correctIndex];
-
-    // Handle image uploads if any
+    // Handle image uploads first to check if question_image is provided
     let questionImageUrl = null;
     let explanationUrl = null;
 
@@ -851,6 +929,26 @@ async function createQuestion(req, res) {
       }
     }
 
+    // Validate: Either question_text OR question_image is required (but not necessarily both)
+    const hasQuestionText = question_text && question_text.trim().length > 0;
+    const hasQuestionImage = questionImageUrl !== null;
+
+    if (!hasQuestionText && !hasQuestionImage) {
+      return res.render('question-upload', {
+        admin: req.session.adminUser,
+        message: null,
+        error: 'Either question text or question image is required. You can provide one or both.'
+      });
+    }
+
+    // Add @ to correct option
+    const options = [option_1, option_2, option_3, option_4];
+    const correctIndex = parseInt(correct_option) - 1;
+    options[correctIndex] = '@' + options[correctIndex];
+
+    // Use null for empty question_text (for image-only questions)
+    const finalQuestionText = hasQuestionText ? question_text.trim() : null;
+
     await pool.query(`
       INSERT INTO questions (
         level, question_order, question_text, question_image_url,
@@ -858,7 +956,7 @@ async function createQuestion(req, res) {
         explanation_text, explanation_url, subject, topic, difficulty, medium
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
     `, [
-      level, question_order, question_text, questionImageUrl,
+      level, question_order, finalQuestionText, questionImageUrl,
       options[0], options[1], options[2], options[3],
       explanation_text, explanationUrl, subject, topic, difficulty, medium || 'english'
     ]);

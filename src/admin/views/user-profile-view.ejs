@@ -15,7 +15,25 @@
         <!-- User Basic Info -->
         <div class="card">
             <h2>Basic Information</h2>
-            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+            <div style="display: grid; grid-template-columns: 150px 1fr 1fr; gap: 20px; align-items: start;">
+                <!-- Profile Image -->
+                <div style="text-align: center;">
+                    <% if (user.profile_image_url) { %>
+                        <img src="<%= user.profile_image_url %>" alt="Profile Picture"
+                             style="width: 120px; height: 120px; border-radius: 50%; object-fit: cover; border: 3px solid #ddd; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                    <% } else { %>
+                        <div style="width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; margin: 0 auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                            <span style="font-size: 48px; color: white; font-weight: bold;"><%= user.name ? user.name.charAt(0).toUpperCase() : 'U' %></span>
+                        </div>
+                    <% } %>
+                    <div style="margin-top: 8px; font-size: 12px; color: #666;">
+                        <% if (user.profile_image_url) { %>
+                            Profile Picture
+                        <% } else { %>
+                            No profile picture
+                        <% } %>
+                    </div>
+                </div>
                 <div>
                     <strong>Phone:</strong> <%= user.phone %><br>
                     <strong>Name:</strong> <%= user.name %><br>
@@ -175,11 +193,113 @@
             </table>
         </div>
 
+        <!-- User Actions (Danger Zone) -->
+        <div class="card" style="border-left: 4px solid #dc3545; background: #fff5f5;">
+            <h2 style="color: #dc3545;">Danger Zone</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                These actions are irreversible. Please be careful.
+            </p>
+
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <button onclick="resetProgress('<%= user.phone %>')" class="btn" style="background: #ffc107; color: #333;">
+                    Reset Progress
+                </button>
+                <button onclick="deleteUser('<%= user.phone %>')" class="btn" style="background: #6c757d;">
+                    Delete User
+                </button>
+                <button onclick="purgeUser('<%= user.phone %>')" class="btn" style="background: #dc3545;">
+                    Purge User & All Data
+                </button>
+            </div>
+
+            <div style="margin-top: 15px; font-size: 13px; color: #666;">
+                <strong>Reset Progress:</strong> Clears all game data (XP, levels, attempts) but keeps the account.<br>
+                <strong>Delete User:</strong> Soft delete - user can't login but data is preserved.<br>
+                <strong>Purge User:</strong> Permanently deletes user and ALL related data. Cannot be undone!
+            </div>
+        </div>
+
         <!-- Back Links -->
         <div style="margin-top: 20px; display: flex; gap: 20px;">
             <a href="/admin/users/list" style="color: #0066cc; text-decoration: none;">← Back to User List</a>
             <a href="/admin/users/<%= user.phone %>/edit" style="color: #28a745; text-decoration: none;">✎ Edit User</a>
         </div>
     </div>
+
+    <script>
+        async function resetProgress(phone) {
+            if (!confirm('Are you sure you want to reset this user\'s progress? This will clear all XP, level progress, and quiz attempts.')) {
+                return;
+            }
+            if (!confirm('This action cannot be undone. Type OK in the next prompt to confirm.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/users/${phone}/reset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirm: 'RESET' })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (err) {
+                alert('Error resetting user progress');
+            }
+        }
+
+        async function deleteUser(phone) {
+            if (!confirm('Are you sure you want to delete this user? (Soft delete - data preserved)')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/users/${phone}/delete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    window.location.href = '/admin/users/list';
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (err) {
+                alert('Error deleting user');
+            }
+        }
+
+        async function purgeUser(phone) {
+            if (!confirm('WARNING: This will PERMANENTLY DELETE this user and ALL their data. This cannot be undone!')) {
+                return;
+            }
+            if (!confirm('Are you ABSOLUTELY SURE? All quiz progress, XP, referrals, and other data will be lost forever.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/users/${phone}/purge`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ confirm: 'PURGE' })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert(result.message);
+                    window.location.href = '/admin/users/list';
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (err) {
+                alert('Error purging user');
+            }
+        }
+    </script>
 </body>
 </html>

@@ -79,7 +79,9 @@ async function verifyOTPHandler(req, res, next) {
       // Process referral if code provided (pass client to reuse transaction)
       if (referral_code) {
         try {
+          console.log(`Processing referral for phone: ${phone}, code: ${referral_code}`);
           referralBonus = await processReferral(phone, referral_code, client);
+          console.log(`Referral processed successfully:`, referralBonus);
 
           // Refresh user data to get updated XP
           const updatedUserResult = await client.query(
@@ -88,8 +90,13 @@ async function verifyOTPHandler(req, res, next) {
           );
           user = updatedUserResult.rows[0];
         } catch (refErr) {
-          // Referral failed but user creation succeeded
+          // Referral failed but user creation succeeded - include error details in response
           console.error('Referral processing error:', refErr);
+          referralBonus = {
+            applied: false,
+            error: refErr.code || 'REFERRAL_ERROR',
+            message: refErr.message || 'Failed to process referral'
+          };
         }
       }
 

@@ -51,6 +51,26 @@ const {
   showAnalytics: showReelsAnalytics,
   upload: reelsUpload
 } = require('./reelsAdminController');
+const {
+  showLevels,
+  showCreateLevel,
+  createLevelHandler,
+  showEditLevel,
+  updateLevelHandler,
+  deleteLevelHandler,
+  toggleLevelStatus
+} = require('./levelsAdminController');
+const {
+  deleteUser,
+  purgeUser,
+  resetUserProgress,
+  bulkUserAction
+} = require('./userManagementController');
+const {
+  showResetPage,
+  performReset,
+  resetAllData
+} = require('./systemResetController');
 const { requireAdminAuth, redirectIfAuthenticated } = require('../middleware/adminAuth');
 
 // Login routes (public)
@@ -85,6 +105,10 @@ router.get('/users/list', listAllUsers); // List all users
 router.get('/users/:phone/view', viewUserProfile); // View user profile
 router.get('/users/:phone/edit', showEditUser); // Edit user form
 router.post('/users/:phone/update', updateUser); // Update user
+router.post('/users/:phone/delete', deleteUser); // Soft delete user
+router.post('/users/:phone/purge', purgeUser); // Hard delete user and all data
+router.post('/users/:phone/reset', resetUserProgress); // Reset user progress
+router.post('/users/bulk-action', bulkUserAction); // Bulk actions
 
 // Question Management
 router.get('/questions/upload', showQuestionUpload);
@@ -127,5 +151,19 @@ router.post('/reels/:id/update', updateReel);
 router.post('/reels/:id/toggle', toggleReelStatus);
 router.delete('/reels/:id', deleteReel);
 router.post('/reels/bulk-action', reelsBulkAction);
+
+// Quiz Levels Management
+router.get('/levels', showLevels);
+router.get('/levels/create', showCreateLevel);
+router.post('/levels/create', createLevelHandler);
+router.get('/levels/:levelNumber/edit', showEditLevel);
+router.post('/levels/:levelNumber/update', updateLevelHandler);
+router.post('/levels/:levelNumber/delete', deleteLevelHandler);
+router.post('/levels/:levelNumber/toggle', toggleLevelStatus);
+
+// System Reset (Database Management)
+router.get('/system/reset', showResetPage);
+router.post('/system/reset', performReset);
+router.post('/system/reset-all', resetAllData);
 
 module.exports = router;

@@ -49,8 +49,8 @@
                             <tr>
                                 <td><%= log.phone %></td>
                                 <td><strong><%= log.otp_code %></strong></td>
-                                <td><%= new Date(log.generated_at).toLocaleString() %></td>
-                                <td><%= new Date(log.expires_at).toLocaleString() %></td>
+                                <td><%= log.generated_at_formatted %></td>
+                                <td><%= log.expires_at_formatted %></td>
                                 <td>
                                     <% if (log.is_verified) { %>
                                         <span style="color: green;">Verified</span>

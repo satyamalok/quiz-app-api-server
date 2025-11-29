@@ -70,6 +70,7 @@ CREATE TABLE users_profile (
     xp_total INTEGER NOT NULL DEFAULT 0,
     current_level INTEGER NOT NULL DEFAULT 1 CHECK (current_level >= 1 AND current_level <= 100),
     total_ads_watched INTEGER NOT NULL DEFAULT 0,
+    videos_watched INTEGER NOT NULL DEFAULT 0,
     last_active_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -405,13 +406,69 @@ CREATE INDEX idx_user_reel_phone_status ON user_reel_progress(phone, status);
 CREATE INDEX idx_user_reel_hearted ON user_reel_progress(reel_id, is_hearted) WHERE is_hearted = TRUE;
 
 -- ============================================
+-- Table 17: quiz_levels (Level metadata for frontend)
+-- ============================================
+CREATE TABLE quiz_levels (
+    id SERIAL PRIMARY KEY,
+    level_number INTEGER NOT NULL UNIQUE CHECK (level_number >= 1 AND level_number <= 100),
+    title VARCHAR(200) NOT NULL,
+    subtitle VARCHAR(300),
+    duration_seconds INTEGER NOT NULL DEFAULT 300 CHECK (duration_seconds > 0),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_quiz_levels_number ON quiz_levels(level_number);
+CREATE INDEX idx_quiz_levels_active ON quiz_levels(is_active, level_number);
+
+-- ============================================
+-- Table 18: levels_version (Global version tracking)
+-- ============================================
+CREATE TABLE levels_version (
+    id SERIAL PRIMARY KEY CHECK (id = 1),
+    version INTEGER NOT NULL DEFAULT 1,
+    last_updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert default version record
+INSERT INTO levels_version (id, version, last_updated_at) VALUES (1, 1, CURRENT_TIMESTAMP);
+
+-- ============================================
+-- Function: Automatically increment version on level changes
+-- ============================================
+CREATE OR REPLACE FUNCTION update_levels_version()
+RETURNS TRIGGER AS $$
+BEGIN
+    UPDATE levels_version
+    SET version = version + 1, last_updated_at = CURRENT_TIMESTAMP
+    WHERE id = 1;
+    RETURN COALESCE(NEW, OLD);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Triggers for auto-versioning
+CREATE TRIGGER trg_quiz_levels_insert
+    AFTER INSERT ON quiz_levels
+    FOR EACH ROW EXECUTE FUNCTION update_levels_version();
+
+CREATE TRIGGER trg_quiz_levels_update
+    AFTER UPDATE ON quiz_levels
+    FOR EACH ROW EXECUTE FUNCTION update_levels_version();
+
+CREATE TRIGGER trg_quiz_levels_delete
+    AFTER DELETE ON quiz_levels
+    FOR EACH ROW EXECUTE FUNCTION update_levels_version();
+
+-- ============================================
 -- Success Message
 -- ============================================
 DO $$
 BEGIN
-    RAISE NOTICE 'Database schema created successfully with 16 tables!';
+    RAISE NOTICE 'Database schema created successfully with 18 tables!';
     RAISE NOTICE '✓ app_config (configurable settings)';
     RAISE NOTICE '✓ users_profile';
+    RAISE NOTICE '✓ referral_tracking';
     RAISE NOTICE '✓ questions';
     RAISE NOTICE '✓ level_attempts (with lifelines)';
     RAISE NOTICE '✓ question_responses';
@@ -426,4 +483,6 @@ BEGIN
     RAISE NOTICE '✓ lifeline_videos_watched';
     RAISE NOTICE '✓ reels (video reels)';
     RAISE NOTICE '✓ user_reel_progress (viewing tracking)';
+    RAISE NOTICE '✓ quiz_levels (level metadata)';
+    RAISE NOTICE '✓ levels_version (version tracking)';
 END $$;

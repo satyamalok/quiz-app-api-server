@@ -168,8 +168,10 @@ async function heartReel(req, res, next) {
 
     res.json({
       success: true,
+      action: result.is_hearted ? 'hearted' : 'unhearted',
       is_hearted: result.is_hearted,
-      total_hearts: result.total_hearts,
+      new_heart_count: result.total_hearts,
+      total_hearts: result.total_hearts, // Keep for backward compatibility
       message: result.is_hearted ? 'Reel hearted' : 'Heart removed'
     });
 

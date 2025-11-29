@@ -12,14 +12,14 @@ async function getReelsConfig() {
 }
 
 /**
- * Get next reels for user feed (sliding window approach)
+ * Get next reels for user feed (sliding window approach with infinite loop)
  * Returns reels the user hasn't started yet, newest first
- * If user has seen all reels, returns empty array (they've completed the feed)
+ * If user has seen all reels, resets their progress to start fresh (infinite loop)
  */
 async function getReelsFeed(phone, limit = 3) {
   // Get active reels that user hasn't started yet
   // Order by id DESC (newest first) to always serve newest content first
-  const result = await pool.query(`
+  let result = await pool.query(`
     SELECT
       r.id,
       r.title,
@@ -39,6 +39,42 @@ async function getReelsFeed(phone, limit = 3) {
     ORDER BY r.id DESC
     LIMIT $2
   `, [phone, limit]);
+
+  // If no reels found, user has seen all reels - reset their progress for infinite loop
+  if (result.rows.length === 0) {
+    const hasActiveReels = await pool.query('SELECT COUNT(*) FROM reels WHERE is_active = TRUE');
+    const totalActiveReels = parseInt(hasActiveReels.rows[0].count);
+
+    if (totalActiveReels > 0) {
+      // Reset user's reel progress (but keep hearts!)
+      // Only delete the 'started' status, keeping is_hearted preferences
+      await pool.query(`
+        DELETE FROM user_reel_progress
+        WHERE phone = $1
+          AND reel_id IN (SELECT id FROM reels WHERE is_active = TRUE)
+      `, [phone]);
+
+      // Now fetch reels again (user can see them fresh)
+      result = await pool.query(`
+        SELECT
+          r.id,
+          r.title,
+          r.description,
+          r.video_url,
+          r.thumbnail_url,
+          r.duration_seconds,
+          r.category,
+          r.tags,
+          r.total_hearts,
+          r.created_at,
+          FALSE as is_hearted
+        FROM reels r
+        WHERE r.is_active = TRUE
+        ORDER BY r.id DESC
+        LIMIT $1
+      `, [limit]);
+    }
+  }
 
   return result.rows;
 }
@@ -119,6 +155,14 @@ async function markReelWatched(phone, reelId, watchDurationSeconds) {
   try {
     await client.query('BEGIN');
 
+    // Check if already marked as watched to avoid double counting
+    const existingProgress = await client.query(
+      'SELECT status FROM user_reel_progress WHERE phone = $1 AND reel_id = $2',
+      [phone, reelId]
+    );
+
+    const alreadyWatched = existingProgress.rows.length > 0 && existingProgress.rows[0].status === 'watched';
+
     // Update user progress to watched status
     await client.query(`
       UPDATE user_reel_progress
@@ -140,6 +184,15 @@ async function markReelWatched(phone, reelId, watchDurationSeconds) {
         updated_at = ${SQL_IST_NOW}
       WHERE id = $1
     `, [reelId, watchDurationSeconds]);
+
+    // Increment videos_watched counter in user profile (only if not already watched)
+    if (!alreadyWatched) {
+      await client.query(`
+        UPDATE users_profile
+        SET videos_watched = COALESCE(videos_watched, 0) + 1, updated_at = ${SQL_IST_NOW}
+        WHERE phone = $1
+      `, [phone]);
+    }
 
     await client.query('COMMIT');
 

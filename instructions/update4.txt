@@ -1,0 +1,38 @@
+1- i want a new way for frontend to fetch the details about quiz levels like Title, Subtitle, Level Number and Duration of Quiz. i am giving you the client behavior: First app launch (or if no levels found in local) → fetch full level list with details. Subsequent launches → call Change Check API. Update local cache only if server reports changes. in the backend - there will be the full UI to make new levels with their details like - Title, Subtitle, Level Number and Duration in seconds. the admin should be able to add, delete, edit new or existing levels. Any change in levels must update the global levelsVersion.  Initial API fetch will be like this: Initial Fetch API Endpoint returns the full list of all quiz levels (500–1000). Each level contains: levelNumber, title, subtitle, duration. Response also includes a global levelsVersion or lastUpdatedAt. Change Check API Frontend sends the last saved levelsVersion (or timestamp). Server returns: { changed: false } if nothing updated { changed: true, newVersion, levels: [...] } if any level was added/edited/deleted. all these APIs will not require jwt token and should be unauthenticated. plan the feature for backend, changes in schema needed and UI for admin.
+
+2- The videos_watched stat in profile is not updating because the POST /reels/{id}/watched endpoint isn't incrementing the user's videos_watched counter. The    
+  frontend is making the correct API call. Note: this is from the android app or frontend developer so check it. 
+
+2- when referral code is added, then XP is not credited to any one of both the parties. i think in the backend the logic for referral code is either not implemented or is not working so check this.
+
+3- Note: this is from the frontend developer: Found the problem! The API is returning success: true but action is undefined.
+
+ The server response doesn't include the action field as expected. This is a server-side issue - the API should return action: 'hearted' or action: 
+ 'unhearted'.
+
+Issue: Server returns { success: true } but doesn't include the action field ('hearted' or 'unhearted'). This is a backend bug that should be reported to     
+ the server team.
+
+Note for backend team: The /reels/heart API should return:
+ {
+   "success": true,
+   "action": "hearted",  // or "unhearted" - THIS IS MISSING
+   "new_heart_count": 5
+ }
+
+4- you have to make a user phone number and its otp sticky ie all the time same otp because this will be used by google play team while verifying the app when i submit it for review. you can use this number 9888888888  and otp as 123456
+
+5- Currently while adding a question in any level - the question is compulsary and image for that question is optional. i want that question should also be optional and it can have only the image part. this is useful in some cases where the whole question is image and does not contain any text at all - check if this is possible or not?
+
+6- in users - manage all users, when i click view or edit then all the details are there but profile image is not visible. also show the profile image in view as well as edit if possible. 
+
+7- for any individual user or group of users i should be able to either delete that user or purge that user and all his details from our database or be able to reset his progress completely. This should be done safely.
+
+8- one more thing - i should have an option to reset all the data in our database about all the users, quiz questions, videos, reels, other and etc so that the quiz server can restart from fresh. you have to delete all the data completely - no need to delete from minio but from all the schema and tables should be like new. while doing this - i should be able to select which data to purge or reset - users, quiz questions, videos, reels and other options if necessary. the reason for this is - once the server is deployed then i need to test it and while testing it gets to add many users and a lot of users while automated load tests. so before actually taking it into production i want to give the team a fresh start of data completely. Plan this thoroughly.
+
+9- regarding reels - currently the user gets new reels all the time when he watches but when all the reels are finised then he should again start that cirlcle of reels from latest to oldest. he should not get a feel that reels have finished. keep his heart data as it is or you can even renew if you want. 
+
+10- in the users - manage all users - i want a filter category users joined by date, active today etc with their total numbers of users in that category. this will be meaningful.
+
+11- also, in otp viewer the time is still in UTC and not india time - check it please.
+

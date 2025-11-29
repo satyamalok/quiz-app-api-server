@@ -5,6 +5,87 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Management - JNV Quiz Admin</title>
     <%- include('partials/head') %>
+    <style>
+        .filter-section {
+            margin-bottom: 20px;
+        }
+        .filter-group {
+            margin-bottom: 15px;
+        }
+        .filter-group-label {
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+        .filter-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            text-decoration: none;
+            border: 1px solid #ddd;
+            background: #f8f9fa;
+            color: #333;
+            transition: all 0.2s;
+        }
+        .filter-chip:hover {
+            background: #e9ecef;
+            border-color: #adb5bd;
+        }
+        .filter-chip.active {
+            background: #007bff;
+            border-color: #007bff;
+            color: white;
+        }
+        .filter-chip .count {
+            background: rgba(0,0,0,0.1);
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .filter-chip.active .count {
+            background: rgba(255,255,255,0.2);
+        }
+        .filter-chip.green { border-color: #28a745; }
+        .filter-chip.green.active { background: #28a745; border-color: #28a745; }
+        .filter-chip.orange { border-color: #fd7e14; }
+        .filter-chip.orange.active { background: #fd7e14; border-color: #fd7e14; }
+        .filter-chip.purple { border-color: #6f42c1; }
+        .filter-chip.purple.active { background: #6f42c1; border-color: #6f42c1; }
+
+        .last-active {
+            font-size: 11px;
+            color: #666;
+        }
+        .last-active.online {
+            color: #28a745;
+            font-weight: 600;
+        }
+        .online-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: #28a745;
+            border-radius: 50%;
+            margin-right: 4px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
 </head>
 <body>
     <%- include('partials/nav') %>
@@ -12,9 +93,68 @@
     <div class="container">
         <h1>User Management</h1>
 
-        <!-- Search and Filter Bar -->
+        <!-- Filter Chips Section -->
+        <div class="card filter-section">
+            <div class="filter-group">
+                <div class="filter-group-label">Registration</div>
+                <div class="filter-chips">
+                    <a href="?filter=all&sort=<%= filters.sort %><%= filters.search ? '&search=' + filters.search : '' %>"
+                       class="filter-chip <%= filters.filter === 'all' || !filters.filter ? 'active' : '' %>">
+                        All Users <span class="count"><%= filterCounts.total %></span>
+                    </a>
+                    <a href="?filter=joined_today&sort=date_joined<%= filters.search ? '&search=' + filters.search : '' %>"
+                       class="filter-chip green <%= filters.filter === 'joined_today' ? 'active' : '' %>">
+                        Joined Today <span class="count"><%= filterCounts.joined_today %></span>
+                    </a>
+                    <a href="?filter=joined_this_week&sort=date_joined<%= filters.search ? '&search=' + filters.search : '' %>"
+                       class="filter-chip green <%= filters.filter === 'joined_this_week' ? 'active' : '' %>">
+                        This Week <span class="count"><%= filterCounts.joined_this_week %></span>
+                    </a>
+                    <a href="?filter=joined_this_month&sort=date_joined<%= filters.search ? '&search=' + filters.search : '' %>"
+                       class="filter-chip green <%= filters.filter === 'joined_this_month' ? 'active' : '' %>">
+                        This Month <span class="count"><%= filterCounts.joined_this_month %></span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="filter-group">
+                <div class="filter-group-label">Activity</div>
+                <div class="filter-chips">
+                    <a href="?filter=active_now&sort=last_active<%= filters.search ? '&search=' + filters.search : '' %>"
+                       class="filter-chip orange <%= filters.filter === 'active_now' ? 'active' : '' %>">
+                        Online Now <span class="count"><%= filterCounts.active_now %></span>
+                    </a>
+                    <a href="?filter=active_today&sort=last_active<%= filters.search ? '&search=' + filters.search : '' %>"
+                       class="filter-chip orange <%= filters.filter === 'active_today' ? 'active' : '' %>">
+                        Active Today <span class="count"><%= filterCounts.active_today %></span>
+                    </a>
+                    <a href="?filter=active_this_week&sort=last_active<%= filters.search ? '&search=' + filters.search : '' %>"
+                       class="filter-chip orange <%= filters.filter === 'active_this_week' ? 'active' : '' %>">
+                        Active This Week <span class="count"><%= filterCounts.active_this_week %></span>
+                    </a>
+                </div>
+            </div>
+
+            <div class="filter-group" style="margin-bottom: 0;">
+                <div class="filter-group-label">Engagement</div>
+                <div class="filter-chips">
+                    <a href="?filter=has_progress&sort=current_level<%= filters.search ? '&search=' + filters.search : '' %>"
+                       class="filter-chip purple <%= filters.filter === 'has_progress' ? 'active' : '' %>">
+                        Has Progress <span class="count"><%= filterCounts.has_progress %></span>
+                    </a>
+                    <a href="?filter=referred_users&sort=date_joined<%= filters.search ? '&search=' + filters.search : '' %>"
+                       class="filter-chip purple <%= filters.filter === 'referred_users' ? 'active' : '' %>">
+                        Referred Users <span class="count"><%= filterCounts.referred_users %></span>
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Search and Sort Bar -->
         <div class="card">
             <form method="GET" action="/admin/users/list" style="display: flex; gap: 15px; align-items: end;">
+                <input type="hidden" name="filter" value="<%= filters.filter || 'all' %>">
+
                 <div class="form-group" style="flex: 1; margin: 0;">
                     <label for="search">Search Users</label>
                     <input
@@ -32,20 +172,42 @@
                         <option value="xp_total" <%= filters.sort === 'xp_total' ? 'selected' : '' %>>XP (High to Low)</option>
                         <option value="current_level" <%= filters.sort === 'current_level' ? 'selected' : '' %>>Level (High to Low)</option>
                         <option value="date_joined" <%= filters.sort === 'date_joined' ? 'selected' : '' %>>Date Joined (Recent)</option>
+                        <option value="last_active" <%= filters.sort === 'last_active' ? 'selected' : '' %>>Last Active</option>
                         <option value="name" <%= filters.sort === 'name' ? 'selected' : '' %>>Name (A-Z)</option>
                     </select>
                 </div>
 
                 <button type="submit" style="white-space: nowrap;">Search</button>
-                <% if (filters.search) { %>
-                    <a href="/admin/users/list" class="btn" style="background: #6c757d; text-decoration: none;">Clear</a>
+                <% if (filters.search || (filters.filter && filters.filter !== 'all')) { %>
+                    <a href="/admin/users/list" class="btn" style="background: #6c757d; text-decoration: none;">Clear All</a>
                 <% } %>
             </form>
         </div>
 
         <!-- User List Table -->
         <div class="card">
-            <h2>All Users (<%= pagination.totalUsers %>)</h2>
+            <h2>
+                <% if (filters.filter === 'joined_today') { %>
+                    Users Joined Today
+                <% } else if (filters.filter === 'joined_this_week') { %>
+                    Users Joined This Week
+                <% } else if (filters.filter === 'joined_this_month') { %>
+                    Users Joined This Month
+                <% } else if (filters.filter === 'active_now') { %>
+                    Currently Online Users
+                <% } else if (filters.filter === 'active_today') { %>
+                    Users Active Today
+                <% } else if (filters.filter === 'active_this_week') { %>
+                    Users Active This Week
+                <% } else if (filters.filter === 'has_progress') { %>
+                    Users With Progress
+                <% } else if (filters.filter === 'referred_users') { %>
+                    Referred Users
+                <% } else { %>
+                    All Users
+                <% } %>
+                (<%= pagination.totalUsers %>)
+            </h2>
 
             <table>
                 <thead>
@@ -53,28 +215,45 @@
                         <th style="width: 120px;">Phone</th>
                         <th>Name</th>
                         <th style="width: 150px;">District</th>
-                        <th style="width: 100px;">Level</th>
-                        <th style="width: 100px;">Total XP</th>
-                        <th style="width: 100px;">Referral Code</th>
-                        <th style="width: 120px;">Date Joined</th>
-                        <th style="width: 200px;">Actions</th>
+                        <th style="width: 80px;">Level</th>
+                        <th style="width: 80px;">XP</th>
+                        <th style="width: 100px;">Referral</th>
+                        <th style="width: 100px;">Joined</th>
+                        <th style="width: 120px;">Last Active</th>
+                        <th style="width: 120px;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     <% if (users.length === 0) { %>
                         <tr>
-                            <td colspan="8" style="text-align: center;">No users found</td>
+                            <td colspan="9" style="text-align: center;">No users found</td>
                         </tr>
                     <% } else { %>
-                        <% users.forEach(user => { %>
+                        <% users.forEach(user => {
+                            const isOnline = user.last_active_at && (new Date() - new Date(user.last_active_at)) < 5 * 60 * 1000;
+                        %>
                             <tr>
                                 <td><%= user.phone %></td>
-                                <td><%= user.name %></td>
+                                <td>
+                                    <% if (isOnline) { %><span class="online-dot"></span><% } %>
+                                    <%= user.name || '-' %>
+                                </td>
                                 <td><%= user.district || '-' %></td>
                                 <td><%= user.current_level %></td>
                                 <td><%= user.xp_total %></td>
-                                <td><code><%= user.referral_code %></code></td>
-                                <td><%= new Date(user.date_joined).toLocaleDateString() %></td>
+                                <td><code style="font-size: 11px;"><%= user.referral_code %></code></td>
+                                <td><%= new Date(user.date_joined).toLocaleDateString('en-IN') %></td>
+                                <td>
+                                    <% if (user.last_active_at) { %>
+                                        <% if (isOnline) { %>
+                                            <span class="last-active online">Online</span>
+                                        <% } else { %>
+                                            <span class="last-active"><%= formatLastActive(user.last_active_at) %></span>
+                                        <% } %>
+                                    <% } else { %>
+                                        <span class="last-active">Never</span>
+                                    <% } %>
+                                </td>
                                 <td>
                                     <a href="/admin/users/<%= user.phone %>/view" class="btn" style="padding: 5px 10px; font-size: 12px;">View</a>
                                     <a href="/admin/users/<%= user.phone %>/edit" class="btn" style="padding: 5px 10px; font-size: 12px; background: #28a745;">Edit</a>
@@ -89,7 +268,7 @@
             <% if (pagination.totalPages > 1) { %>
                 <div style="margin-top: 20px; text-align: center;">
                     <% if (pagination.currentPage > 1) { %>
-                        <a href="?page=<%= pagination.currentPage - 1 %><%= filters.search ? '&search=' + filters.search : '' %>&sort=<%= filters.sort %>" class="btn" style="margin: 0 5px;">Previous</a>
+                        <a href="?page=<%= pagination.currentPage - 1 %>&filter=<%= filters.filter || 'all' %><%= filters.search ? '&search=' + filters.search : '' %>&sort=<%= filters.sort %>" class="btn" style="margin: 0 5px;">Previous</a>
                     <% } %>
 
                     <span style="margin: 0 15px; color: #666;">
@@ -97,7 +276,7 @@
                     </span>
 
                     <% if (pagination.currentPage < pagination.totalPages) { %>
-                        <a href="?page=<%= pagination.currentPage + 1 %><%= filters.search ? '&search=' + filters.search : '' %>&sort=<%= filters.sort %>" class="btn" style="margin: 0 5px;">Next</a>
+                        <a href="?page=<%= pagination.currentPage + 1 %>&filter=<%= filters.filter || 'all' %><%= filters.search ? '&search=' + filters.search : '' %>&sort=<%= filters.sort %>" class="btn" style="margin: 0 5px;">Next</a>
                     <% } %>
                 </div>
             <% } %>
@@ -105,8 +284,42 @@
 
         <!-- Back Link -->
         <div style="margin-top: 20px;">
-            <a href="/admin/users" style="color: #0066cc; text-decoration: none;">← Back to User Statistics</a>
+            <a href="/admin/users" style="color: #0066cc; text-decoration: none;">&larr; Back to User Statistics</a>
         </div>
     </div>
+
+    <script>
+        // Helper function for formatting last active time
+        function formatLastActive(dateStr) {
+            const date = new Date(dateStr);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            const diffHours = Math.floor(diffMs / 3600000);
+            const diffDays = Math.floor(diffMs / 86400000);
+
+            if (diffMins < 60) return diffMins + 'm ago';
+            if (diffHours < 24) return diffHours + 'h ago';
+            if (diffDays < 7) return diffDays + 'd ago';
+            return date.toLocaleDateString('en-IN');
+        }
+    </script>
+
+    <%
+    // Server-side helper function
+    function formatLastActive(dateStr) {
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 60) return diffMins + 'm ago';
+        if (diffHours < 24) return diffHours + 'h ago';
+        if (diffDays < 7) return diffDays + 'd ago';
+        return date.toLocaleDateString('en-IN');
+    }
+    %>
 </body>
 </html>

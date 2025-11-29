@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Levels - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .version-info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .level-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 10px;
+            display: grid;
+            grid-template-columns: 60px 1fr auto;
+            gap: 15px;
+            align-items: center;
+        }
+        .level-number {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+        }
+        .level-info h3 {
+            margin: 0 0 5px 0;
+            font-size: 16px;
+        }
+        .level-info p {
+            margin: 0;
+            color: #666;
+            font-size: 14px;
+        }
+        .level-meta {
+            display: flex;
+            gap: 15px;
+            font-size: 13px;
+            color: #888;
+            margin-top: 8px;
+        }
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn-edit { background: #17a2b8; color: white; }
+        .btn-toggle { background: #ffc107; color: #333; }
+        .btn-delete { background: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>Quiz Levels</h1>
+
+        <% if (message) { %>
+            <div class="success"><%= message %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="error"><%= error %></div>
+        <% } %>
+
+        <!-- Version Info -->
+        <div class="version-info">
+            <div>
+                <strong>Current Version:</strong> <%= version %>
+                <span style="margin-left: 20px; color: #666;">
+                    Last Updated: <%= new Date(lastUpdated).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) %>
+                </span>
+            </div>
+            <a href="/admin/levels/create" class="btn" style="background: #28a745;">+ Add New Level</a>
+        </div>
+
+        <!-- Levels List -->
+        <div class="card">
+            <h2>All Levels (<%= levels.length %>)</h2>
+
+            <% if (levels.length === 0) { %>
+                <p style="text-align: center; color: #666; padding: 40px;">
+                    No levels configured yet. Click "Add New Level" to create your first level.
+                </p>
+            <% } else { %>
+                <% levels.forEach(level => { %>
+                    <div class="level-card" data-level="<%= level.level_number %>">
+                        <div class="level-number"><%= level.level_number %></div>
+                        <div class="level-info">
+                            <h3><%= level.title %></h3>
+                            <% if (level.subtitle) { %>
+                                <p><%= level.subtitle %></p>
+                            <% } %>
+                            <div class="level-meta">
+                                <span>Duration: <%= Math.floor(level.duration_seconds / 60) %>:<%= String(level.duration_seconds % 60).padStart(2, '0') %> min</span>
+                                <span class="status-badge <%= level.is_active ? 'status-active' : 'status-inactive' %>">
+                                    <%= level.is_active ? 'Active' : 'Inactive' %>
+                                </span>
+                            </div>
+                        </div>
+                        <div class="action-buttons">
+                            <a href="/admin/levels/<%= level.level_number %>/edit" class="btn-small btn-edit">Edit</a>
+                            <button onclick="toggleLevel(<%= level.level_number %>)" class="btn-small btn-toggle">
+                                <%= level.is_active ? 'Deactivate' : 'Activate' %>
+                            </button>
+                            <button onclick="deleteLevel(<%= level.level_number %>)" class="btn-small btn-delete">Delete</button>
+                        </div>
+                    </div>
+                <% }) %>
+            <% } %>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <a href="/admin/dashboard" style="color: #0066cc; text-decoration: none;">← Back to Dashboard</a>
+        </div>
+    </div>
+
+    <script>
+        async function toggleLevel(levelNumber) {
+            try {
+                const response = await fetch(`/admin/levels/${levelNumber}/toggle`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                if (result.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (err) {
+                alert('Error toggling level status');
+            }
+        }
+
+        async function deleteLevel(levelNumber) {
+            if (!confirm(`Are you sure you want to delete Level ${levelNumber}? This cannot be undone.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/levels/${levelNumber}/delete`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+                if (result.success) {
+                    location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (err) {
+                alert('Error deleting level');
+            }
+        }
+    </script>
+</body>
+</html>
