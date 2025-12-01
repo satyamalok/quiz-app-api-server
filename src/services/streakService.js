@@ -28,7 +28,12 @@ async function updateStreak(phone) {
 
     // Get today and yesterday in IST
     const todayIST = getISTDate();
-    const lastActive = last_activity_date ? last_activity_date.toISOString().split('T')[0] : null;
+
+    // Format last_activity_date using local date methods to avoid timezone shift
+    // toISOString() converts to UTC which can shift the date by one day
+    const lastActive = last_activity_date
+      ? `${last_activity_date.getFullYear()}-${String(last_activity_date.getMonth() + 1).padStart(2, '0')}-${String(last_activity_date.getDate()).padStart(2, '0')}`
+      : null;
 
     // If already active today, no change
     if (lastActive === todayIST) {
@@ -39,7 +44,8 @@ async function updateStreak(phone) {
     const istTimestamp = getISTTimestamp();
     const yesterday = new Date(istTimestamp);
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    // Use local date methods instead of toISOString() to avoid timezone shift
+    const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
 
     let newStreak = current_streak;
 
