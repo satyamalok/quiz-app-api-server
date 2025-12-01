@@ -8,6 +8,7 @@ const {
   getUserReelStats,
   getHeartedReels
 } = require('../services/reelsService');
+const { updateStreak } = require('../services/streakService');
 
 /**
  * GET /api/v1/reels/feed
@@ -89,10 +90,16 @@ async function reelStarted(req, res, next) {
 
     const result = await markReelStarted(phone, reel_id);
 
+    // Update user's streak on engagement (non-blocking)
+    updateStreak(phone).catch(err => {
+      console.error('Streak update error (non-critical):', err);
+    });
+
     res.json({
       success: true,
       message: 'Reel marked as started',
-      total_views: result.total_views
+      total_views: result.total_views,
+      is_new_start: result.is_new_start
     });
 
   } catch (err) {

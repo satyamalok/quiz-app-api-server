@@ -159,26 +159,41 @@ async function markReelStarted(phone, reelId) {
   try {
     await client.query('BEGIN');
 
-    // Upsert user progress - only insert if not exists
-    await client.query(`
-      INSERT INTO user_reel_progress (phone, reel_id, status, started_at, created_at, updated_at)
-      VALUES ($1, $2, 'started', ${SQL_IST_NOW}, ${SQL_IST_NOW}, ${SQL_IST_NOW})
-      ON CONFLICT (phone, reel_id) DO NOTHING
-    `, [phone, reelId]);
+    // Check if user has already started this reel
+    const existingProgress = await client.query(
+      'SELECT id FROM user_reel_progress WHERE phone = $1 AND reel_id = $2',
+      [phone, reelId]
+    );
 
-    // Increment total views on the reel (only if this was a new view)
-    const updateResult = await client.query(`
-      UPDATE reels
-      SET total_views = total_views + 1, updated_at = ${SQL_IST_NOW}
-      WHERE id = $1
-      RETURNING total_views
-    `, [reelId]);
+    const isNewStart = existingProgress.rows.length === 0;
+
+    if (isNewStart) {
+      // Insert progress record
+      await client.query(`
+        INSERT INTO user_reel_progress (phone, reel_id, status, started_at, created_at, updated_at)
+        VALUES ($1, $2, 'started', ${SQL_IST_NOW}, ${SQL_IST_NOW}, ${SQL_IST_NOW})
+      `, [phone, reelId]);
+
+      // Increment total views only for NEW starts (not duplicate calls)
+      await client.query(`
+        UPDATE reels
+        SET total_views = total_views + 1, updated_at = ${SQL_IST_NOW}
+        WHERE id = $1
+      `, [reelId]);
+    }
+
+    // Get current total views
+    const viewsResult = await client.query(
+      'SELECT total_views FROM reels WHERE id = $1',
+      [reelId]
+    );
 
     await client.query('COMMIT');
 
     return {
       success: true,
-      total_views: updateResult.rows[0]?.total_views || 0
+      total_views: viewsResult.rows[0]?.total_views || 0,
+      is_new_start: isNewStart
     };
 
   } catch (err) {

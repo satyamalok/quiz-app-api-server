@@ -1,6 +1,7 @@
 const pool = require('../config/database');
 const { calculateBaseXP, calculateAccuracy, addXPToUser } = require('../services/xpService');
 const { deductLifeline, getLifelineStatus } = require('../services/lifelineService');
+const { updateStreak } = require('../services/streakService');
 const { SQL_IST_NOW, SQL_IST_DATE, SQL_IST_TIME } = require('../utils/timezone');
 
 /**
@@ -132,6 +133,12 @@ async function startLevel(req, res, next) {
     `, [phone, level, isFirstAttempt]);
 
     const attemptId = attemptResult.rows[0].id;
+
+    // Update user's streak (indicates active engagement)
+    // This runs in background - don't fail the request if it errors
+    updateStreak(phone).catch(err => {
+      console.error('Streak update error (non-critical):', err);
+    });
 
     // Format questions for response (with @ symbol intact)
     const questions = questionsResult.rows.map(q => ({

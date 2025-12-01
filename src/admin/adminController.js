@@ -135,15 +135,16 @@ async function showDashboard(req, res) {
 async function showOTPViewer(req, res) {
   try {
     // Fetch OTP logs with timestamps formatted directly in SQL as IST strings
-    // This avoids JavaScript Date parsing issues that cause UTC/IST confusion
+    // OTP timestamps are stored as UTC in TIMESTAMP WITHOUT TIME ZONE columns
+    // Must use double AT TIME ZONE: first interpret as UTC, then convert to IST
     const result = await pool.query(`
       SELECT
         phone,
         otp_code,
         generated_at,
         expires_at,
-        TO_CHAR(generated_at AT TIME ZONE 'Asia/Kolkata', 'DD/MM/YYYY, HH12:MI:SS AM') as generated_at_formatted,
-        TO_CHAR(expires_at AT TIME ZONE 'Asia/Kolkata', 'DD/MM/YYYY, HH12:MI:SS AM') as expires_at_formatted,
+        TO_CHAR(generated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata', 'DD/MM/YYYY, HH12:MI:SS AM') as generated_at_formatted,
+        TO_CHAR(expires_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata', 'DD/MM/YYYY, HH12:MI:SS AM') as expires_at_formatted,
         is_verified,
         attempts
       FROM otp_logs
