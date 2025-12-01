@@ -932,6 +932,27 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 36. **Prefetch 3 reels per API call** - Configurable via `app_config.reels_prefetch_count`
 37. **Reels upload to /reels folder** - Separate from promotional videos (use `uploadFile(file, 'reels')`)
 38. **Actual online count needs API activity** - `last_active_at` only updates on authenticated API calls, not OTP verification
+39. **Reels feed uses transaction + FOR UPDATE** - Prevents race condition where concurrent requests could both trigger a reset and return duplicate reels. Always lock `user_reel_progress` rows before checking/resetting.
+
+**Timezone & Date Handling (CRITICAL - 2025-12-01):**
+40. **NEVER use toISOString() for date comparisons** - Converts to UTC which shifts dates! Use `getFullYear()/getMonth()/getDate()` instead:
+    ```javascript
+    // BAD - can shift date by 1 day due to UTC conversion:
+    const dateStr = date.toISOString().split('T')[0];
+
+    // GOOD - preserves local date:
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    ```
+41. **PostgreSQL double timezone conversion for UTC columns** - `TIMESTAMP WITHOUT TIME ZONE` stores UTC but PostgreSQL doesn't know it. To display in IST:
+    ```sql
+    -- Single conversion (WRONG for UTC-stored data):
+    TO_CHAR(generated_at AT TIME ZONE 'Asia/Kolkata', ...)
+
+    -- Double conversion (CORRECT):
+    TO_CHAR(generated_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Kolkata', ...)
+    ```
+42. **Online users comparison must use IST** - When comparing `last_active_at` (stored in IST) with current time, use `NOW() AT TIME ZONE 'Asia/Kolkata'`, not plain `NOW()`.
+43. **Streak updates must be idempotent** - Multiple calls on same day should return `{ updated: false }`, not increment streak. The date comparison fix (gotcha #40) ensures this works correctly.
 
 ## Load Testing (Future)
 
