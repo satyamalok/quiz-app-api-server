@@ -1,9 +1,9 @@
 # JNV Quiz App - Complete API Documentation
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Base URL**: `http://your-domain.com/api/v1`
 **Authentication**: JWT Bearer Token
-**Date**: November 26, 2025
+**Date**: December 1, 2025
 
 ---
 
@@ -1355,31 +1355,57 @@ Authorization: Bearer <jwt_token>
   "user_stats": {
     "rank": 15,
     "name": "John Doe",
+    "district": "Mumbai",
+    "state": "Maharashtra",
+    "total_xp": 1500,
+    "image_url": "https://minio.example.com/quiz/profiles/user123.jpg",
     "today_xp": 250
   },
   "top_50": [
     {
       "rank": 1,
-      "phone": "9876543210",
       "name": "Top Player",
       "district": "Mumbai",
       "state": "Maharashtra",
-      "today_xp": 500,
-      "profile_image_url": "https://minio.example.com/profiles/user1.jpg"
+      "total_xp": 2500,
+      "image_url": "https://minio.example.com/quiz/profiles/user1.jpg",
+      "today_xp": 500
     },
     {
       "rank": 2,
-      "phone": "9876543211",
       "name": "Second Player",
       "district": "Delhi",
       "state": "Delhi",
-      "today_xp": 450,
-      "profile_image_url": null
+      "total_xp": 1800,
+      "image_url": null,
+      "today_xp": 450
     }
     // ... up to 50 users
   ]
 }
 ```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| date | string | The date for the leaderboard (YYYY-MM-DD) |
+| user_stats.rank | integer | Current user's rank (null if no XP today) |
+| user_stats.name | string | Current user's name |
+| user_stats.district | string | Current user's district |
+| user_stats.state | string | Current user's state |
+| user_stats.total_xp | integer | Current user's all-time total XP |
+| user_stats.image_url | string | Current user's profile image URL (null if not set) |
+| user_stats.today_xp | integer | XP earned by current user today |
+| top_50[].rank | integer | User's rank in leaderboard (1-50) |
+| top_50[].name | string | User's display name |
+| top_50[].district | string | User's district |
+| top_50[].state | string | User's state |
+| top_50[].total_xp | integer | User's all-time total XP |
+| top_50[].image_url | string | User's profile image URL (null if not set) |
+| top_50[].today_xp | integer | XP earned today |
+
+**Note:** Phone numbers are intentionally excluded from the response for privacy.
 
 #### cURL Example
 
