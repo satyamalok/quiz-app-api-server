@@ -134,13 +134,16 @@ async function showDashboard(req, res) {
  */
 async function showOTPViewer(req, res) {
   try {
-    // Fetch OTP logs with timestamps converted to IST for display
+    // Fetch OTP logs with timestamps formatted directly in SQL as IST strings
+    // This avoids JavaScript Date parsing issues that cause UTC/IST confusion
     const result = await pool.query(`
       SELECT
         phone,
         otp_code,
-        generated_at AT TIME ZONE 'Asia/Kolkata' as generated_at,
-        expires_at AT TIME ZONE 'Asia/Kolkata' as expires_at,
+        generated_at,
+        expires_at,
+        TO_CHAR(generated_at AT TIME ZONE 'Asia/Kolkata', 'DD/MM/YYYY, HH12:MI:SS AM') as generated_at_formatted,
+        TO_CHAR(expires_at AT TIME ZONE 'Asia/Kolkata', 'DD/MM/YYYY, HH12:MI:SS AM') as expires_at_formatted,
         is_verified,
         attempts
       FROM otp_logs
@@ -148,16 +151,9 @@ async function showOTPViewer(req, res) {
       LIMIT 50
     `);
 
-    // Format timestamps for display in IST
-    const otpLogs = result.rows.map(log => ({
-      ...log,
-      generated_at_formatted: formatISTDate(log.generated_at),
-      expires_at_formatted: formatISTDate(log.expires_at)
-    }));
-
     res.render('otp-viewer', {
       admin: req.session.adminUser,
-      otpLogs
+      otpLogs: result.rows
     });
 
   } catch (err) {
@@ -356,12 +352,13 @@ async function showConfig(req, res) {
     const onlineConfig = onlineConfigResult.rows[0];
 
     // For actual mode, calculate real count instead of showing cached fake count
+    // Use IST timezone since last_active_at is stored in IST
     if (onlineConfig && onlineConfig.mode === 'actual') {
       const activeUsersResult = await pool.query(`
         SELECT COUNT(*) as count
         FROM users_profile
         WHERE last_active_at IS NOT NULL
-          AND last_active_at > NOW() - INTERVAL '${onlineConfig.active_minutes_threshold || 5} minutes'
+          AND last_active_at > (NOW() AT TIME ZONE 'Asia/Kolkata') - INTERVAL '${onlineConfig.active_minutes_threshold || 5} minutes'
       `);
       onlineConfig.current_online_count = parseInt(activeUsersResult.rows[0].count);
     }
@@ -440,12 +437,13 @@ async function updateConfig(req, res) {
     const onlineConfig = onlineConfigResult.rows[0];
 
     // For actual mode, calculate real count instead of showing cached fake count
+    // Use IST timezone since last_active_at is stored in IST
     if (onlineConfig && onlineConfig.mode === 'actual') {
       const activeUsersResult = await pool.query(`
         SELECT COUNT(*) as count
         FROM users_profile
         WHERE last_active_at IS NOT NULL
-          AND last_active_at > NOW() - INTERVAL '${onlineConfig.active_minutes_threshold || 5} minutes'
+          AND last_active_at > (NOW() AT TIME ZONE 'Asia/Kolkata') - INTERVAL '${onlineConfig.active_minutes_threshold || 5} minutes'
       `);
       onlineConfig.current_online_count = parseInt(activeUsersResult.rows[0].count);
     }
@@ -519,13 +517,14 @@ async function listAllUsers(req, res) {
     const offset = (page - 1) * limit;
 
     // Get filter counts for all categories (IST timezone)
+    // All timestamps are stored in IST, so use IST for all comparisons
     const filterCountsResult = await pool.query(`
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN date_joined::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date THEN 1 END) as joined_today,
         COUNT(CASE WHEN date_joined >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '7 days' THEN 1 END) as joined_this_week,
         COUNT(CASE WHEN date_joined >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days' THEN 1 END) as joined_this_month,
-        COUNT(CASE WHEN last_active_at IS NOT NULL AND last_active_at >= NOW() - INTERVAL '5 minutes' THEN 1 END) as active_now,
+        COUNT(CASE WHEN last_active_at IS NOT NULL AND last_active_at >= (NOW() AT TIME ZONE 'Asia/Kolkata') - INTERVAL '5 minutes' THEN 1 END) as active_now,
         COUNT(CASE WHEN last_active_at IS NOT NULL AND last_active_at::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date THEN 1 END) as active_today,
         COUNT(CASE WHEN last_active_at IS NOT NULL AND last_active_at >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '7 days' THEN 1 END) as active_this_week,
         COUNT(CASE WHEN current_level > 1 THEN 1 END) as has_progress,
@@ -539,12 +538,13 @@ async function listAllUsers(req, res) {
     let paramCount = 1;
 
     // Apply filter based on category
+    // All timestamps are stored in IST, so use IST for all comparisons
     const filterConditions = {
       'all': '',
       'joined_today': ` AND date_joined::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date`,
       'joined_this_week': ` AND date_joined >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '7 days'`,
       'joined_this_month': ` AND date_joined >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '30 days'`,
-      'active_now': ` AND last_active_at IS NOT NULL AND last_active_at >= NOW() - INTERVAL '5 minutes'`,
+      'active_now': ` AND last_active_at IS NOT NULL AND last_active_at >= (NOW() AT TIME ZONE 'Asia/Kolkata') - INTERVAL '5 minutes'`,
       'active_today': ` AND last_active_at IS NOT NULL AND last_active_at::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date`,
       'active_this_week': ` AND last_active_at IS NOT NULL AND last_active_at >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date - INTERVAL '7 days'`,
       'has_progress': ` AND current_level > 1`,

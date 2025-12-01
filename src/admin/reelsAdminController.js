@@ -114,7 +114,7 @@ async function showUploadPage(req, res) {
 
 /**
  * POST /admin/reels/upload
- * Handle bulk upload of reels
+ * Handle bulk upload of reels (legacy form submission - redirects)
  */
 async function uploadReels(req, res) {
   try {
@@ -178,6 +178,49 @@ async function uploadReels(req, res) {
   } catch (err) {
     console.error('Upload reels error:', err);
     res.redirect('/admin/reels/upload?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/reels/upload-single
+ * Handle single file upload with JSON response (for AJAX progress tracking)
+ */
+async function uploadSingleReel(req, res) {
+  try {
+    const file = req.file;
+    const { title, description, category, duration } = req.body;
+
+    if (!file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+
+    // Upload to MinIO
+    const uploadResult = await uploadFile(file, 'reels');
+
+    // Insert into database
+    const result = await pool.query(`
+      INSERT INTO reels (title, description, video_url, duration_seconds, category, uploaded_by, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+      RETURNING id
+    `, [
+      title || file.originalname.replace(/\.[^/.]+$/, ''),
+      description || null,
+      uploadResult.publicUrl,
+      parseInt(duration) || 0,
+      category || 'education',
+      req.session.adminUser.email
+    ]);
+
+    res.json({
+      success: true,
+      id: result.rows[0].id,
+      filename: file.originalname,
+      url: uploadResult.publicUrl
+    });
+
+  } catch (err) {
+    console.error('Upload single reel error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 }
 
@@ -450,6 +493,7 @@ module.exports = {
   showReels,
   showUploadPage,
   uploadReels,
+  uploadSingleReel,
   showEditReel,
   updateReel,
   toggleReelStatus,

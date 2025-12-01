@@ -20,11 +20,12 @@ async function getOnlineCount() {
 
     if (mode === 'actual') {
       // Count users active within the threshold
+      // Use IST timezone since last_active_at is stored in IST
       const result = await pool.query(`
         SELECT COUNT(*) as count
         FROM users_profile
         WHERE last_active_at IS NOT NULL
-          AND last_active_at > NOW() - INTERVAL '${active_minutes_threshold} minutes'
+          AND last_active_at > (NOW() AT TIME ZONE 'Asia/Kolkata') - INTERVAL '${active_minutes_threshold} minutes'
       `);
       return parseInt(result.rows[0].count);
     }

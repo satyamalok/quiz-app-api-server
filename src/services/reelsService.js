@@ -15,68 +15,112 @@ async function getReelsConfig() {
  * Get next reels for user feed (sliding window approach with infinite loop)
  * Returns reels the user hasn't started yet, newest first
  * If user has seen all reels, resets their progress to start fresh (infinite loop)
+ *
+ * Uses transaction with row-level locking to prevent race conditions where
+ * concurrent requests could both trigger a reset and return duplicate reels.
  */
 async function getReelsFeed(phone, limit = 3) {
-  // Get active reels that user hasn't started yet
-  // Order by id DESC (newest first) to always serve newest content first
-  let result = await pool.query(`
-    SELECT
-      r.id,
-      r.title,
-      r.description,
-      r.video_url,
-      r.thumbnail_url,
-      r.duration_seconds,
-      r.category,
-      r.tags,
-      r.total_hearts,
-      r.created_at,
-      COALESCE(urp.is_hearted, FALSE) as is_hearted
-    FROM reels r
-    LEFT JOIN user_reel_progress urp ON r.id = urp.reel_id AND urp.phone = $1
-    WHERE r.is_active = TRUE
-      AND urp.id IS NULL  -- User hasn't started this reel
-    ORDER BY r.id DESC
-    LIMIT $2
-  `, [phone, limit]);
+  const client = await pool.connect();
 
-  // If no reels found, user has seen all reels - reset their progress for infinite loop
-  if (result.rows.length === 0) {
-    const hasActiveReels = await pool.query('SELECT COUNT(*) FROM reels WHERE is_active = TRUE');
-    const totalActiveReels = parseInt(hasActiveReels.rows[0].count);
+  try {
+    await client.query('BEGIN');
 
-    if (totalActiveReels > 0) {
-      // Reset user's reel progress (but keep hearts!)
-      // Only delete the 'started' status, keeping is_hearted preferences
-      await pool.query(`
-        DELETE FROM user_reel_progress
-        WHERE phone = $1
-          AND reel_id IN (SELECT id FROM reels WHERE is_active = TRUE)
-      `, [phone]);
+    // Lock user's progress rows to prevent concurrent reset race condition
+    // This ensures only one request can reset progress at a time
+    await client.query(
+      'SELECT id FROM user_reel_progress WHERE phone = $1 FOR UPDATE',
+      [phone]
+    );
 
-      // Now fetch reels again (user can see them fresh)
-      result = await pool.query(`
-        SELECT
-          r.id,
-          r.title,
-          r.description,
-          r.video_url,
-          r.thumbnail_url,
-          r.duration_seconds,
-          r.category,
-          r.tags,
-          r.total_hearts,
-          r.created_at,
-          FALSE as is_hearted
-        FROM reels r
-        WHERE r.is_active = TRUE
-        ORDER BY r.id DESC
-        LIMIT $1
-      `, [limit]);
+    // Get active reels that user hasn't started yet
+    // Order by id DESC (newest first) to always serve newest content first
+    let result = await client.query(`
+      SELECT
+        r.id,
+        r.title,
+        r.description,
+        r.video_url,
+        r.thumbnail_url,
+        r.duration_seconds,
+        r.category,
+        r.tags,
+        r.total_hearts,
+        r.created_at,
+        COALESCE(urp.is_hearted, FALSE) as is_hearted
+      FROM reels r
+      LEFT JOIN user_reel_progress urp ON r.id = urp.reel_id AND urp.phone = $1
+      WHERE r.is_active = TRUE
+        AND urp.id IS NULL  -- User hasn't started this reel
+      ORDER BY r.id DESC
+      LIMIT $2
+    `, [phone, limit]);
+
+    // If no reels found, user has seen all reels - reset their progress for infinite loop
+    if (result.rows.length === 0) {
+      const hasActiveReels = await client.query('SELECT COUNT(*) FROM reels WHERE is_active = TRUE');
+      const totalActiveReels = parseInt(hasActiveReels.rows[0].count);
+
+      if (totalActiveReels > 0) {
+        // Get hearted reels BEFORE deleting progress (to preserve hearts)
+        const heartedReels = await client.query(`
+          SELECT reel_id FROM user_reel_progress
+          WHERE phone = $1 AND is_hearted = TRUE
+        `, [phone]);
+        const heartedReelIds = heartedReels.rows.map(r => r.reel_id);
+
+        // Delete all progress for this user (clears 'started' status)
+        await client.query(`
+          DELETE FROM user_reel_progress
+          WHERE phone = $1
+            AND reel_id IN (SELECT id FROM reels WHERE is_active = TRUE)
+        `, [phone]);
+
+        // Re-insert hearted reels with status 'started' and is_hearted = true
+        // This preserves heart preferences while allowing reels to show again
+        if (heartedReelIds.length > 0) {
+          for (const reelId of heartedReelIds) {
+            await client.query(`
+              INSERT INTO user_reel_progress (phone, reel_id, status, is_hearted, started_at, created_at, updated_at)
+              VALUES ($1, $2, 'started', TRUE, ${SQL_IST_NOW}, ${SQL_IST_NOW}, ${SQL_IST_NOW})
+              ON CONFLICT (phone, reel_id) DO NOTHING
+            `, [phone, reelId]);
+          }
+        }
+
+        // Now fetch reels again (user can see them fresh)
+        // Exclude hearted reels since we just re-inserted them as 'started'
+        result = await client.query(`
+          SELECT
+            r.id,
+            r.title,
+            r.description,
+            r.video_url,
+            r.thumbnail_url,
+            r.duration_seconds,
+            r.category,
+            r.tags,
+            r.total_hearts,
+            r.created_at,
+            FALSE as is_hearted
+          FROM reels r
+          LEFT JOIN user_reel_progress urp ON r.id = urp.reel_id AND urp.phone = $1
+          WHERE r.is_active = TRUE
+            AND urp.id IS NULL
+          ORDER BY r.id DESC
+          LIMIT $2
+        `, [phone, limit]);
+      }
     }
-  }
 
-  return result.rows;
+    await client.query('COMMIT');
+    return result.rows;
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
 }
 
 /**

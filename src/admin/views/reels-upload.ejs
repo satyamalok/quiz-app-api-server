@@ -109,6 +109,38 @@
             color: #666;
         }
 
+        /* Per-file progress */
+        .file-progress {
+            display: none;
+            margin-top: 10px;
+        }
+        .file-progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .file-progress-fill {
+            height: 100%;
+            background: #28a745;
+            transition: width 0.2s ease;
+            width: 0%;
+        }
+        .file-status {
+            font-size: 12px;
+            margin-top: 5px;
+            color: #666;
+        }
+        .file-status.uploading { color: #007bff; }
+        .file-status.complete { color: #28a745; }
+        .file-status.error { color: #dc3545; }
+        .file-status.waiting { color: #6c757d; }
+
+        .file-item.uploading { border-color: #007bff; background: #f0f7ff; }
+        .file-item.complete { border-color: #28a745; background: #f0fff0; }
+        .file-item.error { border-color: #dc3545; background: #fff0f0; }
+
         /* Summary */
         .upload-summary {
             background: #f8f9fa;
@@ -243,6 +275,7 @@
 
                 const item = document.createElement('div');
                 item.className = 'file-item';
+                item.id = `file-item-${index}`;
                 item.innerHTML = `
                     <video class="file-preview" muted>
                         <source src="${URL.createObjectURL(file)}" type="${file.type}">
@@ -250,9 +283,15 @@
                     <div class="file-info">
                         <div class="file-name">${file.name}</div>
                         <div class="file-size">${sizeMB} MB</div>
+                        <div class="file-progress" id="file-progress-${index}">
+                            <div class="file-progress-bar">
+                                <div class="file-progress-fill" id="file-progress-fill-${index}"></div>
+                            </div>
+                            <div class="file-status waiting" id="file-status-${index}">Waiting...</div>
+                        </div>
                     </div>
-                    <input type="text" name="titles" placeholder="Title (optional)" value="${file.name.replace(/\.[^/.]+$/, '')}">
-                    <select name="categories">
+                    <input type="text" class="file-title" placeholder="Title (optional)" value="${file.name.replace(/\.[^/.]+$/, '')}">
+                    <select class="file-category">
                         <option value="education">Education</option>
                         <option value="motivation">Motivation</option>
                         <option value="tips">Tips & Tricks</option>
@@ -260,14 +299,14 @@
                         <option value="other">Other</option>
                     </select>
                     <button type="button" class="remove-file" onclick="removeFile(${index})">Remove</button>
-                    <input type="hidden" name="durations" value="0">
+                    <input type="hidden" class="file-duration" value="0">
                 `;
                 fileList.appendChild(item);
 
                 // Try to get video duration
                 const video = item.querySelector('video');
                 video.addEventListener('loadedmetadata', () => {
-                    const durationInput = item.querySelector('input[name="durations"]');
+                    const durationInput = item.querySelector('.file-duration');
                     durationInput.value = Math.round(video.duration);
                 });
             });
@@ -295,27 +334,156 @@
             fileInput.files = dt.files;
         }
 
-        // Form submission with progress
-        uploadForm.addEventListener('submit', function(e) {
+        // Form submission with real progress tracking
+        uploadForm.addEventListener('submit', async function(e) {
+            e.preventDefault(); // Prevent form submission, use AJAX instead
+
             if (selectedFiles.length === 0) {
-                e.preventDefault();
                 alert('Please select at least one video');
                 return;
             }
 
-            document.getElementById('uploadBtn').disabled = true;
-            document.getElementById('uploadBtn').textContent = 'Uploading...';
-            document.getElementById('uploadProgress').style.display = 'block';
+            const uploadBtn = document.getElementById('uploadBtn');
+            const uploadProgress = document.getElementById('uploadProgress');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
 
-            // Simulate progress (actual progress would need XMLHttpRequest)
-            let progress = 0;
-            const interval = setInterval(() => {
-                progress += Math.random() * 10;
-                if (progress > 90) progress = 90;
-                document.getElementById('progressFill').style.width = progress + '%';
-                document.getElementById('progressText').textContent = `Uploading... ${Math.round(progress)}%`;
-            }, 500);
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading...';
+            uploadProgress.style.display = 'block';
+
+            // Show all file progress bars
+            selectedFiles.forEach((_, index) => {
+                document.getElementById(`file-progress-${index}`).style.display = 'block';
+            });
+
+            let completedCount = 0;
+            let successCount = 0;
+            let errorCount = 0;
+
+            // Upload files one by one with real progress tracking
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                const fileItem = document.getElementById(`file-item-${i}`);
+                const progressBar = document.getElementById(`file-progress-fill-${i}`);
+                const statusText = document.getElementById(`file-status-${i}`);
+                const titleInput = fileItem.querySelector('.file-title');
+                const categorySelect = fileItem.querySelector('.file-category');
+                const durationInput = fileItem.querySelector('.file-duration');
+
+                fileItem.classList.remove('waiting');
+                fileItem.classList.add('uploading');
+                statusText.className = 'file-status uploading';
+                statusText.textContent = 'Uploading... 0%';
+
+                try {
+                    await uploadSingleFile(file, {
+                        title: titleInput.value,
+                        category: categorySelect.value,
+                        duration: durationInput.value
+                    }, (percent) => {
+                        // Update per-file progress
+                        progressBar.style.width = percent + '%';
+                        statusText.textContent = `Uploading... ${Math.round(percent)}%`;
+
+                        // Update overall progress
+                        const overallProgress = ((completedCount + (percent / 100)) / selectedFiles.length) * 100;
+                        progressFill.style.width = overallProgress + '%';
+                        progressText.textContent = `Uploading ${i + 1}/${selectedFiles.length}: ${Math.round(percent)}%`;
+                    });
+
+                    // Success
+                    fileItem.classList.remove('uploading');
+                    fileItem.classList.add('complete');
+                    progressBar.style.width = '100%';
+                    statusText.className = 'file-status complete';
+                    statusText.textContent = '✓ Complete';
+                    successCount++;
+
+                } catch (err) {
+                    // Error
+                    fileItem.classList.remove('uploading');
+                    fileItem.classList.add('error');
+                    statusText.className = 'file-status error';
+                    statusText.textContent = '✗ ' + (err.message || 'Upload failed');
+                    errorCount++;
+                }
+
+                completedCount++;
+
+                // Update overall progress
+                const overallProgress = (completedCount / selectedFiles.length) * 100;
+                progressFill.style.width = overallProgress + '%';
+            }
+
+            // All done
+            progressFill.style.width = '100%';
+            if (errorCount === 0) {
+                progressText.textContent = `✓ All ${successCount} reels uploaded successfully!`;
+                progressFill.style.background = '#28a745';
+            } else {
+                progressText.textContent = `Completed: ${successCount} success, ${errorCount} failed`;
+                progressFill.style.background = errorCount === selectedFiles.length ? '#dc3545' : '#ffc107';
+            }
+
+            uploadBtn.textContent = 'Upload Complete';
+
+            // Redirect after a delay
+            setTimeout(() => {
+                window.location.href = `/admin/reels?message=Uploaded ${successCount} reels` +
+                    (errorCount > 0 ? `&error=${errorCount} failed` : '');
+            }, 2000);
         });
+
+        // Upload single file using XMLHttpRequest with progress tracking
+        function uploadSingleFile(file, metadata, onProgress) {
+            return new Promise((resolve, reject) => {
+                const formData = new FormData();
+                formData.append('video', file);
+                formData.append('title', metadata.title);
+                formData.append('category', metadata.category);
+                formData.append('duration', metadata.duration);
+
+                const xhr = new XMLHttpRequest();
+
+                // Track upload progress
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const percent = (e.loaded / e.total) * 100;
+                        onProgress(percent);
+                    }
+                });
+
+                xhr.addEventListener('load', () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            if (response.success) {
+                                resolve(response);
+                            } else {
+                                reject(new Error(response.error || 'Upload failed'));
+                            }
+                        } catch (e) {
+                            reject(new Error('Invalid server response'));
+                        }
+                    } else {
+                        reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+                    }
+                });
+
+                xhr.addEventListener('error', () => {
+                    reject(new Error('Network error'));
+                });
+
+                xhr.addEventListener('timeout', () => {
+                    reject(new Error('Upload timeout'));
+                });
+
+                xhr.timeout = 300000; // 5 minute timeout per file
+                xhr.open('POST', '/admin/reels/upload-single');
+                xhr.send(formData);
+            });
+        }
     </script>
 </body>
 </html>
