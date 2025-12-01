@@ -15,7 +15,8 @@ async function getDailyLeaderboard(req, res, next) {
     // Get top 50 for the date
     const top50Result = await pool.query(`
       SELECT
-        d.phone, u.name, u.district,
+        d.phone, u.name, u.district, u.state,
+        u.xp_total, u.profile_image_url,
         d.total_xp_today, d.daily_rank
       FROM daily_xp_summary d
       JOIN users_profile u ON d.phone = u.phone
@@ -34,6 +35,10 @@ async function getDailyLeaderboard(req, res, next) {
     let userStats = {
       rank: null,
       name: null,
+      district: null,
+      state: null,
+      total_xp: 0,
+      image_url: null,
       today_xp: 0
     };
 
@@ -48,15 +53,19 @@ async function getDailyLeaderboard(req, res, next) {
       `, [targetDate, userXP]);
 
       const userProfileResult = await pool.query(
-        'SELECT name, xp_total FROM users_profile WHERE phone = $1',
+        'SELECT name, district, state, xp_total, profile_image_url FROM users_profile WHERE phone = $1',
         [phone]
       );
 
+      const profile = userProfileResult.rows[0];
       userStats = {
-        rank: rankResult.rows[0].rank,
-        name: userProfileResult.rows[0].name,
-        today_xp: userXP,
-        total_xp: userProfileResult.rows[0].xp_total
+        rank: parseInt(rankResult.rows[0].rank),
+        name: profile.name,
+        district: profile.district,
+        state: profile.state,
+        total_xp: profile.xp_total,
+        image_url: profile.profile_image_url,
+        today_xp: userXP
       };
     }
 
@@ -64,6 +73,9 @@ async function getDailyLeaderboard(req, res, next) {
       rank: index + 1,
       name: row.name,
       district: row.district,
+      state: row.state,
+      total_xp: row.xp_total,
+      image_url: row.profile_image_url,
       today_xp: row.total_xp_today
     }));
 
