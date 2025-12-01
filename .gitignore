@@ -37,3 +37,4 @@ minio-data/
 backups/
 *.sql
 *.tar.gz
+nul
