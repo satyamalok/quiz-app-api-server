@@ -22,6 +22,24 @@ let cacheLastUpdated = 0;
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /**
+ * Get user name from database
+ * @param {string} phone - User's phone number
+ * @returns {Promise<string|null>} User's name or null
+ */
+async function getUserName(phone) {
+  try {
+    const result = await pool.query(
+      'SELECT name FROM users_profile WHERE phone = $1',
+      [phone]
+    );
+    return result.rows[0]?.name || null;
+  } catch (err) {
+    console.error('[EventWebhook] Error fetching user name:', err.message);
+    return null;
+  }
+}
+
+/**
  * Get webhook configuration from database (with caching)
  */
 async function getWebhookConfig() {
@@ -133,10 +151,13 @@ async function sendEvent(eventName, eventData) {
  * Triggered when user starts a level
  */
 async function onQuizStarted(phone, level, attemptId, isFirstAttempt, userName = null) {
+  // Auto-fetch name if not provided
+  const name = userName || await getUserName(phone);
+
   return sendEvent(EVENT_TYPES.QUIZ_STARTED, {
     user: {
       phone,
-      name: userName
+      name
     },
     quiz: {
       level,
@@ -151,10 +172,13 @@ async function onQuizStarted(phone, level, attemptId, isFirstAttempt, userName =
  * Triggered when user answers all 10 questions
  */
 async function onQuizCompleted(phone, level, attemptId, accuracy, baseXP, correctAnswers, levelUnlocked, newLevel = null, userName = null) {
+  // Auto-fetch name if not provided
+  const name = userName || await getUserName(phone);
+
   return sendEvent(EVENT_TYPES.QUIZ_COMPLETED, {
     user: {
       phone,
-      name: userName
+      name
     },
     quiz: {
       level,
@@ -175,10 +199,13 @@ async function onQuizCompleted(phone, level, attemptId, accuracy, baseXP, correc
  * Triggered when user watches video to double XP
  */
 async function onBonusXPClaimed(phone, level, attemptId, baseXP, bonusXP, finalXP, newTotalXP, userName = null) {
+  // Auto-fetch name if not provided
+  const name = userName || await getUserName(phone);
+
   return sendEvent(EVENT_TYPES.BONUS_XP_CLAIMED, {
     user: {
       phone,
-      name: userName
+      name
     },
     quiz: {
       level,
@@ -213,10 +240,13 @@ async function onUserRegistered(phone, name, referralCode, referredBy = null) {
  * Triggered when user unlocks a new level
  */
 async function onLevelUnlocked(phone, oldLevel, newLevel, userName = null) {
+  // Auto-fetch name if not provided
+  const name = userName || await getUserName(phone);
+
   return sendEvent(EVENT_TYPES.LEVEL_UNLOCKED, {
     user: {
       phone,
-      name: userName
+      name
     },
     progression: {
       previous_level: oldLevel,

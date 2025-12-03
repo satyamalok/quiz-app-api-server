@@ -1407,6 +1407,37 @@ async function deleteVideo(req, res) {
 }
 
 /**
+ * POST /admin/videos/bulk-delete
+ * Delete multiple videos at once
+ */
+async function bulkDeleteVideos(req, res) {
+  try {
+    const { video_ids } = req.body;
+
+    if (!video_ids || video_ids.length === 0) {
+      return res.status(400).json({ success: false, error: 'No videos selected' });
+    }
+
+    const ids = Array.isArray(video_ids) ? video_ids : [video_ids];
+
+    await pool.query(
+      'DELETE FROM promotional_videos WHERE id = ANY($1::int[])',
+      [ids]
+    );
+
+    res.json({
+      success: true,
+      message: `${ids.length} video(s) deleted successfully`,
+      deleted_count: ids.length
+    });
+
+  } catch (err) {
+    console.error('Bulk delete videos error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+/**
  * POST /admin/videos/:id/duplicate
  * Duplicate video to another level/category (reuses same video URL)
  */
@@ -1605,6 +1636,7 @@ module.exports = {
   showEditVideo,
   updateVideo,
   deleteVideo,
+  bulkDeleteVideos,
   duplicateVideo,
   showVideoBulkUpload,
   uploadSingleVideo,

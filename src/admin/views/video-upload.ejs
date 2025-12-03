@@ -142,11 +142,19 @@
 
         <!-- Existing Videos Table -->
         <div class="card">
-            <h2>Uploaded Videos (<%= videos.length %>)</h2>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="margin: 0;">Uploaded Videos (<%= videos.length %>)</h2>
+                <button id="bulkDeleteBtn" onclick="bulkDeleteVideos()" style="background: #dc3545; padding: 8px 15px; display: none;">
+                    Delete Selected (<span id="selectedCount">0</span>)
+                </button>
+            </div>
 
             <table>
                 <thead>
                     <tr>
+                        <th style="width: 40px;">
+                            <input type="checkbox" id="selectAll" onclick="toggleSelectAll()" title="Select All">
+                        </th>
                         <th style="width: 50px;">Level</th>
                         <th>Name</th>
                         <th style="width: 100px;">Category</th>
@@ -158,11 +166,14 @@
                 <tbody>
                     <% if (videos.length === 0) { %>
                         <tr>
-                            <td colspan="6" style="text-align: center;">No videos uploaded yet</td>
+                            <td colspan="7" style="text-align: center;">No videos uploaded yet</td>
                         </tr>
                     <% } else { %>
                         <% videos.forEach(video => { %>
                             <tr>
+                                <td>
+                                    <input type="checkbox" class="video-checkbox" value="<%= video.id %>" onclick="updateSelectedCount()">
+                                </td>
                                 <td><%= video.level %></td>
                                 <td><%= video.video_name %></td>
                                 <td>
@@ -319,6 +330,66 @@
                 }
             })
             .catch(err => alert('Error deleting video'));
+        }
+
+        // Bulk Selection Functions
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAll');
+            const checkboxes = document.querySelectorAll('.video-checkbox');
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            const checkboxes = document.querySelectorAll('.video-checkbox:checked');
+            const count = checkboxes.length;
+            document.getElementById('selectedCount').textContent = count;
+            document.getElementById('bulkDeleteBtn').style.display = count > 0 ? 'block' : 'none';
+
+            // Update select all checkbox state
+            const allCheckboxes = document.querySelectorAll('.video-checkbox');
+            const selectAll = document.getElementById('selectAll');
+            if (allCheckboxes.length > 0) {
+                selectAll.checked = checkboxes.length === allCheckboxes.length;
+                selectAll.indeterminate = checkboxes.length > 0 && checkboxes.length < allCheckboxes.length;
+            }
+        }
+
+        function bulkDeleteVideos() {
+            const checkboxes = document.querySelectorAll('.video-checkbox:checked');
+            const count = checkboxes.length;
+
+            if (count === 0) {
+                alert('Please select at least one video');
+                return;
+            }
+
+            if (!confirm(`Are you sure you want to delete ${count} video(s)? This action cannot be undone.`)) {
+                return;
+            }
+
+            const videoIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+            fetch('/admin/videos/bulk-delete', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ video_ids: videoIds })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message);
+                    location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(err => {
+                alert('Error deleting videos');
+                console.error(err);
+            });
         }
 
         // Close modals on overlay click

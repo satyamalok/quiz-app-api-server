@@ -32,6 +32,7 @@ const {
   showEditVideo,
   updateVideo,
   deleteVideo,
+  bulkDeleteVideos,
   duplicateVideo,
   showVideoBulkUpload,
   uploadSingleVideo,
@@ -158,6 +159,7 @@ router.get('/videos', showVideos);
 router.get('/videos/bulk-upload', showVideoBulkUpload);
 router.post('/videos/upload', upload.single('video_file'), uploadVideo);
 router.post('/videos/upload-single', upload.single('video'), uploadSingleVideo);
+router.post('/videos/bulk-delete', bulkDeleteVideos);
 router.get('/videos/:id/edit', showEditVideo);
 router.post('/videos/:id/update', updateVideo);
 router.post('/videos/:id/duplicate', duplicateVideo);
