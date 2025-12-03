@@ -13,6 +13,7 @@ JNV Quiz App - A gamified quiz application backend for Jawahar Navodaya Vidyalay
 - **Runtime:** Node.js (v18+)
 - **Framework:** Express.js
 - **Database:** PostgreSQL
+- **Cache:** Redis (ioredis) - for questions and reels metadata caching
 - **Storage:** MinIO (S3-compatible)
 - **Auth:** JWT tokens (6 months validity)
 - **View Engine:** EJS (for admin panel)
@@ -954,6 +955,20 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 42. **Online users comparison must use IST** - When comparing `last_active_at` (stored in IST) with current time, use `NOW() AT TIME ZONE 'Asia/Kolkata'`, not plain `NOW()`.
 43. **Streak updates must be idempotent** - Multiple calls on same day should return `{ updated: false }`, not increment streak. The date comparison fix (gotcha #40) ensures this works correctly.
 
+**Redis Caching (2025-12-03):**
+44. **Redis uses lazyConnect** - Must call `connectRedis()` in server.js on startup. Without this, Redis stays disconnected and caching silently fails.
+45. **Questions cache is per level+medium** - Key pattern: `questions:level:{level}:medium:{medium}`. TTL: 24 hours. Invalidated on question changes in admin.
+46. **Reels cache is global (not per-user)** - Key: `reels:active`. TTL: 1 hour. Contains all active reels metadata. User's watched list is still queried from DB.
+47. **Cache invalidation is non-blocking** - All `invalidateReelsCache()` calls use `.catch()` to prevent cache errors from breaking main functionality.
+48. **Graceful degradation** - If Redis is unavailable, `isReady()` returns false and all cache functions return null, falling back to DB queries.
+
+**Event Webhooks (2025-12-03):**
+49. **Webhook auto-fetches user name** - Event functions (`onQuizStarted`, `onQuizCompleted`, etc.) automatically query `users_profile` to get user name if not provided.
+50. **Webhook config is cached for 5 minutes** - `getWebhookConfig()` caches database config to avoid DB queries on every event.
+
+**Admin Bulk Operations (2025-12-03):**
+51. **Videos support bulk delete** - `POST /admin/videos/bulk-delete` accepts `{ video_ids: [1, 2, 3] }`. UI has checkboxes and "Delete Selected" button.
+
 ## Load Testing (Future)
 
 **Recommended tools:**
@@ -969,7 +984,7 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 **Scaling options:**
 1. Increase DB pool to `max: 100`
 2. Use PM2 cluster mode (2-4 workers)
-3. Add Redis for caching (leaderboard, online count)
+3. ✅ Redis caching implemented (questions, reels metadata)
 
 **Key endpoints to test:**
 - Auth flow (OTP send/verify)
