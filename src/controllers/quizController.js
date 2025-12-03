@@ -263,6 +263,7 @@ async function answerQuestion(req, res, next) {
     let levelUnlocked = false;
     let newCurrentLevel = null;
     let baseXP = 0;
+    let completedLevel = null; // Store level for webhook after commit
 
     // Auto-complete quiz when all 10 questions answered
     if (attempt.questions_attempted === 10) {
@@ -275,6 +276,7 @@ async function answerQuestion(req, res, next) {
       );
 
       const attemptData = attemptDetails.rows[0];
+      completedLevel = attemptData.level; // Store for webhook use after commit
       baseXP = calculateBaseXP(attempt.correct_answers, attemptData.is_first_attempt);
 
       // Mark level as completed and store base XP with IST timestamp
@@ -320,14 +322,14 @@ async function answerQuestion(req, res, next) {
 
       // Quiz completed event
       eventWebhook.onQuizCompleted(
-        phone, attemptData.level, attempt_id,
+        phone, completedLevel, attempt_id,
         parseFloat(attempt.accuracy_percentage), baseXP, attempt.correct_answers,
         levelUnlocked, newCurrentLevel
       ).catch(err => console.error('Webhook error (non-critical):', err.message));
 
       // Level unlocked event (separate event for easier n8n handling)
       if (levelUnlocked) {
-        eventWebhook.onLevelUnlocked(phone, attemptData.level, newCurrentLevel)
+        eventWebhook.onLevelUnlocked(phone, completedLevel, newCurrentLevel)
           .catch(err => console.error('Webhook error (non-critical):', err.message));
       }
     }

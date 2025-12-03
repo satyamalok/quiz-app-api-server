@@ -1,13 +1,14 @@
 const app = require('./src/app');
 const { startAutoUpdateJob } = require('./src/services/onlineUsersService');
+const { connect: connectRedis, disconnect: disconnectRedis } = require('./src/config/redis');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3000;
 
 // Start server
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, async () => {
   const workerId = process.env.NODE_APP_INSTANCE || 'main';
-  
+
   console.log('\n==============================================');
   console.log('  JNV QUIZ APP - API SERVER');
   console.log('==============================================\n');
@@ -18,31 +19,36 @@ const server = app.listen(PORT, () => {
   console.log('✓ Admin Panel: http://localhost:' + PORT + '/admin');
   console.log('\n==============================================\n');
 
+  // Connect to Redis for caching
+  await connectRedis();
+
   // Start background jobs only on primary worker (worker 0)
   // PM2 sets NODE_APP_INSTANCE for each worker (0, 1, 2, 3...)
   const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
-  
+
   if (isPrimaryWorker) {
     console.log('Starting background jobs (primary worker)...\n');
     startAutoUpdateJob();
   } else {
     console.log('Skipping background jobs (handled by primary worker)\n');
   }
-  
+
   console.log('==============================================\n');
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('SIGTERM signal received: closing HTTP server');
+  await disconnectRedis();
   server.close(() => {
     console.log('HTTP server closed');
     process.exit(0);
   });
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('\nSIGINT signal received: closing HTTP server');
+  await disconnectRedis();
   server.close(() => {
     console.log('HTTP server closed');
     process.exit(0);
