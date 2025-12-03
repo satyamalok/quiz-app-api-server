@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Upload Videos - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        /* Drop Zone */
+        .drop-zone {
+            border: 3px dashed #ccc;
+            border-radius: 10px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #fafafa;
+            margin-bottom: 20px;
+        }
+        .drop-zone:hover, .drop-zone.dragover {
+            border-color: #007bff;
+            background: #e3f2fd;
+        }
+        .drop-zone h3 {
+            margin: 0 0 10px;
+            color: #333;
+        }
+        .drop-zone p {
+            color: #666;
+            margin: 0;
+        }
+        .drop-zone input[type="file"] {
+            display: none;
+        }
+
+        /* File List */
+        .file-list {
+            margin-top: 20px;
+        }
+        .file-item {
+            display: grid;
+            grid-template-columns: 120px 1fr;
+            gap: 15px;
+            align-items: start;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            background: #fff;
+        }
+        .file-preview {
+            width: 120px;
+            height: 70px;
+            object-fit: cover;
+            border-radius: 5px;
+            background: #000;
+        }
+        .file-details {
+            display: grid;
+            grid-template-columns: 1fr 100px 150px 80px;
+            gap: 10px;
+            align-items: center;
+        }
+        .file-info {
+            overflow: hidden;
+        }
+        .file-name-input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .file-size {
+            color: #666;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .file-item input[type="number"], .file-item select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .remove-file {
+            background: #dc3545;
+            color: #fff;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .remove-file:hover {
+            background: #c82333;
+        }
+
+        /* Upload Progress */
+        .upload-progress {
+            display: none;
+            margin-top: 20px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #007bff;
+            transition: width 0.3s ease;
+        }
+        .progress-text {
+            text-align: center;
+            margin-top: 10px;
+            color: #666;
+        }
+
+        /* Per-file progress */
+        .file-progress {
+            display: none;
+            margin-top: 10px;
+            grid-column: 1 / -1;
+        }
+        .file-progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .file-progress-fill {
+            height: 100%;
+            background: #28a745;
+            transition: width 0.2s ease;
+            width: 0%;
+        }
+        .file-status {
+            font-size: 12px;
+            margin-top: 5px;
+            color: #666;
+        }
+        .file-status.uploading { color: #007bff; }
+        .file-status.complete { color: #28a745; }
+        .file-status.error { color: #dc3545; }
+        .file-status.waiting { color: #6c757d; }
+
+        .file-item.uploading { border-color: #007bff; background: #f0f7ff; }
+        .file-item.complete { border-color: #28a745; background: #f0fff0; }
+        .file-item.error { border-color: #dc3545; background: #fff0f0; }
+
+        /* Summary */
+        .upload-summary {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .upload-summary strong {
+            color: #007bff;
+        }
+
+        /* Category badge */
+        .category-both-note {
+            font-size: 11px;
+            color: #856404;
+            background: #fff3cd;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-top: 3px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>Bulk Upload Videos</h1>
+            <a href="/admin/videos" class="btn" style="background: #6c757d;">Back to Videos</a>
+        </div>
+
+        <% if (message) { %>
+            <div class="success"><%= message %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="error"><%= error %></div>
+        <% } %>
+
+        <div class="card">
+            <h2>Bulk Upload (Drag & Drop)</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Upload multiple promotional/lifeline videos at once. Supported formats: MP4, MOV, WebM. Max 100MB per file.
+                <br><strong>Tip:</strong> Select "Both" category to create entries for both Promotional and Lifeline with the same video.
+            </p>
+
+            <form id="uploadForm">
+                <!-- Drop Zone -->
+                <div class="drop-zone" id="dropZone">
+                    <h3>Drag & Drop Videos Here</h3>
+                    <p>or click to browse (select multiple files)</p>
+                    <input type="file" id="fileInput" name="videos" accept="video/*" multiple>
+                </div>
+
+                <!-- Summary -->
+                <div class="upload-summary" id="uploadSummary" style="display: none;">
+                    <strong id="fileCount">0</strong> files selected |
+                    Total size: <strong id="totalSize">0 MB</strong>
+                </div>
+
+                <!-- File List -->
+                <div class="file-list" id="fileList"></div>
+
+                <!-- Upload Progress -->
+                <div class="upload-progress" id="uploadProgress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+                    </div>
+                    <p class="progress-text" id="progressText">Uploading...</p>
+                </div>
+
+                <!-- Submit Button -->
+                <div id="submitContainer" style="display: none; margin-top: 20px;">
+                    <button type="submit" id="uploadBtn">Upload All Videos</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>Tips</h2>
+            <ul style="color: #666; line-height: 1.8;">
+                <li><strong>Level:</strong> Select the level (1-100) this video belongs to</li>
+                <li><strong>Promotional:</strong> Videos shown after completing a quiz to double XP</li>
+                <li><strong>Lifeline:</strong> Videos shown to restore lifelines during quiz</li>
+                <li><strong>Both:</strong> Creates two entries (promotional + lifeline) with the same video URL</li>
+                <li>You can edit video details after upload from the Videos page</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const uploadSummary = document.getElementById('uploadSummary');
+        const submitContainer = document.getElementById('submitContainer');
+        const uploadForm = document.getElementById('uploadForm');
+
+        let selectedFiles = [];
+
+        // Click to browse
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        // Drag events
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(files) {
+            const videoFiles = Array.from(files).filter(f => f.type.startsWith('video/'));
+
+            if (videoFiles.length === 0) {
+                alert('Please select video files only');
+                return;
+            }
+
+            selectedFiles = [...selectedFiles, ...videoFiles];
+            renderFileList();
+        }
+
+        function renderFileList() {
+            fileList.innerHTML = '';
+            let totalSize = 0;
+
+            selectedFiles.forEach((file, index) => {
+                totalSize += file.size;
+                const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                const defaultName = file.name.replace(/\.[^/.]+$/, '');
+
+                const item = document.createElement('div');
+                item.className = 'file-item';
+                item.id = `file-item-${index}`;
+                item.innerHTML = `
+                    <video class="file-preview" muted>
+                        <source src="${URL.createObjectURL(file)}" type="${file.type}">
+                    </video>
+                    <div>
+                        <div class="file-details">
+                            <div class="file-info">
+                                <input type="text" class="file-name-input" placeholder="Video name" value="${defaultName}">
+                                <div class="file-size">${sizeMB} MB</div>
+                            </div>
+                            <input type="number" class="file-level" placeholder="Level" min="1" max="100" value="1">
+                            <select class="file-category" onchange="toggleBothNote(${index}, this.value)">
+                                <option value="promotional">Promotional</option>
+                                <option value="lifeline">Lifeline</option>
+                                <option value="both">Both</option>
+                            </select>
+                            <button type="button" class="remove-file" onclick="removeFile(${index})">Remove</button>
+                        </div>
+                        <div class="category-both-note" id="both-note-${index}">Will create 2 entries (promotional + lifeline)</div>
+                        <div class="file-progress" id="file-progress-${index}">
+                            <div class="file-progress-bar">
+                                <div class="file-progress-fill" id="file-progress-fill-${index}"></div>
+                            </div>
+                            <div class="file-status waiting" id="file-status-${index}">Waiting...</div>
+                        </div>
+                        <input type="hidden" class="file-duration" value="0">
+                    </div>
+                `;
+                fileList.appendChild(item);
+
+                // Try to get video duration
+                const video = item.querySelector('video');
+                video.addEventListener('loadedmetadata', () => {
+                    const durationInput = item.querySelector('.file-duration');
+                    durationInput.value = Math.round(video.duration);
+                });
+            });
+
+            // Update summary
+            document.getElementById('fileCount').textContent = selectedFiles.length;
+            document.getElementById('totalSize').textContent = (totalSize / (1024 * 1024)).toFixed(2) + ' MB';
+
+            uploadSummary.style.display = selectedFiles.length > 0 ? 'block' : 'none';
+            submitContainer.style.display = selectedFiles.length > 0 ? 'block' : 'none';
+        }
+
+        function toggleBothNote(index, value) {
+            const note = document.getElementById(`both-note-${index}`);
+            if (note) {
+                note.style.display = value === 'both' ? 'inline-block' : 'none';
+            }
+        }
+
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            renderFileList();
+        }
+
+        // Form submission with real progress tracking
+        uploadForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            if (selectedFiles.length === 0) {
+                alert('Please select at least one video');
+                return;
+            }
+
+            const uploadBtn = document.getElementById('uploadBtn');
+            const uploadProgress = document.getElementById('uploadProgress');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading...';
+            uploadProgress.style.display = 'block';
+
+            // Show all file progress bars
+            selectedFiles.forEach((_, index) => {
+                document.getElementById(`file-progress-${index}`).style.display = 'block';
+            });
+
+            let completedCount = 0;
+            let successCount = 0;
+            let errorCount = 0;
+            let totalEntriesCreated = 0;
+
+            // Upload files one by one with real progress tracking
+            for (let i = 0; i < selectedFiles.length; i++) {
+                const file = selectedFiles[i];
+                const fileItem = document.getElementById(`file-item-${i}`);
+                const progressBar = document.getElementById(`file-progress-fill-${i}`);
+                const statusText = document.getElementById(`file-status-${i}`);
+                const nameInput = fileItem.querySelector('.file-name-input');
+                const levelInput = fileItem.querySelector('.file-level');
+                const categorySelect = fileItem.querySelector('.file-category');
+                const durationInput = fileItem.querySelector('.file-duration');
+
+                fileItem.classList.remove('waiting');
+                fileItem.classList.add('uploading');
+                statusText.className = 'file-status uploading';
+                statusText.textContent = 'Uploading... 0%';
+
+                try {
+                    const result = await uploadSingleFile(file, {
+                        video_name: nameInput.value || file.name.replace(/\.[^/.]+$/, ''),
+                        level: levelInput.value || 1,
+                        category: categorySelect.value,
+                        duration: durationInput.value
+                    }, (percent) => {
+                        // Update per-file progress
+                        progressBar.style.width = percent + '%';
+                        statusText.textContent = `Uploading... ${Math.round(percent)}%`;
+
+                        // Update overall progress
+                        const overallProgress = ((completedCount + (percent / 100)) / selectedFiles.length) * 100;
+                        progressFill.style.width = overallProgress + '%';
+                        progressText.textContent = `Uploading ${i + 1}/${selectedFiles.length}: ${Math.round(percent)}%`;
+                    });
+
+                    // Success
+                    fileItem.classList.remove('uploading');
+                    fileItem.classList.add('complete');
+                    progressBar.style.width = '100%';
+                    statusText.className = 'file-status complete';
+
+                    const entriesText = result.entries_created > 1 ? ` (${result.entries_created} entries)` : '';
+                    statusText.textContent = '✓ Complete' + entriesText;
+                    successCount++;
+                    totalEntriesCreated += result.entries_created || 1;
+
+                } catch (err) {
+                    // Error
+                    fileItem.classList.remove('uploading');
+                    fileItem.classList.add('error');
+                    statusText.className = 'file-status error';
+                    statusText.textContent = '✗ ' + (err.message || 'Upload failed');
+                    errorCount++;
+                }
+
+                completedCount++;
+
+                // Update overall progress
+                const overallProgress = (completedCount / selectedFiles.length) * 100;
+                progressFill.style.width = overallProgress + '%';
+            }
+
+            // All done
+            progressFill.style.width = '100%';
+            if (errorCount === 0) {
+                progressText.textContent = `✓ All ${successCount} videos uploaded (${totalEntriesCreated} entries created)!`;
+                progressFill.style.background = '#28a745';
+            } else {
+                progressText.textContent = `Completed: ${successCount} success, ${errorCount} failed`;
+                progressFill.style.background = errorCount === selectedFiles.length ? '#dc3545' : '#ffc107';
+            }
+
+            uploadBtn.textContent = 'Upload Complete';
+
+            // Redirect after a delay
+            setTimeout(() => {
+                window.location.href = `/admin/videos?message=Uploaded ${successCount} videos (${totalEntriesCreated} entries created)` +
+                    (errorCount > 0 ? `&error=${errorCount} failed` : '');
+            }, 2000);
+        });
+
+        // Upload single file using XMLHttpRequest with progress tracking
+        function uploadSingleFile(file, metadata, onProgress) {
+            return new Promise((resolve, reject) => {
+                const formData = new FormData();
+                formData.append('video', file);
+                formData.append('video_name', metadata.video_name);
+                formData.append('level', metadata.level);
+                formData.append('category', metadata.category);
+                formData.append('duration', metadata.duration);
+
+                const xhr = new XMLHttpRequest();
+
+                // Track upload progress
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const percent = (e.loaded / e.total) * 100;
+                        onProgress(percent);
+                    }
+                });
+
+                xhr.addEventListener('load', () => {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        try {
+                            const response = JSON.parse(xhr.responseText);
+                            if (response.success) {
+                                resolve(response);
+                            } else {
+                                reject(new Error(response.error || 'Upload failed'));
+                            }
+                        } catch (e) {
+                            reject(new Error('Invalid server response'));
+                        }
+                    } else {
+                        reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+                    }
+                });
+
+                xhr.addEventListener('error', () => {
+                    reject(new Error('Network error'));
+                });
+
+                xhr.addEventListener('timeout', () => {
+                    reject(new Error('Upload timeout'));
+                });
+
+                xhr.timeout = 300000; // 5 minute timeout per file
+                xhr.open('POST', '/admin/videos/upload-single');
+                xhr.send(formData);
+            });
+        }
+    </script>
+</body>
+</html>

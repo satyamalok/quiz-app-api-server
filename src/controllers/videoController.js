@@ -176,6 +176,11 @@ async function completeVideo(req, res, next) {
 
     await client.query('COMMIT');
 
+    // Send webhook event for bonus XP claimed (non-blocking)
+    const eventWebhook = require('../services/eventWebhookService');
+    eventWebhook.onBonusXPClaimed(phone, attempt.level, attempt_id, baseXP, bonusXP, finalXP, newTotalXP)
+      .catch(err => console.error('Webhook error (non-critical):', err.message));
+
     res.json({
       success: true,
       xp_details: {

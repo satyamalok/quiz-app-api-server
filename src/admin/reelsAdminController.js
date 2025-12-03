@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const { uploadFile } = require('../services/uploadService');
+const { invalidateReelsCache } = require('../services/cacheService');
 const multer = require('multer');
 
 // Multer setup for memory storage (multiple files)
@@ -169,6 +170,13 @@ async function uploadReels(req, res) {
       }
     }
 
+    // Invalidate cache after uploads (non-blocking)
+    if (uploadResults.length > 0) {
+      invalidateReelsCache().catch(err =>
+        console.error('Cache invalidation error (non-critical):', err.message)
+      );
+    }
+
     if (errors.length > 0) {
       return res.redirect(`/admin/reels?message=Uploaded ${uploadResults.length} reels&error=${errors.length} failed`);
     }
@@ -210,6 +218,11 @@ async function uploadSingleReel(req, res) {
       category || 'education',
       req.session.adminUser.email
     ]);
+
+    // Invalidate cache after new reel (non-blocking)
+    invalidateReelsCache().catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
 
     res.json({
       success: true,
@@ -284,6 +297,11 @@ async function updateReel(req, res) {
       id
     ]);
 
+    // Invalidate cache after update (non-blocking)
+    invalidateReelsCache().catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
+
     res.redirect('/admin/reels?message=Reel updated successfully');
 
   } catch (err) {
@@ -306,6 +324,11 @@ async function toggleReelStatus(req, res) {
       WHERE id = $1
     `, [id]);
 
+    // Invalidate cache after toggle (non-blocking)
+    invalidateReelsCache().catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
+
     res.json({ success: true });
 
   } catch (err) {
@@ -323,6 +346,11 @@ async function deleteReel(req, res) {
     const { id } = req.params;
 
     await pool.query('DELETE FROM reels WHERE id = $1', [id]);
+
+    // Invalidate cache after delete (non-blocking)
+    invalidateReelsCache().catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
 
     res.json({ success: true, message: 'Reel deleted successfully' });
 
@@ -368,6 +396,11 @@ async function bulkAction(req, res) {
       default:
         return res.status(400).json({ success: false, error: 'Invalid action' });
     }
+
+    // Invalidate cache after bulk action (non-blocking)
+    invalidateReelsCache().catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
 
     res.json({ success: true, message: `${action} completed for ${ids.length} reels` });
 

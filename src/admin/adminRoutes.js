@@ -8,6 +8,7 @@ const {
   showOTPViewer,
   showConfig,
   updateConfig,
+  testEventWebhook,
   showWhatsAppConfig,
   updateWhatsAppConfig,
   showUsers,
@@ -32,6 +33,8 @@ const {
   updateVideo,
   deleteVideo,
   duplicateVideo,
+  showVideoBulkUpload,
+  uploadSingleVideo,
   // Analytics
   showAnalytics,
   // DB Stats
@@ -92,6 +95,28 @@ router.get('/otp-viewer', showOTPViewer);
 // Configuration
 router.get('/config', showConfig);
 router.post('/config/update', updateConfig);
+router.post('/config/test-webhook', testEventWebhook);
+
+// Cache Management
+const cacheService = require('../services/cacheService');
+
+router.post('/cache/refresh', async (req, res) => {
+  try {
+    const result = await cacheService.refreshAllCaches();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/cache/stats', async (req, res) => {
+  try {
+    const stats = await cacheService.getCacheStats();
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ connected: false, error: err.message });
+  }
+});
 
 // WhatsApp Configuration
 router.get('/config/whatsapp', showWhatsAppConfig);
@@ -130,7 +155,9 @@ router.delete('/questions/:id', deleteQuestion);
 
 // Video Management
 router.get('/videos', showVideos);
+router.get('/videos/bulk-upload', showVideoBulkUpload);
 router.post('/videos/upload', upload.single('video_file'), uploadVideo);
+router.post('/videos/upload-single', upload.single('video'), uploadSingleVideo);
 router.get('/videos/:id/edit', showEditVideo);
 router.post('/videos/:id/update', updateVideo);
 router.post('/videos/:id/duplicate', duplicateVideo);

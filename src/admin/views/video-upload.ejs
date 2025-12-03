@@ -75,7 +75,10 @@
     <%- include('partials/nav') %>
 
     <div class="container">
-        <h1>Video Management</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>Video Management</h1>
+            <a href="/admin/videos/bulk-upload" class="btn" style="background: #17a2b8;">Bulk Upload</a>
+        </div>
 
         <% if (message) { %>
             <div class="success"><%= message %></div>

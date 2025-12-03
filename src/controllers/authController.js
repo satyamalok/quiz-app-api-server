@@ -107,6 +107,13 @@ async function verifyOTPHandler(req, res, next) {
 
     await client.query('COMMIT');
 
+    // Send webhook event for new user registration (non-blocking)
+    if (isNewUser) {
+      const eventWebhook = require('../services/eventWebhookService');
+      eventWebhook.onUserRegistered(phone, name || null, user.referral_code, referral_code || null)
+        .catch(err => console.error('Webhook error (non-critical):', err.message));
+    }
+
     // Generate JWT token
     const token = generateToken(phone);
 

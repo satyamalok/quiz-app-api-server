@@ -398,8 +398,17 @@ async function updateConfig(req, res) {
       online_count_min,
       online_count_max,
       update_interval_minutes,
-      active_minutes_threshold
+      active_minutes_threshold,
+      event_webhook_enabled,
+      event_webhook_url,
+      event_webhook_events
     } = req.body;
+
+    // Normalize event_webhook_events to array
+    let eventsArray = [];
+    if (event_webhook_events) {
+      eventsArray = Array.isArray(event_webhook_events) ? event_webhook_events : [event_webhook_events];
+    }
 
     // Update app_config
     await pool.query(`
@@ -410,6 +419,9 @@ async function updateConfig(req, res) {
         test_mode_enabled = $4,
         whatsapp_interakt_enabled = $5,
         whatsapp_n8n_enabled = $6,
+        event_webhook_enabled = $7,
+        event_webhook_url = $8,
+        event_webhook_events = $9,
         updated_at = NOW()
       WHERE id = 1
     `, [
@@ -418,8 +430,15 @@ async function updateConfig(req, res) {
       parseInt(otp_max_verification_attempts),
       test_mode_enabled === 'on',
       whatsapp_interakt_enabled === 'on',
-      whatsapp_n8n_enabled === 'on'
+      whatsapp_n8n_enabled === 'on',
+      event_webhook_enabled === 'on',
+      event_webhook_url || null,
+      eventsArray
     ]);
+
+    // Clear event webhook config cache
+    const eventWebhookService = require('../services/eventWebhookService');
+    eventWebhookService.clearConfigCache();
 
     // Update online_users_config
     await updateOnlineConfig({
@@ -463,6 +482,29 @@ async function updateConfig(req, res) {
   } catch (err) {
     console.error('Update config error:', err);
     res.status(500).send('Error updating configuration');
+  }
+}
+
+/**
+ * POST /admin/config/test-webhook
+ * Test event webhook connectivity
+ */
+async function testEventWebhook(req, res) {
+  try {
+    const { url } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ success: false, error: 'URL is required' });
+    }
+
+    const eventWebhookService = require('../services/eventWebhookService');
+    const result = await eventWebhookService.testWebhook(url);
+
+    res.json(result);
+
+  } catch (err) {
+    console.error('Test webhook error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 }
 
@@ -1420,6 +1462,84 @@ async function duplicateVideo(req, res) {
   }
 }
 
+/**
+ * GET /admin/videos/bulk-upload
+ * Show bulk video upload page
+ */
+async function showVideoBulkUpload(req, res) {
+  try {
+    res.render('video-bulk-upload', {
+      admin: req.session.adminUser,
+      message: req.query.message || null,
+      error: req.query.error || null
+    });
+  } catch (err) {
+    console.error('Show bulk upload page error:', err);
+    res.status(500).send('Error loading bulk upload page');
+  }
+}
+
+/**
+ * POST /admin/videos/upload-single
+ * Handle single video upload with JSON response (for AJAX progress tracking)
+ * If category is 'both', creates 2 entries (promotional + lifeline)
+ */
+async function uploadSingleVideo(req, res) {
+  try {
+    const file = req.file;
+    const { video_name, level, category, duration } = req.body;
+
+    if (!file) {
+      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    }
+
+    // Validate level
+    const videoLevel = parseInt(level) || 1;
+    if (videoLevel < 1 || videoLevel > 100) {
+      return res.status(400).json({ success: false, error: 'Level must be between 1 and 100' });
+    }
+
+    // Upload to MinIO
+    const uploadResult = await uploadFile(file, 'videos');
+    const videoDuration = parseInt(duration) || 0;
+    const name = video_name || file.originalname.replace(/\.[^/.]+$/, '');
+
+    let entriesCreated = 0;
+
+    // If category is 'both', create entries for promotional and lifeline
+    if (category === 'both') {
+      await pool.query(`
+        INSERT INTO promotional_videos (level, video_name, video_url, duration_seconds, category, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, 'promotional', NOW(), NOW())
+      `, [videoLevel, name, uploadResult.publicUrl, videoDuration]);
+      entriesCreated++;
+
+      await pool.query(`
+        INSERT INTO promotional_videos (level, video_name, video_url, duration_seconds, category, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, 'lifeline', NOW(), NOW())
+      `, [videoLevel, name, uploadResult.publicUrl, videoDuration]);
+      entriesCreated++;
+    } else {
+      await pool.query(`
+        INSERT INTO promotional_videos (level, video_name, video_url, duration_seconds, category, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+      `, [videoLevel, name, uploadResult.publicUrl, videoDuration, category || 'promotional']);
+      entriesCreated++;
+    }
+
+    res.json({
+      success: true,
+      filename: file.originalname,
+      url: uploadResult.publicUrl,
+      entries_created: entriesCreated
+    });
+
+  } catch (err) {
+    console.error('Upload single video error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
 // ========================================
 // ANALYTICS
 // ========================================
@@ -1461,6 +1581,7 @@ module.exports = {
   showOTPViewer,
   showConfig,
   updateConfig,
+  testEventWebhook,
   showWhatsAppConfig,
   updateWhatsAppConfig,
   showUsers,
@@ -1485,6 +1606,8 @@ module.exports = {
   updateVideo,
   deleteVideo,
   duplicateVideo,
+  showVideoBulkUpload,
+  uploadSingleVideo,
   // Analytics
   showAnalytics,
   // DB Stats

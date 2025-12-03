@@ -182,16 +182,200 @@
                 </p>
             </div>
 
+            <div class="card">
+                <h2>Event Webhooks (n8n)</h2>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+                    Send app events to an external webhook (e.g., n8n) for automation like sending WhatsApp messages, gifts, etc.
+                    <br><strong>Note:</strong> This is separate from the OTP webhook.
+                </p>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="event_webhook_enabled" id="event_webhook_enabled" <%= appConfig.event_webhook_enabled ? 'checked' : '' %> onchange="toggleEventWebhookSettings()">
+                        <strong>Enable Event Webhooks</strong>
+                    </label>
+                </div>
+
+                <div id="event-webhook-settings" style="<%= !appConfig.event_webhook_enabled ? 'display: none;' : '' %>">
+                    <div class="form-group">
+                        <label for="event_webhook_url">Webhook URL</label>
+                        <input type="url" id="event_webhook_url" name="event_webhook_url" value="<%= appConfig.event_webhook_url || '' %>" placeholder="https://your-n8n.com/webhook/events" style="width: 100%;">
+                        <small style="color: #666; display: block; margin-top: 5px;">
+                            Enter your n8n webhook URL. Events will be sent as POST requests with JSON payload.
+                        </small>
+                    </div>
+
+                    <div class="form-group">
+                        <label style="display: block; margin-bottom: 10px;"><strong>Events to Send:</strong></label>
+                        <% const availableEvents = [
+                            { id: 'quiz_started', name: 'Quiz Started', desc: 'When a user starts a level' },
+                            { id: 'quiz_completed', name: 'Quiz Completed', desc: 'When a user completes all 10 questions' },
+                            { id: 'bonus_xp_claimed', name: 'Bonus XP Claimed', desc: 'When a user watches video to double XP' },
+                            { id: 'user_registered', name: 'User Registered', desc: 'When a new user signs up' },
+                            { id: 'level_unlocked', name: 'Level Unlocked', desc: 'When a user unlocks a new level' }
+                        ]; %>
+                        <% const enabledEvents = appConfig.event_webhook_events || []; %>
+                        <% availableEvents.forEach(event => { %>
+                            <div style="margin-bottom: 8px; padding: 8px; background: #f8f9fa; border-radius: 4px;">
+                                <label style="display: flex; align-items: flex-start; cursor: pointer;">
+                                    <input type="checkbox" name="event_webhook_events" value="<%= event.id %>"
+                                        <%= enabledEvents.includes(event.id) ? 'checked' : '' %>
+                                        style="margin-right: 10px; margin-top: 3px;">
+                                    <div>
+                                        <strong><%= event.name %></strong>
+                                        <div style="font-size: 12px; color: #666;"><%= event.desc %></div>
+                                    </div>
+                                </label>
+                            </div>
+                        <% }); %>
+                    </div>
+
+                    <div style="margin-top: 15px;">
+                        <button type="button" onclick="testEventWebhook()" style="background: #17a2b8;">
+                            Test Webhook
+                        </button>
+                        <span id="webhook-test-result" style="margin-left: 10px;"></span>
+                    </div>
+
+                    <div style="margin-top: 15px; padding: 12px; background: #e7f3ff; border-left: 4px solid #2196f3; border-radius: 4px;">
+                        <strong style="color: #1976d2;">Payload Format</strong>
+                        <pre style="margin: 8px 0; font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto;">{
+  "event": "quiz_completed",  // Event name (always first)
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "app": "jnv_quiz",
+  "user": { "phone": "9876543210", "name": "Student" },
+  "quiz": { "level": 5, "accuracy_percentage": 80 },
+  ...
+}</pre>
+                    </div>
+                </div>
+            </div>
+
             <script>
                 function toggleOnlineModeSettings() {
                     const mode = document.getElementById('online_users_mode').value;
                     document.getElementById('fake-mode-settings').style.display = mode === 'fake' ? '' : 'none';
                     document.getElementById('actual-mode-settings').style.display = mode === 'actual' ? '' : 'none';
                 }
+
+                function toggleEventWebhookSettings() {
+                    const enabled = document.getElementById('event_webhook_enabled').checked;
+                    document.getElementById('event-webhook-settings').style.display = enabled ? '' : 'none';
+                }
+
+                async function testEventWebhook() {
+                    const resultSpan = document.getElementById('webhook-test-result');
+                    const url = document.getElementById('event_webhook_url').value;
+
+                    if (!url) {
+                        resultSpan.innerHTML = '<span style="color: #dc3545;">Please enter a webhook URL first</span>';
+                        return;
+                    }
+
+                    resultSpan.innerHTML = '<span style="color: #007bff;">Testing...</span>';
+
+                    try {
+                        const response = await fetch('/admin/config/test-webhook', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url })
+                        });
+                        const data = await response.json();
+
+                        if (data.success) {
+                            resultSpan.innerHTML = '<span style="color: #28a745;">✓ Webhook is working!</span>';
+                        } else {
+                            resultSpan.innerHTML = '<span style="color: #dc3545;">✗ ' + (data.error || 'Test failed') + '</span>';
+                        }
+                    } catch (err) {
+                        resultSpan.innerHTML = '<span style="color: #dc3545;">✗ Network error</span>';
+                    }
+                }
+
+                async function refreshCache() {
+                    const btn = event.target;
+                    const originalText = btn.textContent;
+                    btn.disabled = true;
+                    btn.textContent = 'Refreshing...';
+
+                    try {
+                        const response = await fetch('/admin/cache/refresh', { method: 'POST' });
+                        const data = await response.json();
+
+                        if (data.success) {
+                            document.getElementById('cache-status').innerHTML =
+                                '<span style="color: #28a745;">✓ ' + data.message + '</span>';
+                            // Reload stats
+                            loadCacheStats();
+                        } else {
+                            document.getElementById('cache-status').innerHTML =
+                                '<span style="color: #dc3545;">✗ ' + (data.error || 'Refresh failed') + '</span>';
+                        }
+                    } catch (err) {
+                        document.getElementById('cache-status').innerHTML =
+                            '<span style="color: #dc3545;">✗ Network error</span>';
+                    }
+
+                    btn.disabled = false;
+                    btn.textContent = originalText;
+                }
+
+                async function loadCacheStats() {
+                    try {
+                        const response = await fetch('/admin/cache/stats');
+                        const data = await response.json();
+
+                        if (data.connected) {
+                            document.getElementById('cache-stats-content').innerHTML = `
+                                <div style="color: #28a745; margin-bottom: 10px;">✓ Redis Connected</div>
+                                <div>Questions cached: <strong>${data.stats.questions_cached}</strong> levels</div>
+                                <div>Reels cached: <strong>${data.stats.reels_cached ? 'Yes' : 'No'}</strong></div>
+                                <div>Config cached: <strong>${data.stats.config_cached ? 'Yes' : 'No'}</strong></div>
+                                <div>Memory used: <strong>${data.stats.memory_used}</strong></div>
+                            `;
+                        } else {
+                            document.getElementById('cache-stats-content').innerHTML =
+                                '<span style="color: #dc3545;">✗ Redis not connected</span>';
+                        }
+                    } catch (err) {
+                        document.getElementById('cache-stats-content').innerHTML =
+                            '<span style="color: #666;">Unable to load cache stats</span>';
+                    }
+                }
+
+                // Load cache stats on page load
+                loadCacheStats();
             </script>
 
             <button type="submit">Save Configuration</button>
         </form>
+
+        <div class="card" style="margin-top: 20px;">
+            <h2>Redis Cache</h2>
+            <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+                Redis cache improves performance by storing frequently accessed data. Clear the cache after updating questions or reels.
+            </p>
+
+            <div id="cache-stats-content" style="padding: 15px; background: #f8f9fa; border-radius: 5px; margin-bottom: 15px;">
+                Loading cache statistics...
+            </div>
+
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <button type="button" onclick="refreshCache()" style="background: #dc3545;">
+                    Clear All Caches
+                </button>
+                <span id="cache-status"></span>
+            </div>
+
+            <div style="margin-top: 15px; padding: 12px; background: #e7f3ff; border-left: 4px solid #2196f3; border-radius: 4px;">
+                <strong style="color: #1976d2;">Cache TTLs</strong>
+                <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 13px; color: #555;">
+                    <li><strong>Questions:</strong> 24 hours</li>
+                    <li><strong>Reels:</strong> 1 hour</li>
+                    <li><strong>App Config:</strong> 5 minutes</li>
+                </ul>
+            </div>
+        </div>
     </div>
 </body>
 </html>

@@ -3,6 +3,7 @@ const { calculateBaseXP, calculateAccuracy, addXPToUser } = require('../services
 const { deductLifeline, getLifelineStatus } = require('../services/lifelineService');
 const { updateStreak } = require('../services/streakService');
 const { SQL_IST_NOW, SQL_IST_DATE, SQL_IST_TIME } = require('../utils/timezone');
+const { getCachedQuestions, setCachedQuestions } = require('../services/cacheService');
 
 /**
  * GET /api/v1/user/level-history
@@ -73,23 +74,13 @@ async function startLevel(req, res, next) {
 
     const isFirstAttempt = parseInt(attemptCountResult.rows[0].count) === 0;
 
-    // Fetch 10 questions for this level matching user's medium
-    // Priority: user's medium or 'both' > fallback to 'english' or 'both' > fallback to any
-    let questionsResult = await pool.query(`
-      SELECT
-        sl, level, question_order,
-        question_text, question_image_url,
-        option_1, option_2, option_3, option_4,
-        explanation_text, explanation_url,
-        subject, topic, medium
-      FROM questions
-      WHERE level = $1 AND (medium = $2 OR medium = 'both')
-      ORDER BY question_order ASC
-    `, [level, userMedium]);
+    // Try to get questions from cache first
+    let questionRows = await getCachedQuestions(level, userMedium);
 
-    // Fallback 1: If no questions found, try 'english' or 'both'
-    if (questionsResult.rows.length === 0 && userMedium !== 'english') {
-      questionsResult = await pool.query(`
+    if (!questionRows) {
+      // Cache miss - fetch from database
+      // Priority: user's medium or 'both' > fallback to 'english' or 'both' > fallback to any
+      let questionsResult = await pool.query(`
         SELECT
           sl, level, question_order,
           question_text, question_image_url,
@@ -97,27 +88,50 @@ async function startLevel(req, res, next) {
           explanation_text, explanation_url,
           subject, topic, medium
         FROM questions
-        WHERE level = $1 AND (medium = 'english' OR medium = 'both')
+        WHERE level = $1 AND (medium = $2 OR medium = 'both')
         ORDER BY question_order ASC
-      `, [level]);
+      `, [level, userMedium]);
+
+      // Fallback 1: If no questions found, try 'english' or 'both'
+      if (questionsResult.rows.length === 0 && userMedium !== 'english') {
+        questionsResult = await pool.query(`
+          SELECT
+            sl, level, question_order,
+            question_text, question_image_url,
+            option_1, option_2, option_3, option_4,
+            explanation_text, explanation_url,
+            subject, topic, medium
+          FROM questions
+          WHERE level = $1 AND (medium = 'english' OR medium = 'both')
+          ORDER BY question_order ASC
+        `, [level]);
+      }
+
+      // Fallback 2: If still no questions, get any questions for this level
+      if (questionsResult.rows.length === 0) {
+        questionsResult = await pool.query(`
+          SELECT
+            sl, level, question_order,
+            question_text, question_image_url,
+            option_1, option_2, option_3, option_4,
+            explanation_text, explanation_url,
+            subject, topic, medium
+          FROM questions
+          WHERE level = $1
+          ORDER BY question_order ASC
+        `, [level]);
+      }
+
+      questionRows = questionsResult.rows;
+
+      // Cache the questions for future requests (non-blocking)
+      if (questionRows.length > 0) {
+        setCachedQuestions(level, userMedium, questionRows)
+          .catch(err => console.error('Cache set error (non-critical):', err.message));
+      }
     }
 
-    // Fallback 2: If still no questions, get any questions for this level
-    if (questionsResult.rows.length === 0) {
-      questionsResult = await pool.query(`
-        SELECT
-          sl, level, question_order,
-          question_text, question_image_url,
-          option_1, option_2, option_3, option_4,
-          explanation_text, explanation_url,
-          subject, topic, medium
-        FROM questions
-        WHERE level = $1
-        ORDER BY question_order ASC
-      `, [level]);
-    }
-
-    if (questionsResult.rows.length === 0) {
+    if (!questionRows || questionRows.length === 0) {
       throw { code: 'QUESTIONS_NOT_FOUND', message: 'No questions found for this level' };
     }
 
@@ -140,8 +154,13 @@ async function startLevel(req, res, next) {
       console.error('Streak update error (non-critical):', err);
     });
 
+    // Send webhook event (non-blocking)
+    const eventWebhook = require('../services/eventWebhookService');
+    eventWebhook.onQuizStarted(phone, level, attemptId, isFirstAttempt)
+      .catch(err => console.error('Webhook error (non-critical):', err.message));
+
     // Format questions for response (with @ symbol intact)
-    const questions = questionsResult.rows.map(q => ({
+    const questions = questionRows.map(q => ({
       sl: q.sl,
       question_order: q.question_order,
       question_text: q.question_text,
@@ -294,6 +313,24 @@ async function answerQuestion(req, res, next) {
     }
 
     await client.query('COMMIT');
+
+    // Send webhook events for quiz completion (non-blocking)
+    if (quizCompleted) {
+      const eventWebhook = require('../services/eventWebhookService');
+
+      // Quiz completed event
+      eventWebhook.onQuizCompleted(
+        phone, attemptData.level, attempt_id,
+        parseFloat(attempt.accuracy_percentage), baseXP, attempt.correct_answers,
+        levelUnlocked, newCurrentLevel
+      ).catch(err => console.error('Webhook error (non-critical):', err.message));
+
+      // Level unlocked event (separate event for easier n8n handling)
+      if (levelUnlocked) {
+        eventWebhook.onLevelUnlocked(phone, attemptData.level, newCurrentLevel)
+          .catch(err => console.error('Webhook error (non-critical):', err.message));
+      }
+    }
 
     // Build response
     const response = {

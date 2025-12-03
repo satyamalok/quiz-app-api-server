@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const { SQL_IST_NOW } = require('../utils/timezone');
+const { getCachedReels, setCachedReels } = require('./cacheService');
 
 /**
  * Get reels config from app_config
@@ -12,12 +13,54 @@ async function getReelsConfig() {
 }
 
 /**
+ * Get all active reels (with caching)
+ * Returns active reels ordered by id DESC (newest first)
+ */
+async function getActiveReels() {
+  // Try cache first
+  let reels = await getCachedReels();
+
+  if (!reels) {
+    // Cache miss - query database
+    const result = await pool.query(`
+      SELECT
+        id,
+        title,
+        description,
+        video_url,
+        thumbnail_url,
+        duration_seconds,
+        category,
+        tags,
+        total_hearts,
+        created_at
+      FROM reels
+      WHERE is_active = TRUE
+      ORDER BY id DESC
+    `);
+
+    reels = result.rows;
+
+    // Cache for future requests (non-blocking)
+    if (reels.length > 0) {
+      setCachedReels(reels).catch(err =>
+        console.error('Cache set error (non-critical):', err.message)
+      );
+    }
+  }
+
+  return reels;
+}
+
+/**
  * Get next reels for user feed (sliding window approach with infinite loop)
  * Returns reels the user hasn't started yet, newest first
  * If user has seen all reels, resets their progress to start fresh (infinite loop)
  *
  * Uses transaction with row-level locking to prevent race conditions where
  * concurrent requests could both trigger a reset and return duplicate reels.
+ *
+ * Optimization: Uses cached active reels to avoid full table scan on each request.
  */
 async function getReelsFeed(phone, limit = 3) {
   const client = await pool.connect();
@@ -32,88 +75,76 @@ async function getReelsFeed(phone, limit = 3) {
       [phone]
     );
 
-    // Get active reels that user hasn't started yet
-    // Order by id DESC (newest first) to always serve newest content first
-    let result = await client.query(`
-      SELECT
-        r.id,
-        r.title,
-        r.description,
-        r.video_url,
-        r.thumbnail_url,
-        r.duration_seconds,
-        r.category,
-        r.tags,
-        r.total_hearts,
-        r.created_at,
-        COALESCE(urp.is_hearted, FALSE) as is_hearted
-      FROM reels r
-      LEFT JOIN user_reel_progress urp ON r.id = urp.reel_id AND urp.phone = $1
-      WHERE r.is_active = TRUE
-        AND urp.id IS NULL  -- User hasn't started this reel
-      ORDER BY r.id DESC
-      LIMIT $2
-    `, [phone, limit]);
+    // Get all active reels from cache (or DB if cache miss)
+    const activeReels = await getActiveReels();
 
-    // If no reels found, user has seen all reels - reset their progress for infinite loop
-    if (result.rows.length === 0) {
-      const hasActiveReels = await client.query('SELECT COUNT(*) FROM reels WHERE is_active = TRUE');
-      const totalActiveReels = parseInt(hasActiveReels.rows[0].count);
+    if (activeReels.length === 0) {
+      await client.query('COMMIT');
+      return [];
+    }
 
-      if (totalActiveReels > 0) {
-        // Get hearted reels BEFORE deleting progress (to preserve hearts)
-        const heartedReels = await client.query(`
-          SELECT reel_id FROM user_reel_progress
-          WHERE phone = $1 AND is_hearted = TRUE
-        `, [phone]);
-        const heartedReelIds = heartedReels.rows.map(r => r.reel_id);
+    // Get user's progress for all reels (which ones started, which hearted)
+    const progressResult = await client.query(
+      'SELECT reel_id, is_hearted FROM user_reel_progress WHERE phone = $1',
+      [phone]
+    );
 
-        // Delete all progress for this user (clears 'started' status)
-        await client.query(`
-          DELETE FROM user_reel_progress
-          WHERE phone = $1
-            AND reel_id IN (SELECT id FROM reels WHERE is_active = TRUE)
-        `, [phone]);
+    // Create maps for quick lookup
+    const startedReelIds = new Set(progressResult.rows.map(r => r.reel_id));
+    const heartedReelIds = new Set(
+      progressResult.rows.filter(r => r.is_hearted).map(r => r.reel_id)
+    );
 
-        // Re-insert hearted reels with status 'started' and is_hearted = true
-        // This preserves heart preferences while allowing reels to show again
-        if (heartedReelIds.length > 0) {
-          for (const reelId of heartedReelIds) {
-            await client.query(`
-              INSERT INTO user_reel_progress (phone, reel_id, status, is_hearted, started_at, created_at, updated_at)
-              VALUES ($1, $2, 'started', TRUE, ${SQL_IST_NOW}, ${SQL_IST_NOW}, ${SQL_IST_NOW})
-              ON CONFLICT (phone, reel_id) DO NOTHING
-            `, [phone, reelId]);
-          }
+    // Filter to get unwatched reels (not started yet)
+    let unwatchedReels = activeReels
+      .filter(reel => !startedReelIds.has(reel.id))
+      .map(reel => ({
+        ...reel,
+        is_hearted: heartedReelIds.has(reel.id)
+      }));
+
+    // If no unwatched reels, user has seen all - reset their progress for infinite loop
+    if (unwatchedReels.length === 0 && activeReels.length > 0) {
+      // Get hearted reels BEFORE deleting progress (to preserve hearts)
+      const heartedReels = await client.query(`
+        SELECT reel_id FROM user_reel_progress
+        WHERE phone = $1 AND is_hearted = TRUE
+      `, [phone]);
+      const preserveHeartedIds = new Set(heartedReels.rows.map(r => r.reel_id));
+
+      // Delete all progress for this user (clears 'started' status)
+      const activeReelIds = activeReels.map(r => r.id);
+      await client.query(`
+        DELETE FROM user_reel_progress
+        WHERE phone = $1
+          AND reel_id = ANY($2::int[])
+      `, [phone, activeReelIds]);
+
+      // Re-insert hearted reels with status 'started' and is_hearted = true
+      // This preserves heart preferences while allowing reels to show again
+      if (preserveHeartedIds.size > 0) {
+        for (const reelId of preserveHeartedIds) {
+          await client.query(`
+            INSERT INTO user_reel_progress (phone, reel_id, status, is_hearted, started_at, created_at, updated_at)
+            VALUES ($1, $2, 'started', TRUE, ${SQL_IST_NOW}, ${SQL_IST_NOW}, ${SQL_IST_NOW})
+            ON CONFLICT (phone, reel_id) DO NOTHING
+          `, [phone, reelId]);
         }
-
-        // Now fetch reels again (user can see them fresh)
-        // Exclude hearted reels since we just re-inserted them as 'started'
-        result = await client.query(`
-          SELECT
-            r.id,
-            r.title,
-            r.description,
-            r.video_url,
-            r.thumbnail_url,
-            r.duration_seconds,
-            r.category,
-            r.tags,
-            r.total_hearts,
-            r.created_at,
-            FALSE as is_hearted
-          FROM reels r
-          LEFT JOIN user_reel_progress urp ON r.id = urp.reel_id AND urp.phone = $1
-          WHERE r.is_active = TRUE
-            AND urp.id IS NULL
-          ORDER BY r.id DESC
-          LIMIT $2
-        `, [phone, limit]);
       }
+
+      // Now return all reels except the hearted ones (those are marked as started)
+      unwatchedReels = activeReels
+        .filter(reel => !preserveHeartedIds.has(reel.id))
+        .map(reel => ({
+          ...reel,
+          is_hearted: false
+        }));
     }
 
     await client.query('COMMIT');
-    return result.rows;
+
+    // Return only the requested limit
+    return unwatchedReels.slice(0, limit);
 
   } catch (err) {
     await client.query('ROLLBACK');
@@ -342,13 +373,11 @@ async function getUserReelStats(phone) {
     WHERE phone = $1
   `, [phone]);
 
-  // Get total available reels
-  const totalReels = await pool.query(
-    'SELECT COUNT(*) as count FROM reels WHERE is_active = TRUE'
-  );
+  // Get total available reels from cache
+  const activeReels = await getActiveReels();
+  const totalAvailable = activeReels.length;
 
   const stats = result.rows[0];
-  const totalAvailable = parseInt(totalReels.rows[0].count);
 
   return {
     total_reels_viewed: parseInt(stats.total_reels_viewed),
@@ -402,6 +431,7 @@ async function getHeartedReels(phone, limit = 50, offset = 0) {
 
 module.exports = {
   getReelsConfig,
+  getActiveReels,
   getReelsFeed,
   getReelById,
   markReelStarted,
