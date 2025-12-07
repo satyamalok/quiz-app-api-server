@@ -1,0 +1,121 @@
+Redis Session Store for Admin Panel (PM2 Cluster Mode)
+
+  Problem
+
+  Admin panel sessions were getting randomly logged out when running PM2 in cluster mode (4 workers). This happened because connect-pg-simple (PostgreSQL session store) has race
+  conditions when multiple workers read/write the same session.
+
+  Solution
+
+  Use Redis for session storage. Redis provides atomic operations ensuring session consistency across all cluster workers.
+
+  Implementation Steps
+
+  1. Install connect-redis (version 7.x for ioredis compatibility)
+
+  npm install connect-redis@7
+
+  2. Update src/app.js
+
+  Replace the imports at the top:
+  const express = require('express');
+  const cors = require('cors');
+  const helmet = require('helmet');
+  const morgan = require('morgan');
+  const session = require('express-session');
+  const RedisStore = require('connect-redis').default;
+  const cookieParser = require('cookie-parser');
+  const path = require('path');
+  require('dotenv').config();
+
+  const pool = require('./config/database');
+  const { getClient: getRedisClient } = require('./config/redis');
+
+  const errorHandler = require('./middleware/errorHandler');
+  const apiRoutes = require('./routes');
+
+  Replace the session middleware (around line 48-67):
+  // Session for admin panel (Redis store for PM2 cluster mode)
+  // Redis provides atomic operations ensuring session consistency across all workers
+  const redisClient = getRedisClient();
+  app.use(session({
+    store: new RedisStore({ client: redisClient }),
+    secret: process.env.SESSION_SECRET,
+    name: 'admin.sid',
+    resave: false, // Redis handles this atomically
+    saveUninitialized: false,
+    rolling: true, // Reset cookie expiration on every response
+    cookie: {
+      secure: false, // Keep false - Nginx handles HTTPS, internal traffic is HTTP
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+  }));
+
+  3. Update ecosystem.config.js for cluster mode
+
+  module.exports = {
+    apps: [{
+      name: 'quiz-api',
+      script: 'server.js',
+
+      // Cluster mode with 4 workers - Redis session store ensures consistency
+      instances: 4,
+      exec_mode: 'cluster',
+
+      // Environment variables
+      env: {
+        NODE_ENV: 'development',
+        PM2_INSTANCES: 4,
+      },
+      env_production: {
+        NODE_ENV: 'production',
+        PM2_INSTANCES: 4,
+      },
+
+      // Memory management - restart if worker exceeds 500MB
+      max_memory_restart: '500M',
+
+      // Logging
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+      error_file: 'logs/error.log',
+      out_file: 'logs/out.log',
+      merge_logs: true,
+
+      // Graceful shutdown
+      kill_timeout: 5000,
+      wait_ready: true,
+      listen_timeout: 10000,
+
+      // Restart policy
+      autorestart: true,
+      watch: false,
+      max_restarts: 10,
+      restart_delay: 1000,
+    }]
+  };
+
+  4. Restart PM2
+
+  pm2 delete quiz-api
+  pm2 start ecosystem.config.js --env production
+  pm2 save
+
+  Verification
+
+  # Check sessions are stored in Redis
+  docker exec quiz-redis redis-cli -a 'Rds#2024$vBnM7kLpX' KEYS "sess:*"
+
+  # Should see session keys like:
+  # sess:iyHffkSYl2bMIqdBsij9sKKOQv504jhz
+
+  Key Points
+
+  - Use connect-redis@7 (NOT v9) - v7 is compatible with ioredis
+  - resave: false - Redis handles atomic updates
+  - Sessions are stored with prefix sess: in Redis
+  - TTL is automatically set based on cookie maxAge (24 hours)
+
+  ---
+  Save this and provide it to me during fresh installs to ensure the admin panel works correctly with PM2 cluster mode.
