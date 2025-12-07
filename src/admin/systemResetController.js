@@ -1,5 +1,17 @@
 const pool = require('../config/database');
+const { getAdminTenantClient, adminQuery } = require('../config/database');
 const { SQL_IST_NOW } = require('../utils/timezone');
+
+/**
+ * Get the current app schema from admin session
+ * Falls back to default schema if not set
+ */
+function getAdminSchema(req) {
+  if (req.session && req.session.currentApp && req.session.currentApp.schema) {
+    return req.session.currentApp.schema;
+  }
+  return process.env.DEFAULT_APP_SCHEMA || 'app_jnvquiz';
+}
 
 /**
  * GET /admin/system/reset
@@ -7,8 +19,9 @@ const { SQL_IST_NOW } = require('../utils/timezone');
  */
 async function showResetPage(req, res) {
   try {
+    const schema = getAdminSchema(req);
     // Get counts for each category
-    const counts = await getDataCounts();
+    const counts = await getDataCounts(schema);
 
     res.render('system-reset', {
       admin: req.session.adminUser,
@@ -26,7 +39,7 @@ async function showResetPage(req, res) {
 /**
  * Get data counts for each category
  */
-async function getDataCounts() {
+async function getDataCounts(schema) {
   const queries = {
     users: 'SELECT COUNT(*) FROM users_profile',
     questions: 'SELECT COUNT(*) FROM questions',
@@ -45,7 +58,7 @@ async function getDataCounts() {
 
   const counts = {};
   for (const [key, query] of Object.entries(queries)) {
-    const result = await pool.query(query);
+    const result = await adminQuery(schema, query);
     counts[key] = parseInt(result.rows[0].count);
   }
 
@@ -57,9 +70,12 @@ async function getDataCounts() {
  * Perform selective database reset
  */
 async function performReset(req, res) {
-  const client = await pool.connect();
+  const schema = getAdminSchema(req);
+  let tenantClient = null;
 
   try {
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
     const { categories, confirm_text } = req.body;
 
     // Validate confirmation
@@ -182,11 +198,13 @@ async function performReset(req, res) {
     });
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (tenantClient) {
+      try { await tenantClient.client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+    }
     console.error('Database reset error:', err);
     res.status(500).json({ success: false, error: err.message });
   } finally {
-    client.release();
+    if (tenantClient) tenantClient.release();
   }
 }
 
@@ -195,9 +213,12 @@ async function performReset(req, res) {
  * Complete database reset (all data)
  */
 async function resetAllData(req, res) {
-  const client = await pool.connect();
+  const schema = getAdminSchema(req);
+  let tenantClient = null;
 
   try {
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
     const { confirm_text } = req.body;
 
     // Triple confirmation for complete reset
@@ -237,11 +258,13 @@ async function resetAllData(req, res) {
     });
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (tenantClient) {
+      try { await tenantClient.client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+    }
     console.error('Reset all data error:', err);
     res.status(500).json({ success: false, error: err.message });
   } finally {
-    client.release();
+    if (tenantClient) tenantClient.release();
   }
 }
 

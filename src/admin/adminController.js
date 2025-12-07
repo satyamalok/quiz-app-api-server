@@ -150,10 +150,12 @@ async function showDashboard(req, res) {
  */
 async function showOTPViewer(req, res) {
   try {
+    const schema = getAdminSchema(req);
+
     // Fetch OTP logs with timestamps formatted directly in SQL as IST strings
     // OTP timestamps are stored as UTC in TIMESTAMP WITHOUT TIME ZONE columns
     // Must use double AT TIME ZONE: first interpret as UTC, then convert to IST
-    const result = await pool.query(`
+    const result = await adminQuery(schema, `
       SELECT
         phone,
         otp_code,
@@ -203,7 +205,8 @@ function formatISTDate(date) {
  */
 async function showWhatsAppConfig(req, res) {
   try {
-    const result = await pool.query('SELECT * FROM app_config WHERE id = 1');
+    const schema = getAdminSchema(req);
+    const result = await adminQuery(schema, 'SELECT * FROM app_config WHERE id = 1');
     const config = result.rows[0];
 
     // Decrypt sensitive values for display (as masked)
@@ -253,6 +256,7 @@ async function showWhatsAppConfig(req, res) {
  */
 async function updateWhatsAppConfig(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const {
       interakt_api_url,
       interakt_secret_key,
@@ -263,7 +267,7 @@ async function updateWhatsAppConfig(req, res) {
     } = req.body;
 
     // Get existing config to preserve unchanged encrypted values
-    const existingConfig = await pool.query('SELECT * FROM app_config WHERE id = 1');
+    const existingConfig = await adminQuery(schema, 'SELECT * FROM app_config WHERE id = 1');
     let interaktKeyEncrypted = existingConfig.rows[0].interakt_secret_key_encrypted;
     let n8nUrlEncrypted = existingConfig.rows[0].n8n_webhook_url_encrypted;
 
@@ -277,7 +281,7 @@ async function updateWhatsAppConfig(req, res) {
     }
 
     // Update database
-    await pool.query(`
+    await adminQuery(schema, `
       UPDATE app_config SET
         interakt_api_url = $1,
         interakt_secret_key_encrypted = $2,
@@ -297,7 +301,7 @@ async function updateWhatsAppConfig(req, res) {
     ]);
 
     // Reload config
-    const result = await pool.query('SELECT * FROM app_config WHERE id = 1');
+    const result = await adminQuery(schema, 'SELECT * FROM app_config WHERE id = 1');
     const config = result.rows[0];
 
     // Decrypt for display
@@ -337,7 +341,8 @@ async function updateWhatsAppConfig(req, res) {
 
   } catch (err) {
     console.error('Update WhatsApp config error:', err);
-    const result = await pool.query('SELECT * FROM app_config WHERE id = 1');
+    const schema = getAdminSchema(req);
+    const result = await adminQuery(schema, 'SELECT * FROM app_config WHERE id = 1');
     const config = result.rows[0];
 
     res.render('whatsapp-config', {
@@ -364,8 +369,8 @@ async function updateWhatsAppConfig(req, res) {
 async function showConfig(req, res) {
   try {
     const schema = getAdminSchema(req);
-    const appConfigResult = await pool.query('SELECT * FROM app_config WHERE id = 1');
-    const onlineConfigResult = await pool.query('SELECT * FROM online_users_config WHERE id = 1');
+    const appConfigResult = await adminQuery(schema, 'SELECT * FROM app_config WHERE id = 1');
+    const onlineConfigResult = await adminQuery(schema, 'SELECT * FROM online_users_config WHERE id = 1');
 
     const onlineConfig = onlineConfigResult.rows[0];
 
@@ -428,7 +433,8 @@ async function updateConfig(req, res) {
     }
 
     // Update app_config
-    await pool.query(`
+    const schema = getAdminSchema(req);
+    await adminQuery(schema, `
       UPDATE app_config SET
         otp_rate_limiting_enabled = $1,
         otp_max_requests_per_hour = $2,
@@ -468,9 +474,8 @@ async function updateConfig(req, res) {
     });
 
     // Reload config
-    const schema = getAdminSchema(req);
-    const appConfigResult = await pool.query('SELECT * FROM app_config WHERE id = 1');
-    const onlineConfigResult = await pool.query('SELECT * FROM online_users_config WHERE id = 1');
+    const appConfigResult = await adminQuery(schema, 'SELECT * FROM app_config WHERE id = 1');
+    const onlineConfigResult = await adminQuery(schema, 'SELECT * FROM online_users_config WHERE id = 1');
 
     const onlineConfig = onlineConfigResult.rows[0];
 

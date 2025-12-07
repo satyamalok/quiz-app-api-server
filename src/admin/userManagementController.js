@@ -1,14 +1,29 @@
 const pool = require('../config/database');
+const { getAdminTenantClient } = require('../config/database');
 const { SQL_IST_NOW } = require('../utils/timezone');
+
+/**
+ * Get the current app schema from admin session
+ * Falls back to default schema if not set
+ */
+function getAdminSchema(req) {
+  if (req.session && req.session.currentApp && req.session.currentApp.schema) {
+    return req.session.currentApp.schema;
+  }
+  return process.env.DEFAULT_APP_SCHEMA || 'app_jnvquiz';
+}
 
 /**
  * POST /admin/users/:phone/delete
  * Soft delete user (marks as deleted, keeps data for recovery)
  */
 async function deleteUser(req, res) {
-  const client = await pool.connect();
+  const schema = getAdminSchema(req);
+  let tenantClient = null;
 
   try {
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
     const { phone } = req.params;
 
     await client.query('BEGIN');
@@ -41,11 +56,13 @@ async function deleteUser(req, res) {
     });
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (tenantClient) {
+      try { await tenantClient.client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+    }
     console.error('Delete user error:', err);
     res.status(500).json({ success: false, error: err.message });
   } finally {
-    client.release();
+    if (tenantClient) tenantClient.release();
   }
 }
 
@@ -54,9 +71,12 @@ async function deleteUser(req, res) {
  * Hard delete user and ALL related data (irreversible)
  */
 async function purgeUser(req, res) {
-  const client = await pool.connect();
+  const schema = getAdminSchema(req);
+  let tenantClient = null;
 
   try {
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
     const { phone } = req.params;
     const { confirm } = req.body;
 
@@ -124,11 +144,13 @@ async function purgeUser(req, res) {
     });
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (tenantClient) {
+      try { await tenantClient.client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+    }
     console.error('Purge user error:', err);
     res.status(500).json({ success: false, error: err.message });
   } finally {
-    client.release();
+    if (tenantClient) tenantClient.release();
   }
 }
 
@@ -137,9 +159,12 @@ async function purgeUser(req, res) {
  * Reset user progress (keeps account, clears all game data)
  */
 async function resetUserProgress(req, res) {
-  const client = await pool.connect();
+  const schema = getAdminSchema(req);
+  let tenantClient = null;
 
   try {
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
     const { phone } = req.params;
     const { confirm } = req.body;
 
@@ -207,11 +232,13 @@ async function resetUserProgress(req, res) {
     });
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (tenantClient) {
+      try { await tenantClient.client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+    }
     console.error('Reset user progress error:', err);
     res.status(500).json({ success: false, error: err.message });
   } finally {
-    client.release();
+    if (tenantClient) tenantClient.release();
   }
 }
 
@@ -220,9 +247,12 @@ async function resetUserProgress(req, res) {
  * Perform bulk action on multiple users
  */
 async function bulkUserAction(req, res) {
-  const client = await pool.connect();
+  const schema = getAdminSchema(req);
+  let tenantClient = null;
 
   try {
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
     const { phones, action, confirm } = req.body;
 
     if (!phones || !Array.isArray(phones) || phones.length === 0) {
@@ -308,11 +338,13 @@ async function bulkUserAction(req, res) {
     });
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (tenantClient) {
+      try { await tenantClient.client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+    }
     console.error('Bulk user action error:', err);
     res.status(500).json({ success: false, error: err.message });
   } finally {
-    client.release();
+    if (tenantClient) tenantClient.release();
   }
 }
 
