@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Management - Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .apps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .app-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        .app-card.inactive {
+            opacity: 0.7;
+            border: 2px dashed #ccc;
+        }
+        .app-card h3 {
+            margin: 0 0 5px 0;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .app-card .slug {
+            font-family: monospace;
+            background: #f0f0f0;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #666;
+        }
+        .app-card .description {
+            color: #666;
+            font-size: 14px;
+            margin: 10px 0;
+            min-height: 40px;
+        }
+        .app-card .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin: 15px 0;
+            padding: 15px 0;
+            border-top: 1px solid #eee;
+            border-bottom: 1px solid #eee;
+        }
+        .app-card .stat {
+            text-align: center;
+        }
+        .app-card .stat-value {
+            font-size: 20px;
+            font-weight: 600;
+            color: #667eea;
+        }
+        .app-card .stat-label {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+        }
+        .app-card .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .app-card .actions a, .app-card .actions button {
+            flex: 1;
+            text-align: center;
+            padding: 8px 12px;
+            font-size: 13px;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+        }
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .api-url {
+            font-family: monospace;
+            font-size: 12px;
+            background: #f8f9fa;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-top: 10px;
+            word-break: break-all;
+        }
+        .btn-secondary {
+            background: #6c757d;
+        }
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        .header-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .no-apps {
+            text-align: center;
+            padding: 60px 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .no-apps h2 {
+            color: #666;
+            margin-bottom: 10px;
+        }
+        .no-apps p {
+            color: #888;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="header-actions">
+            <h1>App Management</h1>
+            <a href="/admin/apps/create" class="btn">+ Create New App</a>
+        </div>
+
+        <% if (message) { %>
+            <div class="success"><%= message %></div>
+        <% } %>
+
+        <% if (error) { %>
+            <div class="error"><%= error %></div>
+        <% } %>
+
+        <% if (apps.length === 0) { %>
+            <div class="no-apps">
+                <h2>No Apps Yet</h2>
+                <p>Create your first app to get started with multi-tenancy.</p>
+                <a href="/admin/apps/create" class="btn">Create First App</a>
+            </div>
+        <% } else { %>
+            <div class="apps-grid">
+                <% apps.forEach(app => { %>
+                    <div class="app-card <%= !app.is_active ? 'inactive' : '' %>">
+                        <h3>
+                            <%= app.name %>
+                            <span class="status-badge <%= app.is_active ? 'status-active' : 'status-inactive' %>">
+                                <%= app.is_active ? 'Active' : 'Inactive' %>
+                            </span>
+                        </h3>
+                        <div class="slug"><%= app.slug %></div>
+                        <div class="description"><%= app.description || 'No description' %></div>
+
+                        <div class="stats">
+                            <div class="stat">
+                                <div class="stat-value"><%= app.stats?.users || 0 %></div>
+                                <div class="stat-label">Users</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value"><%= app.stats?.questions || 0 %></div>
+                                <div class="stat-label">Questions</div>
+                            </div>
+                            <div class="stat">
+                                <div class="stat-value"><%= app.stats?.videos || 0 %></div>
+                                <div class="stat-label">Videos</div>
+                            </div>
+                        </div>
+
+                        <div class="api-url">
+                            API: /api/v1/<%= app.slug %>/...
+                        </div>
+
+                        <div class="actions">
+                            <a href="/admin/apps/<%= app.id %>/edit" class="btn btn-secondary">Edit</a>
+                            <button onclick="toggleStatus(<%= app.id %>, <%= app.is_active %>)" class="btn">
+                                <%= app.is_active ? 'Deactivate' : 'Activate' %>
+                            </button>
+                        </div>
+                    </div>
+                <% }); %>
+            </div>
+        <% } %>
+    </div>
+
+    <script>
+        async function toggleStatus(id, currentStatus) {
+            if (!confirm(`Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} this app?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/admin/apps/${id}/toggle`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const result = await response.json();
+
+                if (result.success) {
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        }
+    </script>
+</body>
+</html>

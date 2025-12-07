@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create App - Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .form-card {
+            max-width: 600px;
+        }
+        .slug-preview {
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .slug-preview strong {
+            color: #667eea;
+        }
+        .helper-text {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>Create New App</h1>
+
+        <% if (error) { %>
+            <div class="error"><%= error %></div>
+        <% } %>
+
+        <div class="card form-card">
+            <form action="/admin/apps/create" method="POST">
+                <div class="form-group">
+                    <label for="name">App Name *</label>
+                    <input type="text" id="name" name="name" required placeholder="e.g., JNV Quiz App">
+                    <div class="helper-text">Display name shown to users and in admin panel</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="slug">URL Slug *</label>
+                    <input type="text" id="slug" name="slug" required
+                           pattern="[a-z][a-z0-9-]*[a-z0-9]"
+                           placeholder="e.g., jnvquiz"
+                           oninput="updateSlugPreview(this.value)">
+                    <div class="helper-text">
+                        Lowercase letters, numbers, and hyphens only. Must start with a letter.
+                        This will be used in API URLs and cannot be changed later.
+                    </div>
+                    <div class="slug-preview" id="slugPreview">
+                        API URL: /api/v1/<strong>your-slug</strong>/auth/send-otp
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="description">Description (Optional)</label>
+                    <textarea id="description" name="description" rows="3"
+                              placeholder="Brief description of this app..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <button type="submit">Create App</button>
+                    <a href="/admin/apps" class="btn btn-secondary" style="background: #6c757d; margin-left: 10px;">Cancel</a>
+                </div>
+            </form>
+        </div>
+
+        <div class="card" style="max-width: 600px; margin-top: 20px;">
+            <h2>What happens when you create an app?</h2>
+            <ul style="line-height: 2;">
+                <li>A new PostgreSQL schema is created with all required tables</li>
+                <li>A MinIO bucket is created for file storage</li>
+                <li>The app is registered and ready to receive API requests</li>
+                <li>Configure your Android app to use: <code>/api/v1/{slug}/...</code></li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function updateSlugPreview(value) {
+            const clean = value.toLowerCase().replace(/[^a-z0-9-]/g, '');
+            document.getElementById('slugPreview').innerHTML =
+                'API URL: /api/v1/<strong>' + (clean || 'your-slug') + '</strong>/auth/send-otp';
+        }
+    </script>
+</body>
+</html>

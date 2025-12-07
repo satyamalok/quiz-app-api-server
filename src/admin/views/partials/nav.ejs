@@ -1,18 +1,33 @@
 <nav>
-    <div class="brand">JNV Quiz Admin</div>
-    <div>
+    <div class="nav-left">
+        <div class="brand">Quiz Admin</div>
+        <% if (typeof allApps !== 'undefined' && allApps && allApps.length > 0) { %>
+        <div class="app-selector">
+            <form action="/admin/apps/select" method="POST" id="appSelectForm">
+                <select name="appSlug" onchange="this.form.submit()">
+                    <% allApps.forEach(app => { %>
+                        <option value="<%= app.slug %>" <%= selectedApp === app.slug ? 'selected' : '' %>>
+                            <%= app.name %> <%= !app.is_active ? '(inactive)' : '' %>
+                        </option>
+                    <% }); %>
+                </select>
+            </form>
+        </div>
+        <% } %>
+    </div>
+    <div class="nav-links">
         <a href="/admin/dashboard">Dashboard</a>
-        <a href="/admin/config">Configuration</a>
+        <a href="/admin/apps" class="apps-link">Apps</a>
+        <a href="/admin/config">Config</a>
         <a href="/admin/referrals">Referrals</a>
-        <a href="/admin/otp-viewer">OTP Viewer</a>
+        <a href="/admin/otp-viewer">OTP</a>
         <a href="/admin/users">Users</a>
         <a href="/admin/levels">Levels</a>
-        <a href="/admin/questions/upload">Upload Questions</a>
-        <a href="/admin/questions">Manage Questions</a>
+        <a href="/admin/questions">Questions</a>
         <a href="/admin/videos">Videos</a>
         <a href="/admin/reels">Reels</a>
         <a href="/admin/analytics">Analytics</a>
-        <a href="/admin/system/reset" style="color: #ff6b6b;">System Reset</a>
+        <a href="/admin/system/reset" style="color: #ff6b6b;">Reset</a>
         <a href="/admin/logout">Logout</a>
     </div>
 </nav>

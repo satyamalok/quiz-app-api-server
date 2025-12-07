@@ -42,6 +42,18 @@ const {
   getDbStats,
   upload
 } = require('./adminController');
+const {
+  showApps,
+  showCreateApp,
+  createApp,
+  showEditApp,
+  updateApp,
+  toggleAppStatus,
+  deleteApp,
+  loadAppsForNav,
+  selectApp,
+  initializeTenancy
+} = require('./appManagementController');
 const { getReferralDashboard } = require('./referralAdminController');
 const {
   showReels,
@@ -85,6 +97,20 @@ router.get('/logout', logout);
 
 // Protected routes (require authentication)
 router.use(requireAdminAuth);
+
+// Load apps for navigation dropdown on all admin pages
+router.use(loadAppsForNav);
+
+// App Management (Multi-tenancy)
+router.get('/apps', showApps);
+router.get('/apps/create', showCreateApp);
+router.post('/apps/create', createApp);
+router.post('/apps/select', selectApp);
+router.post('/apps/initialize', initializeTenancy);
+router.get('/apps/:id/edit', showEditApp);
+router.post('/apps/:id/update', updateApp);
+router.post('/apps/:id/toggle', toggleAppStatus);
+router.post('/apps/:id/delete', deleteApp);
 
 // Dashboard
 router.get('/', showDashboard);
