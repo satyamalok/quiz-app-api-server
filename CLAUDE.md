@@ -990,3 +990,112 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 - Auth flow (OTP send/verify)
 - Quiz flow (start level, answer questions)
 - Read-heavy (leaderboard, profile, reels feed)
+
+## Multi-Tenancy (2025-12-07)
+
+**Architecture:** PostgreSQL schema-based multi-tenancy where each app has its own isolated schema.
+
+### How It Works
+
+1. **App Registry:** `public.apps` table stores all tenant apps
+2. **Per-App Schema:** Each app gets its own PostgreSQL schema (e.g., `jnvquiz`, `ssc`, `ncert`)
+3. **API Routes:** `/api/v1/{appSlug}/...` - app slug in URL determines tenant context
+4. **MinIO Storage:** Each app has isolated storage path `/storage/{appSlug}/...`
+
+### Key Files
+
+- `src/middleware/tenantMiddleware.js` - Extracts tenant from URL, attaches `req.tenant`
+- `src/services/tenantService.js` - App CRUD operations, schema management
+- `scripts/migrations/001_master_tables.sql` - Creates `public.apps` registry
+- `scripts/migrations/002_tenant_schema.sql` - Template for new tenant schemas
+
+### Tenant Context (`req.tenant`)
+
+```javascript
+req.tenant = {
+  id: 1,
+  slug: 'ssc',           // Used in URLs
+  name: 'SSC Quiz App',  // Display name
+  schema: 'ssc',         // PostgreSQL schema
+  bucket: 'ssc'          // MinIO bucket/folder
+}
+```
+
+### Per-App OTP/Webhook Configuration (2025-12-07)
+
+Each app has its own webhook URLs and API keys stored in tenant's `app_config` table:
+
+**Columns in `app_config`:**
+- `n8n_webhook_url_encrypted` - Per-app n8n webhook URL (encrypted)
+- `interakt_secret_key_encrypted` - Per-app Interakt API key (encrypted)
+- `interakt_api_url` - Interakt API endpoint
+- `interakt_template_name` - WhatsApp template name
+- `whatsapp_n8n_enabled` - Toggle n8n for this app
+- `whatsapp_interakt_enabled` - Toggle Interakt for this app
+
+**OTP Webhook Payload (Enhanced):**
+```json
+{
+  "phone": "9999900001",
+  "otp": "123456",
+  "user_status": "new",      // "new" or "old"
+  "app_slug": "ssc",
+  "app_name": "SSC Quiz App",
+  "timestamp": "2025-12-07T12:00:00Z",
+  "country_code": "+91"
+}
+```
+
+**Event Webhook Payload (Enhanced):**
+```json
+{
+  "event": "user_registered",
+  "app_slug": "ssc",
+  "app_name": "SSC Quiz App",
+  "timestamp": "...",
+  "user": { ... }
+}
+```
+
+**Admin Configuration:**
+1. Select app from dropdown in admin panel
+2. Go to Configuration → WhatsApp Config (`/admin/config/whatsapp`)
+3. Enter app-specific webhook URLs and API keys
+4. Each app is completely isolated
+
+### Testing Multi-Tenancy
+
+**VPS Test URL:** `https://jnvquiz.tsblive.in/`
+
+**Test Apps Created:**
+- `jnvquiz` - `/api/v1/jnvquiz/...`
+- `ssc` - `/api/v1/ssc/...`
+- `ncert` - `/api/v1/ncert/...`
+
+**Verified Isolation:**
+- Users are isolated per app (same phone can exist in multiple apps)
+- Questions, videos, reels are per-app
+- MinIO storage paths include app slug
+- Webhook payloads include app identification
+- Cross-app access is blocked (JWT from one app rejected by another)
+
+### Creating a New App
+
+```bash
+# Via admin panel
+1. Go to /admin/apps
+2. Click "Create New App"
+3. Enter slug (lowercase, alphanumeric) and name
+4. System creates schema, tables, and MinIO bucket
+
+# Via script
+node scripts/create-app.js <slug> "<name>" "<description>"
+```
+
+### Common Multi-Tenancy Gotchas
+
+52. **Always use tenant context** - Use `tenantQuery(req, ...)` not `pool.query(...)` for tenant data
+53. **Admin panel requires app selection** - Most admin pages need an app selected first
+54. **Webhook URLs are encrypted** - Use `encrypt()`/`decrypt()` from `src/utils/encryption.js`
+55. **Schema name = app slug** - They're the same, used interchangeably
+56. **Migration creates master tables first** - `npm run migrate` runs 001_master_tables.sql before schema.sql
