@@ -184,14 +184,16 @@ async function deleteApp(req, res) {
 
 /**
  * Middleware to load apps for navigation
- * Attaches apps list to res.locals for use in templates
+ * Attaches apps list and current app context to res.locals for use in templates
  */
 async function loadAppsForNav(req, res, next) {
   try {
     res.locals.allApps = await getAllAppsForNav();
-    res.locals.selectedApp = req.session?.selectedApp || (res.locals.allApps[0]?.slug || null);
+    res.locals.currentApp = req.session?.currentApp || null;
+    res.locals.selectedApp = req.session?.currentApp?.slug || null;
   } catch (err) {
     res.locals.allApps = [];
+    res.locals.currentApp = null;
     res.locals.selectedApp = null;
   }
   next();
@@ -199,17 +201,32 @@ async function loadAppsForNav(req, res, next) {
 
 /**
  * POST /admin/apps/select - Select app for admin panel context
+ * Sets complete app context in session for multi-tenancy
  */
 async function selectApp(req, res) {
   const { appSlug } = req.body;
 
   if (appSlug) {
-    req.session.selectedApp = appSlug;
+    // Fetch full app details from database
+    const app = await tenantService.getAppBySlug(appSlug);
+
+    if (app) {
+      // Set complete app context in session
+      req.session.currentApp = {
+        id: app.id,
+        slug: app.slug,
+        name: app.name,
+        schema: app.slug,                      // Schema name = slug
+        bucket: app.minio_bucket || app.slug   // Bucket for MinIO uploads
+      };
+    }
   }
 
-  // Redirect back to previous page or dashboard
-  const referer = req.get('Referer') || '/admin/dashboard';
-  res.redirect(referer);
+  // Check if there was a redirect destination stored
+  const redirectTo = req.session.redirectAfterAppSelect || req.get('Referer') || '/admin/dashboard';
+  delete req.session.redirectAfterAppSelect;
+
+  res.redirect(redirectTo);
 }
 
 /**

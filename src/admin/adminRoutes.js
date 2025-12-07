@@ -89,6 +89,7 @@ const {
   resetAllData
 } = require('./systemResetController');
 const { requireAdminAuth, redirectIfAuthenticated } = require('../middleware/adminAuth');
+const { requireAppSelection } = require('../middleware/requireAppSelection');
 
 // Login routes (public)
 router.get('/login', redirectIfAuthenticated, showLogin);
@@ -101,7 +102,10 @@ router.use(requireAdminAuth);
 // Load apps for navigation dropdown on all admin pages
 router.use(loadAppsForNav);
 
-// App Management (Multi-tenancy)
+// ============================================
+// APP MANAGEMENT ROUTES (No app selection required)
+// These routes manage apps themselves, not tenant data
+// ============================================
 router.get('/apps', showApps);
 router.get('/apps/create', showCreateApp);
 router.post('/apps/create', createApp);
@@ -111,6 +115,12 @@ router.get('/apps/:id/edit', showEditApp);
 router.post('/apps/:id/update', updateApp);
 router.post('/apps/:id/toggle', toggleAppStatus);
 router.post('/apps/:id/delete', deleteApp);
+
+// ============================================
+// TENANT-SPECIFIC ROUTES (Require app selection)
+// All routes below require an app to be selected
+// ============================================
+router.use(requireAppSelection);
 
 // Dashboard
 router.get('/', showDashboard);

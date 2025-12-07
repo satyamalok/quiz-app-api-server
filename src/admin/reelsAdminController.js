@@ -6,13 +6,28 @@ const multer = require('multer');
 
 /**
  * Get the current app schema from admin session
- * Falls back to default schema if not set
+ * Throws error if no app is selected (enforces multi-tenancy)
  */
 function getAdminSchema(req) {
-  if (req.session && req.session.currentApp && req.session.currentApp.schema) {
-    return req.session.currentApp.schema;
+  if (!req.session?.currentApp?.schema) {
+    const error = new Error('No app selected. Please select an app first.');
+    error.code = 'NO_APP_SELECTED';
+    throw error;
   }
-  return process.env.DEFAULT_APP_SCHEMA || 'app_jnvquiz';
+  return req.session.currentApp.schema;
+}
+
+/**
+ * Get the current app bucket from admin session
+ * Used for MinIO uploads - throws error if no app selected
+ */
+function getAdminBucket(req) {
+  if (!req.session?.currentApp?.bucket) {
+    const error = new Error('No app selected. Please select an app first.');
+    error.code = 'NO_APP_SELECTED';
+    throw error;
+  }
+  return req.session.currentApp.bucket;
 }
 
 // Multer setup for memory storage (multiple files)
@@ -147,8 +162,9 @@ async function uploadReels(req, res) {
       try {
         const file = files[i];
 
-        // Upload to MinIO
-        const uploadResult = await uploadFile(file, 'reels');
+        // Upload to MinIO (tenant-specific bucket)
+        const bucket = getAdminBucket(req);
+        const uploadResult = await uploadFile(file, 'reels', bucket);
 
         // Get metadata from form (arrays) or use defaults
         const title = Array.isArray(titles) ? titles[i] : (titles || null);
@@ -217,8 +233,9 @@ async function uploadSingleReel(req, res) {
       return res.status(400).json({ success: false, error: 'No file uploaded' });
     }
 
-    // Upload to MinIO
-    const uploadResult = await uploadFile(file, 'reels');
+    // Upload to MinIO (tenant-specific bucket)
+    const bucket = getAdminBucket(req);
+    const uploadResult = await uploadFile(file, 'reels', bucket);
 
     // Insert into database
     const schema = getAdminSchema(req);

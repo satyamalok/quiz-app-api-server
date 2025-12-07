@@ -1,12 +1,21 @@
 <nav>
     <div class="nav-left">
         <div class="brand">Quiz Admin</div>
-        <% if (typeof allApps !== 'undefined' && allApps && allApps.length > 0) { %>
+        <% if (typeof currentApp !== 'undefined' && currentApp) { %>
+        <div class="current-app-indicator">
+            <span class="app-badge"><%= currentApp.name %></span>
+        </div>
+        <% } else if (typeof allApps !== 'undefined' && allApps && allApps.length > 0) { %>
+        <div class="no-app-selected">
+            <a href="/admin/apps" class="select-app-btn">Select App</a>
+        </div>
+        <% } %>
+        <% if (typeof allApps !== 'undefined' && allApps && allApps.length > 1) { %>
         <div class="app-selector">
             <form action="/admin/apps/select" method="POST" id="appSelectForm">
-                <select name="appSlug" onchange="this.form.submit()">
+                <select name="appSlug" onchange="this.form.submit()" title="Switch App">
                     <% allApps.forEach(app => { %>
-                        <option value="<%= app.slug %>" <%= selectedApp === app.slug ? 'selected' : '' %>>
+                        <option value="<%= app.slug %>" <%= (currentApp && currentApp.slug === app.slug) ? 'selected' : '' %>>
                             <%= app.name %> <%= !app.is_active ? '(inactive)' : '' %>
                         </option>
                     <% }); %>

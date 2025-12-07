@@ -15,15 +15,28 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 /**
  * Get the current app schema from admin session
- * Falls back to default schema if not set
+ * Throws error if no app is selected (enforces multi-tenancy)
  */
 function getAdminSchema(req) {
-  // Check if admin has selected a specific app
-  if (req.session && req.session.currentApp && req.session.currentApp.schema) {
-    return req.session.currentApp.schema;
+  if (!req.session?.currentApp?.schema) {
+    const error = new Error('No app selected. Please select an app first.');
+    error.code = 'NO_APP_SELECTED';
+    throw error;
   }
-  // Default to first app schema (can be configured)
-  return process.env.DEFAULT_APP_SCHEMA || 'app_jnvquiz';
+  return req.session.currentApp.schema;
+}
+
+/**
+ * Get the current app bucket from admin session
+ * Used for MinIO uploads - throws error if no app selected
+ */
+function getAdminBucket(req) {
+  if (!req.session?.currentApp?.bucket) {
+    const error = new Error('No app selected. Please select an app first.');
+    error.code = 'NO_APP_SELECTED';
+    throw error;
+  }
+  return req.session.currentApp.bucket;
 }
 
 /**
@@ -36,7 +49,7 @@ function showLogin(req, res) {
 
 /**
  * POST /admin/login
- * Process login
+ * Process login and auto-select app for multi-tenancy
  */
 async function processLogin(req, res) {
   try {
@@ -66,7 +79,7 @@ async function processLogin(req, res) {
       [admin.id]
     );
 
-    // Set session
+    // Set admin session
     req.session.adminUser = {
       id: admin.id,
       email: admin.email,
@@ -74,14 +87,36 @@ async function processLogin(req, res) {
       role: admin.role
     };
 
+    // AUTO-SELECT APP for multi-tenancy
+    const tenantService = require('../services/tenantService');
+    const apps = await tenantService.getAllApps(true); // Active apps only
+
+    let redirectUrl = '/admin/dashboard';
+
+    if (apps.length === 1) {
+      // Only one app exists - auto-select it
+      req.session.currentApp = {
+        id: apps[0].id,
+        slug: apps[0].slug,
+        name: apps[0].name,
+        schema: apps[0].slug,
+        bucket: apps[0].minio_bucket || apps[0].slug
+      };
+    } else if (apps.length > 1) {
+      // Multiple apps - redirect to app selection
+      redirectUrl = '/admin/apps?message=' + encodeURIComponent('Please select an app to manage');
+    } else {
+      // No apps exist - redirect to create first app
+      redirectUrl = '/admin/apps/create?message=' + encodeURIComponent('Create your first app to get started');
+    }
+
     // Explicitly save session before redirect to prevent race condition
-    // This ensures the session is persisted to the store before the redirect happens
     req.session.save((err) => {
       if (err) {
         console.error('Session save error:', err);
         return res.render('login', { error: 'Session error. Please try again.' });
       }
-      res.redirect('/admin/dashboard');
+      res.redirect(redirectUrl);
     });
 
   } catch (err) {
@@ -999,12 +1034,13 @@ async function createQuestion(req, res) {
     let explanationUrl = null;
 
     if (req.files) {
+      const bucket = getAdminBucket(req);
       if (req.files.question_image) {
-        const result = await uploadFile(req.files.question_image[0], 'questions');
+        const result = await uploadFile(req.files.question_image[0], 'questions', bucket);
         questionImageUrl = result.publicUrl;
       }
       if (req.files.explanation_image) {
-        const result = await uploadFile(req.files.explanation_image[0], 'explanations');
+        const result = await uploadFile(req.files.explanation_image[0], 'explanations', bucket);
         explanationUrl = result.publicUrl;
       }
     }
@@ -1187,12 +1223,13 @@ async function updateQuestion(req, res) {
 
     // Handle new image uploads
     if (req.files) {
+      const bucket = getAdminBucket(req);
       if (req.files.question_image) {
-        const result = await uploadFile(req.files.question_image[0], 'questions');
+        const result = await uploadFile(req.files.question_image[0], 'questions', bucket);
         questionImageUrl = result.publicUrl;
       }
       if (req.files.explanation_image) {
-        const result = await uploadFile(req.files.explanation_image[0], 'explanations');
+        const result = await uploadFile(req.files.explanation_image[0], 'explanations', bucket);
         explanationUrl = result.publicUrl;
       }
     }
@@ -1336,8 +1373,9 @@ async function uploadVideo(req, res) {
       throw new Error('Please select a video file');
     }
 
-    // Upload to MinIO
-    const result = await uploadFile(req.file, 'videos');
+    // Upload to MinIO (tenant-specific bucket)
+    const bucket = getAdminBucket(req);
+    const result = await uploadFile(req.file, 'videos', bucket);
 
     await adminQuery(schema, `
       INSERT INTO promotional_videos (level, video_name, video_url, duration_seconds, description, category)
@@ -1583,8 +1621,9 @@ async function uploadSingleVideo(req, res) {
       return res.status(400).json({ success: false, error: 'Level must be between 1 and 100' });
     }
 
-    // Upload to MinIO
-    const uploadResult = await uploadFile(file, 'videos');
+    // Upload to MinIO (tenant-specific bucket)
+    const bucket = getAdminBucket(req);
+    const uploadResult = await uploadFile(file, 'videos', bucket);
     const videoDuration = parseInt(duration) || 0;
     const name = video_name || file.originalname.replace(/\.[^/.]+$/, '');
 

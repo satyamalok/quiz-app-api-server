@@ -4,13 +4,15 @@ const { SQL_IST_NOW } = require('../utils/timezone');
 
 /**
  * Get the current app schema from admin session
- * Falls back to default schema if not set
+ * Throws error if no app is selected (enforces multi-tenancy)
  */
 function getAdminSchema(req) {
-  if (req.session && req.session.currentApp && req.session.currentApp.schema) {
-    return req.session.currentApp.schema;
+  if (!req.session?.currentApp?.schema) {
+    const error = new Error('No app selected. Please select an app first.');
+    error.code = 'NO_APP_SELECTED';
+    throw error;
   }
-  return process.env.DEFAULT_APP_SCHEMA || 'app_jnvquiz';
+  return req.session.currentApp.schema;
 }
 
 /**
