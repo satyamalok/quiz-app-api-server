@@ -20,11 +20,11 @@ async function getFeed(req, res, next) {
     const { phone } = req.user;
 
     // Get config for prefetch count
-    const config = await getReelsConfig();
+    const config = await getReelsConfig(req);
     const limit = config.reels_prefetch_count || 3;
 
     // Get next batch of reels
-    const reels = await getReelsFeed(phone, limit);
+    const reels = await getReelsFeed(phone, limit, req);
 
     res.json({
       success: true,
@@ -50,7 +50,7 @@ async function getReel(req, res, next) {
     const { phone } = req.user;
     const { id } = req.params;
 
-    const reel = await getReelById(parseInt(id), phone);
+    const reel = await getReelById(parseInt(id), phone, req);
 
     if (!reel) {
       return res.status(404).json({
@@ -88,10 +88,10 @@ async function reelStarted(req, res, next) {
       });
     }
 
-    const result = await markReelStarted(phone, reel_id);
+    const result = await markReelStarted(phone, reel_id, req);
 
     // Update user's streak on engagement (non-blocking)
-    updateStreak(phone).catch(err => {
+    updateStreak(phone, req).catch(err => {
       console.error('Streak update error (non-critical):', err);
     });
 
@@ -126,7 +126,7 @@ async function reelWatched(req, res, next) {
     }
 
     // Get threshold from config
-    const config = await getReelsConfig();
+    const config = await getReelsConfig(req);
     const threshold = config.reel_watch_threshold_seconds || 5;
 
     // Validate watch duration meets threshold
@@ -141,7 +141,7 @@ async function reelWatched(req, res, next) {
       });
     }
 
-    await markReelWatched(phone, reel_id, duration);
+    await markReelWatched(phone, reel_id, duration, req);
 
     res.json({
       success: true,
@@ -171,7 +171,7 @@ async function heartReel(req, res, next) {
       });
     }
 
-    const result = await toggleHeart(phone, reel_id);
+    const result = await toggleHeart(phone, reel_id, req);
 
     res.json({
       success: true,
@@ -195,7 +195,7 @@ async function getStats(req, res, next) {
   try {
     const { phone } = req.user;
 
-    const stats = await getUserReelStats(phone);
+    const stats = await getUserReelStats(phone, req);
 
     res.json({
       success: true,
@@ -226,7 +226,7 @@ async function getHearted(req, res, next) {
       });
     }
 
-    const result = await getHeartedReels(phone, limit, offset);
+    const result = await getHeartedReels(phone, limit, offset, req);
 
     res.json({
       success: true,

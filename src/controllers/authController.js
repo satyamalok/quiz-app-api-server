@@ -15,7 +15,7 @@ async function sendOTPHandler(req, res, next) {
     const { phone } = req.body;
     const ipAddress = req.ip || req.connection.remoteAddress;
 
-    const result = await sendOTP(phone, ipAddress);
+    const result = await sendOTP(phone, ipAddress, req);
 
     res.json(result);
   } catch (err) {
@@ -53,8 +53,8 @@ async function verifyOTPHandler(req, res, next) {
       // New user - create profile
       isNewUser = true;
 
-      // Generate unique referral code
-      const newReferralCode = await generateReferralCode();
+      // Generate unique referral code (pass client for tenant context)
+      const newReferralCode = await generateReferralCode(client);
 
       // Validate medium value (default to 'english' if invalid)
       const validMedium = ['hindi', 'english'].includes(medium) ? medium : 'english';
@@ -82,7 +82,7 @@ async function verifyOTPHandler(req, res, next) {
       if (referral_code) {
         try {
           console.log(`Processing referral for phone: ${phone}, code: ${referral_code}`);
-          referralBonus = await processReferral(phone, referral_code, client);
+          referralBonus = await processReferral(phone, referral_code, client, req);
           console.log(`Referral processed successfully:`, referralBonus);
 
           // Refresh user data to get updated XP
@@ -183,7 +183,7 @@ async function validateTokenHandler(req, res, next) {
     const user = userResult.rows[0];
 
     // Update streak
-    const streakUpdate = await updateStreak(phone);
+    const streakUpdate = await updateStreak(phone, req);
 
     res.json({
       success: true,

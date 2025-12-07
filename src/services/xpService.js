@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { tenantQuery } = require('../config/database');
 const { getISTDate, SQL_IST_NOW } = require('../utils/timezone');
 
 /**
@@ -16,28 +17,58 @@ function calculateBaseXP(correctAnswers, isFirstAttempt) {
  * Update user's total XP and daily XP
  * @param {string} phone - User's phone number
  * @param {number} xpToAdd - XP to add
- * @param {Object} client - Database client (for transactions)
+ * @param {Object} clientOrReq - Database client (for transactions) or Express request with tenant context
  */
-async function addXPToUser(phone, xpToAdd, client = null) {
-  const db = client || pool;
-
+async function addXPToUser(phone, xpToAdd, clientOrReq = null) {
   try {
-    // Update user's total XP with IST timestamp
-    await db.query(
-      `UPDATE users_profile SET xp_total = xp_total + $1, updated_at = ${SQL_IST_NOW} WHERE phone = $2`,
-      [xpToAdd, phone]
-    );
-
-    // Update daily XP summary using IST date
     const today = getISTDate();
-    await db.query(`
-      INSERT INTO daily_xp_summary (phone, date, total_xp_today, created_at, updated_at)
-      VALUES ($1, $2, $3, ${SQL_IST_NOW}, ${SQL_IST_NOW})
-      ON CONFLICT (phone, date)
-      DO UPDATE SET
-        total_xp_today = daily_xp_summary.total_xp_today + $3,
-        updated_at = ${SQL_IST_NOW}
-    `, [phone, today, xpToAdd]);
+
+    if (clientOrReq && clientOrReq.query) {
+      // It's a database client - use directly
+      await clientOrReq.query(
+        `UPDATE users_profile SET xp_total = xp_total + $1, updated_at = ${SQL_IST_NOW} WHERE phone = $2`,
+        [xpToAdd, phone]
+      );
+
+      await clientOrReq.query(`
+        INSERT INTO daily_xp_summary (phone, date, total_xp_today, created_at, updated_at)
+        VALUES ($1, $2, $3, ${SQL_IST_NOW}, ${SQL_IST_NOW})
+        ON CONFLICT (phone, date)
+        DO UPDATE SET
+          total_xp_today = daily_xp_summary.total_xp_today + $3,
+          updated_at = ${SQL_IST_NOW}
+      `, [phone, today, xpToAdd]);
+    } else if (clientOrReq && clientOrReq.tenant) {
+      // It's an Express request - use tenantQuery
+      await tenantQuery(clientOrReq,
+        `UPDATE users_profile SET xp_total = xp_total + $1, updated_at = ${SQL_IST_NOW} WHERE phone = $2`,
+        [xpToAdd, phone]
+      );
+
+      await tenantQuery(clientOrReq, `
+        INSERT INTO daily_xp_summary (phone, date, total_xp_today, created_at, updated_at)
+        VALUES ($1, $2, $3, ${SQL_IST_NOW}, ${SQL_IST_NOW})
+        ON CONFLICT (phone, date)
+        DO UPDATE SET
+          total_xp_today = daily_xp_summary.total_xp_today + $3,
+          updated_at = ${SQL_IST_NOW}
+      `, [phone, today, xpToAdd]);
+    } else {
+      // Fallback to pool (not recommended in multi-tenant mode)
+      await pool.query(
+        `UPDATE users_profile SET xp_total = xp_total + $1, updated_at = ${SQL_IST_NOW} WHERE phone = $2`,
+        [xpToAdd, phone]
+      );
+
+      await pool.query(`
+        INSERT INTO daily_xp_summary (phone, date, total_xp_today, created_at, updated_at)
+        VALUES ($1, $2, $3, ${SQL_IST_NOW}, ${SQL_IST_NOW})
+        ON CONFLICT (phone, date)
+        DO UPDATE SET
+          total_xp_today = daily_xp_summary.total_xp_today + $3,
+          updated_at = ${SQL_IST_NOW}
+      `, [phone, today, xpToAdd]);
+    }
 
   } catch (err) {
     console.error('Add XP error:', err);

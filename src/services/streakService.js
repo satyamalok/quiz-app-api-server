@@ -1,15 +1,16 @@
-const pool = require('../config/database');
+const { tenantQuery } = require('../config/database');
 const { getISTDate, getISTTimestamp, SQL_IST_NOW, SQL_IST_DATE } = require('../utils/timezone');
 
 /**
  * Update user's streak using IST dates
  * @param {string} phone - User's phone number
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Object>} Streak update result
  */
-async function updateStreak(phone) {
+async function updateStreak(phone, req) {
   try {
     // Get current streak info
-    const streakResult = await pool.query(
+    const streakResult = await tenantQuery(req,
       'SELECT current_streak, longest_streak, last_activity_date FROM streak_tracking WHERE phone = $1',
       [phone]
     );
@@ -17,7 +18,7 @@ async function updateStreak(phone) {
     if (streakResult.rows.length === 0) {
       // Create streak record if doesn't exist with IST date
       const todayIST = getISTDate();
-      await pool.query(
+      await tenantQuery(req,
         `INSERT INTO streak_tracking (phone, current_streak, longest_streak, last_activity_date, created_at, updated_at) VALUES ($1, 1, 1, $2, ${SQL_IST_NOW}, ${SQL_IST_NOW})`,
         [phone, todayIST]
       );
@@ -60,7 +61,7 @@ async function updateStreak(phone) {
     const newLongest = Math.max(longest_streak, newStreak);
 
     // Update streak with IST date
-    await pool.query(`
+    await tenantQuery(req, `
       UPDATE streak_tracking
       SET
         current_streak = $1,
@@ -86,11 +87,12 @@ async function updateStreak(phone) {
 /**
  * Get user's streak information
  * @param {string} phone - User's phone number
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Object>} Streak information
  */
-async function getStreak(phone) {
+async function getStreak(phone, req) {
   try {
-    const result = await pool.query(
+    const result = await tenantQuery(req,
       'SELECT current_streak, longest_streak, last_activity_date FROM streak_tracking WHERE phone = $1',
       [phone]
     );

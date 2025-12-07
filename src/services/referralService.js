@@ -1,11 +1,13 @@
 const pool = require('../config/database');
+const { tenantQuery, tenantTransaction, getTenantClient } = require('../config/database');
 const { getISTDate, SQL_IST_NOW } = require('../utils/timezone');
 
 /**
  * Generate unique 5-digit referral code
+ * @param {Object} clientOrReq - Database client (for transactions) or Express request
  * @returns {Promise<string>} Unique referral code
  */
-async function generateReferralCode() {
+async function generateReferralCode(clientOrReq = null) {
   let code;
   let isUnique = false;
 
@@ -14,10 +16,26 @@ async function generateReferralCode() {
     code = Math.floor(10000 + Math.random() * 90000).toString();
 
     // Check if code already exists
-    const result = await pool.query(
-      'SELECT referral_code FROM users_profile WHERE referral_code = $1',
-      [code]
-    );
+    let result;
+    if (clientOrReq && clientOrReq.query) {
+      // It's a database client
+      result = await clientOrReq.query(
+        'SELECT referral_code FROM users_profile WHERE referral_code = $1',
+        [code]
+      );
+    } else if (clientOrReq && clientOrReq.tenant) {
+      // It's an Express request
+      result = await tenantQuery(clientOrReq,
+        'SELECT referral_code FROM users_profile WHERE referral_code = $1',
+        [code]
+      );
+    } else {
+      // Fallback to pool (should not happen in multi-tenant mode)
+      result = await pool.query(
+        'SELECT referral_code FROM users_profile WHERE referral_code = $1',
+        [code]
+      );
+    }
 
     if (result.rows.length === 0) {
       isUnique = true;
@@ -32,14 +50,20 @@ async function generateReferralCode() {
  * @param {string} newUserPhone - New user's phone
  * @param {string} referralCode - Referral code used (optional)
  * @param {Object} client - Database client (optional, for transaction reuse)
+ * @param {Object} req - Express request with tenant context (required if client not provided)
  * @returns {Promise<Object>} Referral bonus details
  */
-async function processReferral(newUserPhone, referralCode, client = null) {
+async function processReferral(newUserPhone, referralCode, client = null, req = null) {
   // Determine if we need to manage our own connection and transaction
   const useOwnClient = !client;
 
   if (useOwnClient) {
-    client = await pool.connect();
+    if (req && req.tenant) {
+      const tenantClient = await getTenantClient(req);
+      client = tenantClient.client;
+    } else {
+      client = await pool.connect();
+    }
   }
 
   try {
@@ -144,12 +168,13 @@ async function processReferral(newUserPhone, referralCode, client = null) {
 /**
  * Get referral statistics for a user
  * @param {string} phone - User's phone number
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Object>} Referral stats
  */
-async function getReferralStats(phone) {
+async function getReferralStats(phone, req) {
   try {
     // Get user's referral code
-    const userResult = await pool.query(
+    const userResult = await tenantQuery(req,
       'SELECT referral_code, referred_by FROM users_profile WHERE phone = $1',
       [phone]
     );
@@ -161,7 +186,7 @@ async function getReferralStats(phone) {
     const { referral_code, referred_by } = userResult.rows[0];
 
     // Count total referrals made by this user
-    const referralCountResult = await pool.query(
+    const referralCountResult = await tenantQuery(req,
       'SELECT COUNT(*) as total_referrals FROM referral_tracking WHERE referrer_phone = $1 AND status = $2',
       [phone, 'active']
     );
@@ -169,7 +194,7 @@ async function getReferralStats(phone) {
     const totalReferrals = parseInt(referralCountResult.rows[0].total_referrals);
 
     // Calculate total XP earned from referrals
-    const xpEarnedResult = await pool.query(
+    const xpEarnedResult = await tenantQuery(req,
       'SELECT COALESCE(SUM(xp_granted), 0) as total_xp_earned FROM referral_tracking WHERE referrer_phone = $1 AND status = $2',
       [phone, 'active']
     );
@@ -179,7 +204,7 @@ async function getReferralStats(phone) {
     // Get who referred this user (if anyone)
     let referredBy = null;
     if (referred_by) {
-      const referrerResult = await pool.query(
+      const referrerResult = await tenantQuery(req,
         'SELECT phone, name FROM users_profile WHERE referral_code = $1',
         [referred_by]
       );
@@ -211,12 +236,13 @@ async function getReferralStats(phone) {
  * @param {string} phone - User's phone number
  * @param {number} limit - Number of results to return (default 50)
  * @param {number} offset - Offset for pagination (default 0)
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Object>} List of referred users
  */
-async function getReferredUsers(phone, limit = 50, offset = 0) {
+async function getReferredUsers(phone, limit = 50, offset = 0, req) {
   try {
     // Get referred users with details
-    const result = await pool.query(`
+    const result = await tenantQuery(req, `
       SELECT
         rt.id,
         rt.referee_phone,
@@ -234,7 +260,7 @@ async function getReferredUsers(phone, limit = 50, offset = 0) {
     `, [phone, limit, offset]);
 
     // Get total count
-    const countResult = await pool.query(
+    const countResult = await tenantQuery(req,
       'SELECT COUNT(*) as total FROM referral_tracking WHERE referrer_phone = $1',
       [phone]
     );

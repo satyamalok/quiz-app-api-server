@@ -1,4 +1,4 @@
-const pool = require('../config/database');
+const { tenantQuery } = require('../config/database');
 const multer = require('multer');
 const { uploadFile } = require('../services/uploadService');
 const { getStreak } = require('../services/streakService');
@@ -16,8 +16,8 @@ async function getProfile(req, res, next) {
   try {
     const { phone } = req.user;
 
-    // Get user profile
-    const userResult = await pool.query(
+    // Get user profile (tenant-aware)
+    const userResult = await tenantQuery(req,
       'SELECT * FROM users_profile WHERE phone = $1',
       [phone]
     );
@@ -29,11 +29,11 @@ async function getProfile(req, res, next) {
     const user = userResult.rows[0];
 
     // Get streak info
-    const streak = await getStreak(phone);
+    const streak = await getStreak(phone, req);
 
     // Get today's XP using IST date
     const todayIST = getISTDate();
-    const todayXPResult = await pool.query(`
+    const todayXPResult = await tenantQuery(req, `
       SELECT total_xp_today
       FROM daily_xp_summary
       WHERE phone = $1 AND date = $2
@@ -83,7 +83,7 @@ async function updateProfile(req, res, next) {
 
     // Upload profile image if provided
     if (file) {
-      const uploadResult = await uploadFile(file, 'profiles');
+      const uploadResult = await uploadFile(file, 'profiles', req);
       profileImageUrl = uploadResult.publicUrl;
     }
 
@@ -140,7 +140,7 @@ async function updateProfile(req, res, next) {
       RETURNING *
     `;
 
-    const result = await pool.query(query, values);
+    const result = await tenantQuery(req, query, values);
 
     res.json({
       success: true,
@@ -168,7 +168,7 @@ async function getReferralStatsHandler(req, res, next) {
   try {
     const { phone } = req.user;
 
-    const stats = await getReferralStats(phone);
+    const stats = await getReferralStats(phone, req);
 
     res.json({
       success: true,
@@ -199,7 +199,7 @@ async function getReferredUsersHandler(req, res, next) {
       throw { code: 'INVALID_OFFSET', message: 'Offset must be 0 or greater' };
     }
 
-    const result = await getReferredUsers(phone, limit, offset);
+    const result = await getReferredUsers(phone, limit, offset, req);
 
     res.json({
       success: true,

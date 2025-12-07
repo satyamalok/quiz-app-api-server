@@ -1,4 +1,4 @@
-const pool = require('../config/database');
+const { tenantQuery } = require('../config/database');
 const whatsappOtpService = require('./whatsappOtpService');
 
 // Sticky OTP configuration for Google Play Store review
@@ -34,10 +34,11 @@ function generateOTP(phone = null) {
 
 /**
  * Get app configuration for rate limiting
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Object>} App config
  */
-async function getAppConfig() {
-  const result = await pool.query('SELECT * FROM app_config WHERE id = 1');
+async function getAppConfig(req) {
+  const result = await tenantQuery(req, 'SELECT * FROM app_config WHERE id = 1');
   return result.rows[0];
 }
 
@@ -45,17 +46,18 @@ async function getAppConfig() {
  * Send OTP to phone number
  * @param {string} phone - Phone number
  * @param {string} ipAddress - IP address of requester
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Object>} Result with OTP (if test mode)
  */
-async function sendOTP(phone, ipAddress = null) {
+async function sendOTP(phone, ipAddress = null, req) {
   try {
     // Get app configuration
-    const config = await getAppConfig();
+    const config = await getAppConfig(req);
     const otpExpiryMinutes = parseInt(process.env.OTP_EXPIRY_MINUTES) || 5;
 
     // Check rate limiting (if enabled)
     if (config.otp_rate_limiting_enabled) {
-      const rateLimitResult = await pool.query(`
+      const rateLimitResult = await tenantQuery(req, `
         SELECT COUNT(*) as count
         FROM otp_logs
         WHERE phone = $1
@@ -77,13 +79,13 @@ async function sendOTP(phone, ipAddress = null) {
     const expiresAt = new Date(Date.now() + otpExpiryMinutes * 60 * 1000);
 
     // Store OTP in database
-    await pool.query(`
+    await tenantQuery(req, `
       INSERT INTO otp_logs (phone, otp_code, expires_at, ip_address)
       VALUES ($1, $2, $3, $4)
     `, [phone, otp, expiresAt, ipAddress]);
 
     // Check if user exists
-    const userResult = await pool.query(
+    const userResult = await tenantQuery(req,
       'SELECT phone FROM users_profile WHERE phone = $1',
       [phone]
     );
@@ -148,9 +150,10 @@ async function sendOTP(phone, ipAddress = null) {
  * Verify OTP
  * @param {string} phone - Phone number
  * @param {string} otp - OTP code
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<boolean>} True if verified
  */
-async function verifyOTP(phone, otp) {
+async function verifyOTP(phone, otp, req) {
   try {
     // Check for sticky OTP (Google Play review phone)
     if (isStickyOTPPhone(phone) && otp === STICKY_OTP_CODE) {
@@ -159,10 +162,10 @@ async function verifyOTP(phone, otp) {
     }
 
     // Get app configuration
-    const config = await getAppConfig();
+    const config = await getAppConfig(req);
 
     // Find most recent unverified OTP
-    const otpResult = await pool.query(`
+    const otpResult = await tenantQuery(req, `
       SELECT *
       FROM otp_logs
       WHERE phone = $1
@@ -175,7 +178,7 @@ async function verifyOTP(phone, otp) {
 
     if (otpResult.rows.length === 0) {
       // Check if OTP exists but expired or already verified
-      const existsResult = await pool.query(`
+      const existsResult = await tenantQuery(req, `
         SELECT * FROM otp_logs
         WHERE phone = $1 AND otp_code = $2
         ORDER BY generated_at DESC
@@ -208,14 +211,14 @@ async function verifyOTP(phone, otp) {
     }
 
     // Increment attempts
-    await pool.query(`
+    await tenantQuery(req, `
       UPDATE otp_logs
       SET attempts = attempts + 1
       WHERE id = $1
     `, [otpRecord.id]);
 
     // Mark as verified
-    await pool.query(`
+    await tenantQuery(req, `
       UPDATE otp_logs
       SET is_verified = TRUE, verified_at = NOW()
       WHERE id = $1

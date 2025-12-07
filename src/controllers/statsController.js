@@ -1,4 +1,4 @@
-const pool = require('../config/database');
+const { tenantQuery } = require('../config/database');
 const { getStreak } = require('../services/streakService');
 const { getOnlineCount } = require('../services/onlineUsersService');
 
@@ -12,8 +12,8 @@ async function getDailyLeaderboard(req, res, next) {
     const { date } = req.query;
     const targetDate = date || new Date().toISOString().split('T')[0];
 
-    // Get top 50 for the date
-    const top50Result = await pool.query(`
+    // Get top 50 for the date (tenant-aware)
+    const top50Result = await tenantQuery(req, `
       SELECT
         d.phone, u.name, u.district, u.state,
         u.xp_total, u.profile_image_url,
@@ -25,8 +25,8 @@ async function getDailyLeaderboard(req, res, next) {
       LIMIT 50
     `, [targetDate]);
 
-    // Get user's own stats for the date
-    const userStatsResult = await pool.query(`
+    // Get user's own stats for the date (tenant-aware)
+    const userStatsResult = await tenantQuery(req, `
       SELECT total_xp_today
       FROM daily_xp_summary
       WHERE phone = $1 AND date = $2
@@ -45,14 +45,14 @@ async function getDailyLeaderboard(req, res, next) {
     if (userStatsResult.rows.length > 0) {
       const userXP = userStatsResult.rows[0].total_xp_today;
 
-      // Calculate user's rank
-      const rankResult = await pool.query(`
+      // Calculate user's rank (tenant-aware)
+      const rankResult = await tenantQuery(req, `
         SELECT COUNT(*) + 1 as rank
         FROM daily_xp_summary
         WHERE date = $1 AND total_xp_today > $2
       `, [targetDate, userXP]);
 
-      const userProfileResult = await pool.query(
+      const userProfileResult = await tenantQuery(req,
         'SELECT name, district, state, xp_total, profile_image_url FROM users_profile WHERE phone = $1',
         [phone]
       );
@@ -99,7 +99,7 @@ async function getDailyXP(req, res, next) {
   try {
     const { phone } = req.user;
 
-    const result = await pool.query(`
+    const result = await tenantQuery(req, `
       SELECT date, total_xp_today, levels_completed_today
       FROM daily_xp_summary
       WHERE phone = $1
@@ -129,7 +129,7 @@ async function getUserStreak(req, res, next) {
   try {
     const { phone } = req.user;
 
-    const streak = await getStreak(phone);
+    const streak = await getStreak(phone, req);
 
     res.json({
       success: true,
@@ -154,14 +154,14 @@ async function getUserStats(req, res, next) {
   try {
     const { phone } = req.user;
 
-    // Get user profile
-    const userResult = await pool.query(
+    // Get user profile (tenant-aware)
+    const userResult = await tenantQuery(req,
       'SELECT xp_total FROM users_profile WHERE phone = $1',
       [phone]
     );
 
-    // Get total attempts and levels completed
-    const attemptsResult = await pool.query(`
+    // Get total attempts and levels completed (tenant-aware)
+    const attemptsResult = await tenantQuery(req, `
       SELECT
         COUNT(DISTINCT level) FILTER (WHERE completion_status = 'completed') as levels_completed,
         COUNT(*) as total_attempts,
@@ -179,8 +179,8 @@ async function getUserStats(req, res, next) {
       ? parseFloat(((stats.correct_answers / stats.questions_attempted) * 100).toFixed(2))
       : 0;
 
-    // Get total videos watched
-    const videosResult = await pool.query(
+    // Get total videos watched (tenant-aware)
+    const videosResult = await tenantQuery(req,
       'SELECT COUNT(*) as count FROM video_watch_log WHERE phone = $1',
       [phone]
     );
@@ -233,7 +233,7 @@ async function checkVersion(req, res, next) {
  */
 async function getOnlineCountHandler(req, res, next) {
   try {
-    const count = await getOnlineCount();
+    const count = await getOnlineCount(req);
 
     res.json({
       success: true,
@@ -254,8 +254,8 @@ async function resumeLevel(req, res, next) {
   try {
     const { phone } = req.user;
 
-    // Find most recent incomplete attempt
-    const result = await pool.query(`
+    // Find most recent incomplete attempt (tenant-aware)
+    const result = await tenantQuery(req, `
       SELECT
         id, level, questions_attempted, lifelines_remaining
       FROM level_attempts

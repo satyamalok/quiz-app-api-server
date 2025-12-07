@@ -1,18 +1,31 @@
 const pool = require('../config/database');
+const { tenantQuery, getTenantClient } = require('../config/database');
 const { SQL_IST_NOW } = require('../utils/timezone');
 
 /**
  * Initialize lifelines for a level attempt
  * @param {number} attemptId - Level attempt ID
  * @param {number} lifelineCount - Number of lifelines (default 3)
+ * @param {Object} clientOrReq - Database client or Express request with tenant context
  */
-async function initializeLifelines(attemptId, lifelineCount = 3) {
+async function initializeLifelines(attemptId, lifelineCount = 3, clientOrReq = null) {
   try {
-    await pool.query(`
+    const query = `
       UPDATE level_attempts
       SET lifelines_remaining = $1
       WHERE id = $2
-    `, [lifelineCount, attemptId]);
+    `;
+    const params = [lifelineCount, attemptId];
+
+    if (clientOrReq && clientOrReq.query) {
+      // It's a database client
+      await clientOrReq.query(query, params);
+    } else if (clientOrReq && clientOrReq.tenant) {
+      // It's an Express request
+      await tenantQuery(clientOrReq, query, params);
+    } else {
+      await pool.query(query, params);
+    }
   } catch (err) {
     console.error('Initialize lifelines error:', err);
     throw err;
@@ -22,14 +35,12 @@ async function initializeLifelines(attemptId, lifelineCount = 3) {
 /**
  * Deduct lifeline when user answers incorrectly
  * @param {number} attemptId - Level attempt ID
- * @param {Object} client - Database client (optional, for transaction reuse)
+ * @param {Object} clientOrReq - Database client or Express request (optional, for transaction reuse)
  * @returns {Promise<Object>} Updated lifeline status
  */
-async function deductLifeline(attemptId, client = null) {
-  const dbClient = client || pool;
-
+async function deductLifeline(attemptId, clientOrReq = null) {
   try {
-    const result = await dbClient.query(`
+    const query = `
       UPDATE level_attempts
       SET
         lifelines_remaining = GREATEST(lifelines_remaining - 1, 0),
@@ -37,7 +48,19 @@ async function deductLifeline(attemptId, client = null) {
         updated_at = ${SQL_IST_NOW}
       WHERE id = $1
       RETURNING lifelines_remaining, lifelines_used
-    `, [attemptId]);
+    `;
+    const params = [attemptId];
+
+    let result;
+    if (clientOrReq && clientOrReq.query) {
+      // It's a database client
+      result = await clientOrReq.query(query, params);
+    } else if (clientOrReq && clientOrReq.tenant) {
+      // It's an Express request
+      result = await tenantQuery(clientOrReq, query, params);
+    } else {
+      result = await pool.query(query, params);
+    }
 
     if (result.rows.length === 0) {
       throw new Error('Attempt not found');
@@ -60,18 +83,28 @@ async function deductLifeline(attemptId, client = null) {
 /**
  * Get current lifeline status for an attempt
  * @param {number} attemptId - Level attempt ID
- * @param {Object} client - Database client (optional, for transaction reuse)
+ * @param {Object} clientOrReq - Database client or Express request (optional, for transaction reuse)
  * @returns {Promise<Object>} Lifeline status
  */
-async function getLifelineStatus(attemptId, client = null) {
-  const dbClient = client || pool;
-
+async function getLifelineStatus(attemptId, clientOrReq = null) {
   try {
-    const result = await dbClient.query(`
+    const query = `
       SELECT lifelines_remaining, lifelines_used, lifeline_videos_watched
       FROM level_attempts
       WHERE id = $1
-    `, [attemptId]);
+    `;
+    const params = [attemptId];
+
+    let result;
+    if (clientOrReq && clientOrReq.query) {
+      // It's a database client
+      result = await clientOrReq.query(query, params);
+    } else if (clientOrReq && clientOrReq.tenant) {
+      // It's an Express request
+      result = await tenantQuery(clientOrReq, query, params);
+    } else {
+      result = await pool.query(query, params);
+    }
 
     if (result.rows.length === 0) {
       throw new Error('Attempt not found');
@@ -92,12 +125,24 @@ async function getLifelineStatus(attemptId, client = null) {
  * @param {string} videoUrl - Video URL
  * @param {number} watchDuration - Watch duration in seconds
  * @param {number} totalDuration - Total video duration
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Object>} Restore result
  */
-async function restoreLifelines(attemptId, phone, videoId, videoUrl, watchDuration, totalDuration) {
-  const client = await pool.connect();
+async function restoreLifelines(attemptId, phone, videoId, videoUrl, watchDuration, totalDuration, req = null) {
+  let client;
+  let shouldRelease = false;
 
   try {
+    // Get tenant-aware client if req is provided
+    if (req && req.tenant) {
+      const tenantClient = await getTenantClient(req);
+      client = tenantClient.client;
+      shouldRelease = true;
+    } else {
+      client = await pool.connect();
+      shouldRelease = true;
+    }
+
     await client.query('BEGIN');
 
     // Validate watch duration (must watch at least 80%)
@@ -158,12 +203,16 @@ async function restoreLifelines(attemptId, phone, videoId, videoUrl, watchDurati
     };
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) {
+      await client.query('ROLLBACK');
+    }
     if (err.code) throw err;
     console.error('Restore lifelines error:', err);
     throw { code: 'SERVER_ERROR', message: 'Failed to restore lifelines' };
   } finally {
-    client.release();
+    if (client && shouldRelease) {
+      client.release();
+    }
   }
 }
 

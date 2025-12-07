@@ -1,21 +1,24 @@
 const pool = require('../config/database');
+const { tenantQuery } = require('../config/database');
 const { SQL_IST_NOW } = require('../utils/timezone');
 
 /**
  * Get current levels version
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Object>} Version info {version, last_updated_at}
  */
-async function getLevelsVersion() {
-  const result = await pool.query('SELECT version, last_updated_at FROM levels_version WHERE id = 1');
+async function getLevelsVersion(req) {
+  const result = await tenantQuery(req, 'SELECT version, last_updated_at FROM levels_version WHERE id = 1');
   return result.rows[0] || { version: 1, last_updated_at: new Date() };
 }
 
 /**
  * Get all active quiz levels
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Array>} List of levels
  */
-async function getAllLevels() {
-  const result = await pool.query(`
+async function getAllLevels(req) {
+  const result = await tenantQuery(req, `
     SELECT
       level_number,
       title,
@@ -30,12 +33,13 @@ async function getAllLevels() {
 
 /**
  * Get all levels with version info (for API response)
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Object>} {levels, version, last_updated_at}
  */
-async function getLevelsWithVersion() {
+async function getLevelsWithVersion(req) {
   const [levels, versionInfo] = await Promise.all([
-    getAllLevels(),
-    getLevelsVersion()
+    getAllLevels(req),
+    getLevelsVersion(req)
   ]);
 
   return {
@@ -49,10 +53,11 @@ async function getLevelsWithVersion() {
 /**
  * Check if levels have changed since given version
  * @param {number} clientVersion - Client's current version
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Object>} {changed, newVersion, levels?}
  */
-async function checkLevelsChange(clientVersion) {
-  const versionInfo = await getLevelsVersion();
+async function checkLevelsChange(clientVersion, req) {
+  const versionInfo = await getLevelsVersion(req);
   const currentVersion = versionInfo.version;
 
   if (clientVersion >= currentVersion) {
@@ -63,7 +68,7 @@ async function checkLevelsChange(clientVersion) {
   }
 
   // Version changed - return new levels
-  const levels = await getAllLevels();
+  const levels = await getAllLevels(req);
   return {
     changed: true,
     new_version: currentVersion,
@@ -76,10 +81,11 @@ async function checkLevelsChange(clientVersion) {
 /**
  * Get single level by number
  * @param {number} levelNumber
+ * @param {Object} req - Express request with tenant context
  * @returns {Promise<Object|null>}
  */
-async function getLevelByNumber(levelNumber) {
-  const result = await pool.query(
+async function getLevelByNumber(levelNumber, req) {
+  const result = await tenantQuery(req,
     'SELECT * FROM quiz_levels WHERE level_number = $1',
     [levelNumber]
   );
@@ -88,9 +94,30 @@ async function getLevelByNumber(levelNumber) {
 
 /**
  * Get all levels for admin (including inactive)
+ * @param {Object} req - Express request with tenant context (or null for admin with session)
+ * @param {Object} client - Database client (optional, for admin with session-based schema)
  * @returns {Promise<Array>}
  */
-async function getAllLevelsAdmin() {
+async function getAllLevelsAdmin(req = null, client = null) {
+  if (client) {
+    const result = await client.query(`
+      SELECT *
+      FROM quiz_levels
+      ORDER BY level_number ASC
+    `);
+    return result.rows;
+  }
+
+  if (req && req.tenant) {
+    const result = await tenantQuery(req, `
+      SELECT *
+      FROM quiz_levels
+      ORDER BY level_number ASC
+    `);
+    return result.rows;
+  }
+
+  // Fallback for admin panel without tenant context
   const result = await pool.query(`
     SELECT *
     FROM quiz_levels
@@ -102,17 +129,31 @@ async function getAllLevelsAdmin() {
 /**
  * Create new level
  * @param {Object} data - Level data
+ * @param {Object} req - Express request with tenant context (or null for admin)
+ * @param {Object} client - Database client (optional)
  * @returns {Promise<Object>} Created level
  */
-async function createLevel(data) {
+async function createLevel(data, req = null, client = null) {
   const { level_number, title, subtitle, duration_seconds, is_active = true } = data;
 
-  const result = await pool.query(`
+  const query = `
     INSERT INTO quiz_levels (level_number, title, subtitle, duration_seconds, is_active, created_at, updated_at)
     VALUES ($1, $2, $3, $4, $5, ${SQL_IST_NOW}, ${SQL_IST_NOW})
     RETURNING *
-  `, [level_number, title, subtitle, duration_seconds, is_active]);
+  `;
+  const params = [level_number, title, subtitle, duration_seconds, is_active];
 
+  if (client) {
+    const result = await client.query(query, params);
+    return result.rows[0];
+  }
+
+  if (req && req.tenant) {
+    const result = await tenantQuery(req, query, params);
+    return result.rows[0];
+  }
+
+  const result = await pool.query(query, params);
   return result.rows[0];
 }
 
@@ -120,31 +161,57 @@ async function createLevel(data) {
  * Update level
  * @param {number} levelNumber
  * @param {Object} data
+ * @param {Object} req - Express request with tenant context (or null for admin)
+ * @param {Object} client - Database client (optional)
  * @returns {Promise<Object>}
  */
-async function updateLevel(levelNumber, data) {
+async function updateLevel(levelNumber, data, req = null, client = null) {
   const { title, subtitle, duration_seconds, is_active } = data;
 
-  const result = await pool.query(`
+  const query = `
     UPDATE quiz_levels
     SET title = $2, subtitle = $3, duration_seconds = $4, is_active = $5, updated_at = ${SQL_IST_NOW}
     WHERE level_number = $1
     RETURNING *
-  `, [levelNumber, title, subtitle, duration_seconds, is_active]);
+  `;
+  const params = [levelNumber, title, subtitle, duration_seconds, is_active];
 
+  if (client) {
+    const result = await client.query(query, params);
+    return result.rows[0];
+  }
+
+  if (req && req.tenant) {
+    const result = await tenantQuery(req, query, params);
+    return result.rows[0];
+  }
+
+  const result = await pool.query(query, params);
   return result.rows[0];
 }
 
 /**
  * Delete level
  * @param {number} levelNumber
+ * @param {Object} req - Express request with tenant context (or null for admin)
+ * @param {Object} client - Database client (optional)
  * @returns {Promise<boolean>}
  */
-async function deleteLevel(levelNumber) {
-  const result = await pool.query(
-    'DELETE FROM quiz_levels WHERE level_number = $1 RETURNING id',
-    [levelNumber]
-  );
+async function deleteLevel(levelNumber, req = null, client = null) {
+  const query = 'DELETE FROM quiz_levels WHERE level_number = $1 RETURNING id';
+  const params = [levelNumber];
+
+  if (client) {
+    const result = await client.query(query, params);
+    return result.rows.length > 0;
+  }
+
+  if (req && req.tenant) {
+    const result = await tenantQuery(req, query, params);
+    return result.rows.length > 0;
+  }
+
+  const result = await pool.query(query, params);
   return result.rows.length > 0;
 }
 

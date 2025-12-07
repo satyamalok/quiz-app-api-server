@@ -1,4 +1,4 @@
-const pool = require('../config/database');
+const { tenantQuery, getTenantClient } = require('../config/database');
 const { addXPToUser } = require('../services/xpService');
 const { restoreLifelines } = require('../services/lifelineService');
 const { getISTDate, SQL_IST_NOW } = require('../utils/timezone');
@@ -28,7 +28,7 @@ async function getVideoURL(req, res, next) {
 
     query += ` ORDER BY id DESC`;
 
-    const result = await pool.query(query, params);
+    const result = await tenantQuery(req, query, params);
 
     if (result.rows.length === 0) {
       throw { code: 'VIDEO_NOT_FOUND', message: 'No video available for this level' };
@@ -51,7 +51,8 @@ async function getVideoURL(req, res, next) {
  * Mark video as watched and double XP (bonus XP only - base XP already added on quiz completion)
  */
 async function completeVideo(req, res, next) {
-  const client = await pool.connect();
+  // Get tenant-aware client
+  const { client, release } = await getTenantClient(req);
 
   try {
     const { phone } = req.user;
@@ -200,7 +201,7 @@ async function completeVideo(req, res, next) {
     await client.query('ROLLBACK');
     next(err);
   } finally {
-    client.release();
+    release();
   }
 }
 
@@ -213,8 +214,8 @@ async function restoreLifelinesHandler(req, res, next) {
     const { phone } = req.user;
     const { attempt_id, video_id, watch_duration_seconds } = req.body;
 
-    // Get video details
-    const videoResult = await pool.query(
+    // Get video details (tenant-aware)
+    const videoResult = await tenantQuery(req,
       'SELECT video_url, duration_seconds FROM promotional_videos WHERE id = $1',
       [video_id]
     );
@@ -225,14 +226,15 @@ async function restoreLifelinesHandler(req, res, next) {
 
     const video = videoResult.rows[0];
 
-    // Restore lifelines
+    // Restore lifelines (pass req for tenant context)
     const result = await restoreLifelines(
       attempt_id,
       phone,
       video_id,
       video.video_url,
       watch_duration_seconds,
-      video.duration_seconds
+      video.duration_seconds,
+      req
     );
 
     res.json(result);

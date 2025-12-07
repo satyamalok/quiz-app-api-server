@@ -9,7 +9,7 @@ const {
  */
 async function getAllLevels(req, res, next) {
   try {
-    const result = await getLevelsWithVersion();
+    const result = await getLevelsWithVersion(req);
 
     res.json({
       success: true,
@@ -29,7 +29,7 @@ async function checkLevelsUpdate(req, res, next) {
   try {
     const clientVersion = parseInt(req.query.version) || 0;
 
-    const result = await checkLevelsChange(clientVersion);
+    const result = await checkLevelsChange(clientVersion, req);
 
     res.json({
       success: true,

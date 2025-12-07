@@ -1,4 +1,4 @@
-const pool = require('../config/database');
+const { tenantQuery, getTenantClient } = require('../config/database');
 const { calculateBaseXP, calculateAccuracy, addXPToUser } = require('../services/xpService');
 const { deductLifeline, getLifelineStatus } = require('../services/lifelineService');
 const { updateStreak } = require('../services/streakService');
@@ -13,7 +13,7 @@ async function getLevelHistory(req, res, next) {
   try {
     const { phone } = req.user;
 
-    const result = await pool.query(`
+    const result = await tenantQuery(req, `
       SELECT
         level,
         COUNT(*) as attempts,
@@ -46,7 +46,7 @@ async function startLevel(req, res, next) {
     const { level } = req.body;
 
     // Check if level is unlocked and get user's medium preference
-    const userResult = await pool.query(
+    const userResult = await tenantQuery(req,
       'SELECT current_level, medium FROM users_profile WHERE phone = $1',
       [phone]
     );
@@ -67,20 +67,20 @@ async function startLevel(req, res, next) {
     }
 
     // Check if this is first attempt (exclude abandoned attempts)
-    const attemptCountResult = await pool.query(
+    const attemptCountResult = await tenantQuery(req,
       'SELECT COUNT(*) as count FROM level_attempts WHERE phone = $1 AND level = $2 AND completion_status != $3',
       [phone, level, 'abandoned']
     );
 
     const isFirstAttempt = parseInt(attemptCountResult.rows[0].count) === 0;
 
-    // Try to get questions from cache first
-    let questionRows = await getCachedQuestions(level, userMedium);
+    // Try to get questions from cache first (tenant-aware cache)
+    let questionRows = await getCachedQuestions(level, userMedium, req);
 
     if (!questionRows) {
       // Cache miss - fetch from database
       // Priority: user's medium or 'both' > fallback to 'english' or 'both' > fallback to any
-      let questionsResult = await pool.query(`
+      let questionsResult = await tenantQuery(req, `
         SELECT
           sl, level, question_order,
           question_text, question_image_url,
@@ -94,7 +94,7 @@ async function startLevel(req, res, next) {
 
       // Fallback 1: If no questions found, try 'english' or 'both'
       if (questionsResult.rows.length === 0 && userMedium !== 'english') {
-        questionsResult = await pool.query(`
+        questionsResult = await tenantQuery(req, `
           SELECT
             sl, level, question_order,
             question_text, question_image_url,
@@ -109,7 +109,7 @@ async function startLevel(req, res, next) {
 
       // Fallback 2: If still no questions, get any questions for this level
       if (questionsResult.rows.length === 0) {
-        questionsResult = await pool.query(`
+        questionsResult = await tenantQuery(req, `
           SELECT
             sl, level, question_order,
             question_text, question_image_url,
@@ -124,9 +124,9 @@ async function startLevel(req, res, next) {
 
       questionRows = questionsResult.rows;
 
-      // Cache the questions for future requests (non-blocking)
+      // Cache the questions for future requests (non-blocking, tenant-aware)
       if (questionRows.length > 0) {
-        setCachedQuestions(level, userMedium, questionRows)
+        setCachedQuestions(level, userMedium, questionRows, req)
           .catch(err => console.error('Cache set error (non-critical):', err.message));
       }
     }
@@ -136,7 +136,7 @@ async function startLevel(req, res, next) {
     }
 
     // Create level attempt record with IST timestamps
-    const attemptResult = await pool.query(`
+    const attemptResult = await tenantQuery(req, `
       INSERT INTO level_attempts (
         phone, level, is_first_attempt, lifelines_remaining, completion_status,
         attempt_date, attempt_time, created_at, updated_at
@@ -150,7 +150,7 @@ async function startLevel(req, res, next) {
 
     // Update user's streak (indicates active engagement)
     // This runs in background - don't fail the request if it errors
-    updateStreak(phone).catch(err => {
+    updateStreak(phone, req).catch(err => {
       console.error('Streak update error (non-critical):', err);
     });
 
@@ -192,7 +192,8 @@ async function startLevel(req, res, next) {
  * Submit answer for a question
  */
 async function answerQuestion(req, res, next) {
-  const client = await pool.connect();
+  // Get tenant-aware client
+  const { client, release } = await getTenantClient(req);
 
   try {
     const { phone } = req.user;
@@ -374,7 +375,7 @@ async function answerQuestion(req, res, next) {
     await client.query('ROLLBACK');
     next(err);
   } finally {
-    client.release();
+    release();
   }
 }
 
@@ -387,7 +388,7 @@ async function abandonLevel(req, res, next) {
     const { phone } = req.user;
     const { attempt_id } = req.body;
 
-    await pool.query(`
+    await tenantQuery(req, `
       UPDATE level_attempts
       SET
         completion_status = 'abandoned',

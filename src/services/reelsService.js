@@ -1,12 +1,14 @@
 const pool = require('../config/database');
+const { tenantQuery, getTenantClient } = require('../config/database');
 const { SQL_IST_NOW } = require('../utils/timezone');
 const { getCachedReels, setCachedReels } = require('./cacheService');
 
 /**
  * Get reels config from app_config
+ * @param {Object} req - Express request with tenant context
  */
-async function getReelsConfig() {
-  const result = await pool.query(
+async function getReelsConfig(req) {
+  const result = await tenantQuery(req,
     'SELECT reel_watch_threshold_seconds, reels_prefetch_count FROM app_config WHERE id = 1'
   );
   return result.rows[0] || { reel_watch_threshold_seconds: 5, reels_prefetch_count: 3 };
@@ -15,14 +17,15 @@ async function getReelsConfig() {
 /**
  * Get all active reels (with caching)
  * Returns active reels ordered by id DESC (newest first)
+ * @param {Object} req - Express request with tenant context
  */
-async function getActiveReels() {
+async function getActiveReels(req) {
   // Try cache first
-  let reels = await getCachedReels();
+  let reels = await getCachedReels(req);
 
   if (!reels) {
     // Cache miss - query database
-    const result = await pool.query(`
+    const result = await tenantQuery(req, `
       SELECT
         id,
         title,
@@ -43,7 +46,7 @@ async function getActiveReels() {
 
     // Cache for future requests (non-blocking)
     if (reels.length > 0) {
-      setCachedReels(reels).catch(err =>
+      setCachedReels(reels, req).catch(err =>
         console.error('Cache set error (non-critical):', err.message)
       );
     }
@@ -61,11 +64,25 @@ async function getActiveReels() {
  * concurrent requests could both trigger a reset and return duplicate reels.
  *
  * Optimization: Uses cached active reels to avoid full table scan on each request.
+ * @param {string} phone - User's phone number
+ * @param {number} limit - Number of reels to return
+ * @param {Object} req - Express request with tenant context
  */
-async function getReelsFeed(phone, limit = 3) {
-  const client = await pool.connect();
+async function getReelsFeed(phone, limit = 3, req) {
+  let client;
+  let shouldRelease = false;
 
   try {
+    // Get tenant-aware client
+    if (req && req.tenant) {
+      const tenantClient = await getTenantClient(req);
+      client = tenantClient.client;
+      shouldRelease = true;
+    } else {
+      client = await pool.connect();
+      shouldRelease = true;
+    }
+
     await client.query('BEGIN');
 
     // Lock user's progress rows to prevent concurrent reset race condition
@@ -76,7 +93,7 @@ async function getReelsFeed(phone, limit = 3) {
     );
 
     // Get all active reels from cache (or DB if cache miss)
-    const activeReels = await getActiveReels();
+    const activeReels = await getActiveReels(req);
 
     if (activeReels.length === 0) {
       await client.query('COMMIT');
@@ -147,18 +164,25 @@ async function getReelsFeed(phone, limit = 3) {
     return unwatchedReels.slice(0, limit);
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) {
+      await client.query('ROLLBACK');
+    }
     throw err;
   } finally {
-    client.release();
+    if (client && shouldRelease) {
+      client.release();
+    }
   }
 }
 
 /**
  * Get a specific reel by ID with user's progress
+ * @param {number} reelId - Reel ID
+ * @param {string} phone - User's phone number
+ * @param {Object} req - Express request with tenant context
  */
-async function getReelById(reelId, phone) {
-  const result = await pool.query(`
+async function getReelById(reelId, phone, req) {
+  const result = await tenantQuery(req, `
     SELECT
       r.id,
       r.title,
@@ -183,11 +207,24 @@ async function getReelById(reelId, phone) {
 /**
  * Mark reel as started (user saw it for at least a moment)
  * This is used for progression tracking - once started, user won't see it again in feed
+ * @param {string} phone - User's phone number
+ * @param {number} reelId - Reel ID
+ * @param {Object} req - Express request with tenant context
  */
-async function markReelStarted(phone, reelId) {
-  const client = await pool.connect();
+async function markReelStarted(phone, reelId, req) {
+  let client;
+  let shouldRelease = false;
 
   try {
+    if (req && req.tenant) {
+      const tenantClient = await getTenantClient(req);
+      client = tenantClient.client;
+      shouldRelease = true;
+    } else {
+      client = await pool.connect();
+      shouldRelease = true;
+    }
+
     await client.query('BEGIN');
 
     // Check if user has already started this reel
@@ -228,21 +265,39 @@ async function markReelStarted(phone, reelId) {
     };
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) {
+      await client.query('ROLLBACK');
+    }
     throw err;
   } finally {
-    client.release();
+    if (client && shouldRelease) {
+      client.release();
+    }
   }
 }
 
 /**
  * Mark reel as watched (user crossed the threshold)
  * This is for analytics - doesn't affect feed progression
+ * @param {string} phone - User's phone number
+ * @param {number} reelId - Reel ID
+ * @param {number} watchDurationSeconds - Watch duration in seconds
+ * @param {Object} req - Express request with tenant context
  */
-async function markReelWatched(phone, reelId, watchDurationSeconds) {
-  const client = await pool.connect();
+async function markReelWatched(phone, reelId, watchDurationSeconds, req) {
+  let client;
+  let shouldRelease = false;
 
   try {
+    if (req && req.tenant) {
+      const tenantClient = await getTenantClient(req);
+      client = tenantClient.client;
+      shouldRelease = true;
+    } else {
+      client = await pool.connect();
+      shouldRelease = true;
+    }
+
     await client.query('BEGIN');
 
     // Check if already marked as watched to avoid double counting
@@ -289,20 +344,37 @@ async function markReelWatched(phone, reelId, watchDurationSeconds) {
     return { success: true };
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) {
+      await client.query('ROLLBACK');
+    }
     throw err;
   } finally {
-    client.release();
+    if (client && shouldRelease) {
+      client.release();
+    }
   }
 }
 
 /**
  * Toggle heart (like) on a reel
+ * @param {string} phone - User's phone number
+ * @param {number} reelId - Reel ID
+ * @param {Object} req - Express request with tenant context
  */
-async function toggleHeart(phone, reelId) {
-  const client = await pool.connect();
+async function toggleHeart(phone, reelId, req) {
+  let client;
+  let shouldRelease = false;
 
   try {
+    if (req && req.tenant) {
+      const tenantClient = await getTenantClient(req);
+      client = tenantClient.client;
+      shouldRelease = true;
+    } else {
+      client = await pool.connect();
+      shouldRelease = true;
+    }
+
     await client.query('BEGIN');
 
     // Get current heart status
@@ -352,18 +424,24 @@ async function toggleHeart(phone, reelId) {
     };
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (client) {
+      await client.query('ROLLBACK');
+    }
     throw err;
   } finally {
-    client.release();
+    if (client && shouldRelease) {
+      client.release();
+    }
   }
 }
 
 /**
  * Get user's reel stats
+ * @param {string} phone - User's phone number
+ * @param {Object} req - Express request with tenant context
  */
-async function getUserReelStats(phone) {
-  const result = await pool.query(`
+async function getUserReelStats(phone, req) {
+  const result = await tenantQuery(req, `
     SELECT
       COUNT(*) as total_reels_viewed,
       COUNT(CASE WHEN status = 'watched' THEN 1 END) as total_reels_completed,
@@ -374,7 +452,7 @@ async function getUserReelStats(phone) {
   `, [phone]);
 
   // Get total available reels from cache
-  const activeReels = await getActiveReels();
+  const activeReels = await getActiveReels(req);
   const totalAvailable = activeReels.length;
 
   const stats = result.rows[0];
@@ -393,9 +471,13 @@ async function getUserReelStats(phone) {
 
 /**
  * Get user's hearted reels
+ * @param {string} phone - User's phone number
+ * @param {number} limit - Number of results
+ * @param {number} offset - Offset for pagination
+ * @param {Object} req - Express request with tenant context
  */
-async function getHeartedReels(phone, limit = 50, offset = 0) {
-  const result = await pool.query(`
+async function getHeartedReels(phone, limit = 50, offset = 0, req) {
+  const result = await tenantQuery(req, `
     SELECT
       r.id,
       r.title,
@@ -414,7 +496,7 @@ async function getHeartedReels(phone, limit = 50, offset = 0) {
   `, [phone, limit, offset]);
 
   // Get total count
-  const countResult = await pool.query(`
+  const countResult = await tenantQuery(req, `
     SELECT COUNT(*) as count
     FROM user_reel_progress urp
     JOIN reels r ON urp.reel_id = r.id
