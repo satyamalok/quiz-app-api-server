@@ -5,10 +5,11 @@
  * 1. Extracts app slug from URL parameter
  * 2. Validates app exists and is active
  * 3. Attaches tenant context to request object
- * 4. Provides database client with correct schema
+ * 4. Wraps database pool to automatically set schema
  */
 
 const pool = require('../config/database');
+const { Pool } = require('pg');
 
 // Cache for app lookups (5 minute TTL)
 const appCache = new Map();

@@ -86,13 +86,18 @@ app.use('/admin', adminRoutes);
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'JNV Quiz App API Server',
-    version: '1.0.0',
+    message: 'Multi-Tenant Quiz App API Server',
+    version: '2.0.0',
+    multiTenant: true,
     endpoints: {
-      api: '/api/v1',
+      api: '/api/v1/:appId/*',
       admin: '/admin',
       health: '/health',
       healthApi: '/api/v1/health'
+    },
+    example: {
+      sendOtp: '/api/v1/jnvquiz/auth/send-otp',
+      verifyOtp: '/api/v1/jnvquiz/auth/verify-otp'
     }
   });
 });

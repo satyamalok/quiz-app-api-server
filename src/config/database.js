@@ -31,4 +31,95 @@ pool.on('error', (err) => {
   process.exit(-1);
 });
 
+// ============================================
+// MULTI-TENANCY HELPERS
+// ============================================
+
+/**
+ * Get a database client with tenant schema set
+ * @param {object} req - Express request with req.tenant (optional)
+ * @returns {object} { client, release } - Database client and release function
+ */
+async function getTenantClient(req = null) {
+  const client = await pool.connect();
+
+  try {
+    if (req && req.tenant && req.tenant.schema) {
+      await client.query(`SET search_path TO "${req.tenant.schema}"`);
+    }
+
+    return {
+      client,
+      release: () => client.release(),
+      // Convenience method for quick queries
+      query: (text, params) => client.query(text, params)
+    };
+  } catch (err) {
+    client.release();
+    throw err;
+  }
+}
+
+/**
+ * Execute a query with tenant schema
+ * @param {object} req - Express request with req.tenant (optional)
+ * @param {string} text - SQL query
+ * @param {array} params - Query parameters
+ * @returns {object} Query result
+ */
+async function tenantQuery(req, text, params = []) {
+  const client = await pool.connect();
+
+  try {
+    if (req && req.tenant && req.tenant.schema) {
+      await client.query(`SET search_path TO "${req.tenant.schema}"`);
+    }
+    return await client.query(text, params);
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Execute a transaction with tenant schema
+ * @param {object} req - Express request with req.tenant (optional)
+ * @param {function} callback - Async function that receives the client
+ * @returns {any} Result from callback
+ */
+async function tenantTransaction(req, callback) {
+  const client = await pool.connect();
+
+  try {
+    if (req && req.tenant && req.tenant.schema) {
+      await client.query(`SET search_path TO "${req.tenant.schema}"`);
+    }
+    await client.query('BEGIN');
+
+    const result = await callback(client);
+
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Get schema name from request (for manual schema setting)
+ * @param {object} req - Express request
+ * @returns {string|null} Schema name or null
+ */
+function getSchema(req) {
+  return req && req.tenant ? req.tenant.schema : null;
+}
+
+// Export pool for backward compatibility + new tenant helpers
 module.exports = pool;
+module.exports.pool = pool;
+module.exports.getTenantClient = getTenantClient;
+module.exports.tenantQuery = tenantQuery;
+module.exports.tenantTransaction = tenantTransaction;
+module.exports.getSchema = getSchema;

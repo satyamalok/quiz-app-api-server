@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { getTenantClient, tenantQuery, tenantTransaction } = require('../config/database');
 const { generateToken } = require('../config/jwt');
 const { sendOTP, verifyOTP } = require('../services/otpService');
 const { generateReferralCode, processReferral } = require('../services/referralService');
@@ -27,13 +28,14 @@ async function sendOTPHandler(req, res, next) {
  * Verify OTP and create/login user
  */
 async function verifyOTPHandler(req, res, next) {
-  const client = await pool.connect();
+  // Get tenant-aware client (sets search_path automatically)
+  const { client, release } = await getTenantClient(req);
 
   try {
     const { phone, otp, name, district, state, medium, referral_code } = req.body;
 
-    // Verify OTP
-    await verifyOTP(phone, otp);
+    // Verify OTP (uses tenant context from req)
+    await verifyOTP(phone, otp, req);
 
     await client.query('BEGIN');
 
@@ -156,7 +158,7 @@ async function verifyOTPHandler(req, res, next) {
     await client.query('ROLLBACK');
     next(err);
   } finally {
-    client.release();
+    release();
   }
 }
 
@@ -168,8 +170,8 @@ async function validateTokenHandler(req, res, next) {
   try {
     const { phone } = req.user; // From JWT middleware
 
-    // Get user profile
-    const userResult = await pool.query(
+    // Get user profile (tenant-aware)
+    const userResult = await tenantQuery(req,
       'SELECT * FROM users_profile WHERE phone = $1',
       [phone]
     );
