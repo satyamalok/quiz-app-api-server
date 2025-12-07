@@ -1,7 +1,19 @@
 const pool = require('../config/database');
+const { adminQuery } = require('../config/database');
 const { uploadFile } = require('../services/uploadService');
 const { invalidateReelsCache } = require('../services/cacheService');
 const multer = require('multer');
+
+/**
+ * Get the current app schema from admin session
+ * Falls back to default schema if not set
+ */
+function getAdminSchema(req) {
+  if (req.session && req.session.currentApp && req.session.currentApp.schema) {
+    return req.session.currentApp.schema;
+  }
+  return process.env.DEFAULT_APP_SCHEMA || 'app_jnvquiz';
+}
 
 // Multer setup for memory storage (multiple files)
 const upload = multer({
@@ -22,6 +34,8 @@ const upload = multer({
  */
 async function showReels(req, res) {
   try {
+    const schema = getAdminSchema(req);
+
     // Get filter parameters
     const { status, category, sort } = req.query;
 
@@ -49,7 +63,7 @@ async function showReels(req, res) {
     else if (sort === 'most_hearted') orderBy = 'total_hearts DESC';
     else if (sort === 'most_completed') orderBy = 'total_completions DESC';
 
-    const result = await pool.query(`
+    const result = await adminQuery(schema, `
       SELECT *,
         CASE WHEN total_views > 0
           THEN ROUND((total_completions::numeric / total_views) * 100, 1)
@@ -65,12 +79,12 @@ async function showReels(req, res) {
     `, params);
 
     // Get categories for filter dropdown
-    const categoriesResult = await pool.query(
+    const categoriesResult = await adminQuery(schema,
       'SELECT DISTINCT category FROM reels ORDER BY category'
     );
 
     // Get summary stats
-    const statsResult = await pool.query(`
+    const statsResult = await adminQuery(schema, `
       SELECT
         COUNT(*) as total_reels,
         COUNT(CASE WHEN is_active THEN 1 END) as active_reels,
@@ -143,7 +157,8 @@ async function uploadReels(req, res) {
         const duration = Array.isArray(durations) ? parseInt(durations[i]) || 0 : parseInt(durations) || 0;
 
         // Insert into database
-        const result = await pool.query(`
+        const schema = getAdminSchema(req);
+        const result = await adminQuery(schema, `
           INSERT INTO reels (title, description, video_url, duration_seconds, category, uploaded_by, created_at, updated_at)
           VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
           RETURNING id
@@ -206,7 +221,8 @@ async function uploadSingleReel(req, res) {
     const uploadResult = await uploadFile(file, 'reels');
 
     // Insert into database
-    const result = await pool.query(`
+    const schema = getAdminSchema(req);
+    const result = await adminQuery(schema, `
       INSERT INTO reels (title, description, video_url, duration_seconds, category, uploaded_by, created_at, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
       RETURNING id
@@ -244,8 +260,9 @@ async function uploadSingleReel(req, res) {
 async function showEditReel(req, res) {
   try {
     const { id } = req.params;
+    const schema = getAdminSchema(req);
 
-    const result = await pool.query('SELECT * FROM reels WHERE id = $1', [id]);
+    const result = await adminQuery(schema, 'SELECT * FROM reels WHERE id = $1', [id]);
 
     if (result.rows.length === 0) {
       return res.redirect('/admin/reels?error=Reel not found');
@@ -272,11 +289,12 @@ async function updateReel(req, res) {
   try {
     const { id } = req.params;
     const { title, description, category, duration_seconds, tags, is_active } = req.body;
+    const schema = getAdminSchema(req);
 
     // Parse tags (comma-separated string to array)
     const tagsArray = tags ? tags.split(',').map(t => t.trim()).filter(t => t) : null;
 
-    await pool.query(`
+    await adminQuery(schema, `
       UPDATE reels
       SET
         title = $1,
@@ -317,8 +335,9 @@ async function updateReel(req, res) {
 async function toggleReelStatus(req, res) {
   try {
     const { id } = req.params;
+    const schema = getAdminSchema(req);
 
-    await pool.query(`
+    await adminQuery(schema, `
       UPDATE reels
       SET is_active = NOT is_active, updated_at = NOW()
       WHERE id = $1
@@ -344,8 +363,9 @@ async function toggleReelStatus(req, res) {
 async function deleteReel(req, res) {
   try {
     const { id } = req.params;
+    const schema = getAdminSchema(req);
 
-    await pool.query('DELETE FROM reels WHERE id = $1', [id]);
+    await adminQuery(schema, 'DELETE FROM reels WHERE id = $1', [id]);
 
     // Invalidate cache after delete (non-blocking)
     invalidateReelsCache().catch(err =>
@@ -367,6 +387,7 @@ async function deleteReel(req, res) {
 async function bulkAction(req, res) {
   try {
     const { action, reel_ids } = req.body;
+    const schema = getAdminSchema(req);
 
     if (!reel_ids || reel_ids.length === 0) {
       return res.status(400).json({ success: false, error: 'No reels selected' });
@@ -376,21 +397,21 @@ async function bulkAction(req, res) {
 
     switch (action) {
       case 'activate':
-        await pool.query(
+        await adminQuery(schema,
           'UPDATE reels SET is_active = TRUE, updated_at = NOW() WHERE id = ANY($1::int[])',
           [ids]
         );
         break;
 
       case 'deactivate':
-        await pool.query(
+        await adminQuery(schema,
           'UPDATE reels SET is_active = FALSE, updated_at = NOW() WHERE id = ANY($1::int[])',
           [ids]
         );
         break;
 
       case 'delete':
-        await pool.query('DELETE FROM reels WHERE id = ANY($1::int[])', [ids]);
+        await adminQuery(schema, 'DELETE FROM reels WHERE id = ANY($1::int[])', [ids]);
         break;
 
       default:
@@ -416,8 +437,10 @@ async function bulkAction(req, res) {
  */
 async function showAnalytics(req, res) {
   try {
+    const schema = getAdminSchema(req);
+
     // Overall stats
-    const overallStats = await pool.query(`
+    const overallStats = await adminQuery(schema, `
       SELECT
         COUNT(*) as total_reels,
         COUNT(CASE WHEN is_active THEN 1 END) as active_reels,
@@ -433,7 +456,7 @@ async function showAnalytics(req, res) {
     `);
 
     // Top reels by views
-    const topByViews = await pool.query(`
+    const topByViews = await adminQuery(schema, `
       SELECT id, title, video_url, total_views, total_completions, total_hearts,
         CASE WHEN total_views > 0
           THEN ROUND((total_completions::numeric / total_views) * 100, 1)
@@ -446,7 +469,7 @@ async function showAnalytics(req, res) {
     `);
 
     // Top reels by hearts
-    const topByHearts = await pool.query(`
+    const topByHearts = await adminQuery(schema, `
       SELECT id, title, video_url, total_hearts, total_views
       FROM reels
       WHERE is_active = TRUE
@@ -455,7 +478,7 @@ async function showAnalytics(req, res) {
     `);
 
     // Top reels by completion rate (minimum 10 views)
-    const topByCompletion = await pool.query(`
+    const topByCompletion = await adminQuery(schema, `
       SELECT id, title, video_url, total_views, total_completions,
         ROUND((total_completions::numeric / total_views) * 100, 1) as completion_rate
       FROM reels
@@ -465,7 +488,7 @@ async function showAnalytics(req, res) {
     `);
 
     // Category breakdown
-    const categoryStats = await pool.query(`
+    const categoryStats = await adminQuery(schema, `
       SELECT
         category,
         COUNT(*) as count,
@@ -478,7 +501,7 @@ async function showAnalytics(req, res) {
     `);
 
     // Daily activity (last 7 days)
-    const dailyActivity = await pool.query(`
+    const dailyActivity = await adminQuery(schema, `
       SELECT
         DATE(created_at) as date,
         COUNT(*) as new_views,
@@ -490,7 +513,7 @@ async function showAnalytics(req, res) {
     `);
 
     // Top users by engagement
-    const topUsers = await pool.query(`
+    const topUsers = await adminQuery(schema, `
       SELECT
         urp.phone,
         u.name,

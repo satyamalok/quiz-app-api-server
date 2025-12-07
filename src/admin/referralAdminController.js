@@ -1,4 +1,16 @@
 const pool = require('../config/database');
+const { adminQuery } = require('../config/database');
+
+/**
+ * Get the current app schema from admin session
+ * Falls back to default schema if not set
+ */
+function getAdminSchema(req) {
+  if (req.session && req.session.currentApp && req.session.currentApp.schema) {
+    return req.session.currentApp.schema;
+  }
+  return process.env.DEFAULT_APP_SCHEMA || 'app_jnvquiz';
+}
 
 /**
  * GET /admin/referrals
@@ -6,8 +18,10 @@ const pool = require('../config/database');
  */
 async function getReferralDashboard(req, res) {
   try {
+    const schema = getAdminSchema(req);
+
     // Get total referral stats
-    const statsResult = await pool.query(`
+    const statsResult = await adminQuery(schema, `
       SELECT
         COUNT(*) as total_referrals,
         SUM(xp_granted) as total_xp_granted,
@@ -19,7 +33,7 @@ async function getReferralDashboard(req, res) {
     const stats = statsResult.rows[0];
 
     // Get top referrer
-    const topReferrerResult = await pool.query(`
+    const topReferrerResult = await adminQuery(schema, `
       SELECT
         rt.referrer_phone,
         u.name as referrer_name,
@@ -36,7 +50,7 @@ async function getReferralDashboard(req, res) {
     const topReferrer = topReferrerResult.rows.length > 0 ? topReferrerResult.rows[0] : null;
 
     // Get recent 24h referrals count
-    const recent24hResult = await pool.query(`
+    const recent24hResult = await adminQuery(schema, `
       SELECT COUNT(*) as count
       FROM referral_tracking
       WHERE referral_date >= NOW() - INTERVAL '24 hours'
@@ -46,7 +60,7 @@ async function getReferralDashboard(req, res) {
     const recent24h = parseInt(recent24hResult.rows[0].count);
 
     // Get recent referrals (last 10)
-    const recentReferralsResult = await pool.query(`
+    const recentReferralsResult = await adminQuery(schema, `
       SELECT
         rt.id,
         rt.referrer_phone,
@@ -67,7 +81,7 @@ async function getReferralDashboard(req, res) {
     const recentReferrals = recentReferralsResult.rows;
 
     // Get top 10 referrers
-    const topReferrersResult = await pool.query(`
+    const topReferrersResult = await adminQuery(schema, `
       SELECT
         rt.referrer_phone,
         u.name as referrer_name,
