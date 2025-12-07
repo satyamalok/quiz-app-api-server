@@ -130,7 +130,10 @@
     <%- include('partials/nav') %>
 
     <div class="container">
-        <h1>Manage Questions (<%= pagination.totalQuestions %> total)</h1>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>Manage Questions (<%= pagination.totalQuestions %> total)</h1>
+            <a href="/admin/questions/upload" class="btn" style="padding: 10px 20px;">+ Add Questions</a>
+        </div>
 
         <div class="card">
             <form method="GET" action="/admin/questions" class="filters">

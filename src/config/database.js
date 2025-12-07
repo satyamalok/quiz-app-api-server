@@ -116,6 +116,50 @@ function getSchema(req) {
   return req && req.tenant ? req.tenant.schema : null;
 }
 
+/**
+ * Get a database client with a specific schema set (for admin panel)
+ * @param {string} schema - Schema name (e.g., 'app_jnvquiz')
+ * @returns {object} { client, release } - Database client and release function
+ */
+async function getAdminTenantClient(schema) {
+  const client = await pool.connect();
+
+  try {
+    if (schema) {
+      await client.query(`SET search_path TO "${schema}"`);
+    }
+
+    return {
+      client,
+      release: () => client.release(),
+      query: (text, params) => client.query(text, params)
+    };
+  } catch (err) {
+    client.release();
+    throw err;
+  }
+}
+
+/**
+ * Execute a query with a specific schema (for admin panel)
+ * @param {string} schema - Schema name (e.g., 'app_jnvquiz')
+ * @param {string} text - SQL query
+ * @param {array} params - Query parameters
+ * @returns {object} Query result
+ */
+async function adminQuery(schema, text, params = []) {
+  const client = await pool.connect();
+
+  try {
+    if (schema) {
+      await client.query(`SET search_path TO "${schema}"`);
+    }
+    return await client.query(text, params);
+  } finally {
+    client.release();
+  }
+}
+
 // Export pool for backward compatibility + new tenant helpers
 module.exports = pool;
 module.exports.pool = pool;
@@ -123,3 +167,5 @@ module.exports.getTenantClient = getTenantClient;
 module.exports.tenantQuery = tenantQuery;
 module.exports.tenantTransaction = tenantTransaction;
 module.exports.getSchema = getSchema;
+module.exports.getAdminTenantClient = getAdminTenantClient;
+module.exports.adminQuery = adminQuery;

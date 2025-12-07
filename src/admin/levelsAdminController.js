@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { getAdminTenantClient, adminQuery } = require('../config/database');
 const {
   getAllLevelsAdmin,
   getLevelByNumber,
@@ -9,13 +10,31 @@ const {
 } = require('../services/levelsService');
 
 /**
+ * Get the current app schema from admin session
+ * Falls back to default schema if not set
+ */
+function getAdminSchema(req) {
+  // Check if admin has selected a specific app
+  if (req.session && req.session.currentApp && req.session.currentApp.schema) {
+    return req.session.currentApp.schema;
+  }
+  // Default to first app schema (can be configured)
+  return process.env.DEFAULT_APP_SCHEMA || 'app_jnvquiz';
+}
+
+/**
  * GET /admin/levels
  * Show all quiz levels
  */
 async function showLevels(req, res) {
+  let tenantClient = null;
   try {
-    const levels = await getAllLevelsAdmin();
-    const versionInfo = await getLevelsVersion();
+    const schema = getAdminSchema(req);
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
+
+    const levels = await getAllLevelsAdmin(null, client);
+    const versionInfo = await getLevelsVersion(null, client);
 
     res.render('levels-list', {
       admin: req.session.adminUser,
@@ -29,6 +48,8 @@ async function showLevels(req, res) {
   } catch (err) {
     console.error('Show levels error:', err);
     res.status(500).send('Error loading levels');
+  } finally {
+    if (tenantClient) tenantClient.release();
   }
 }
 
@@ -38,8 +59,9 @@ async function showLevels(req, res) {
  */
 async function showCreateLevel(req, res) {
   try {
+    const schema = getAdminSchema(req);
     // Get existing level numbers to suggest next available
-    const result = await pool.query('SELECT level_number FROM quiz_levels ORDER BY level_number ASC');
+    const result = await adminQuery(schema, 'SELECT level_number FROM quiz_levels ORDER BY level_number ASC');
     const existingLevels = result.rows.map(r => r.level_number);
 
     // Find first gap or next number
@@ -70,8 +92,12 @@ async function showCreateLevel(req, res) {
  * Create new level
  */
 async function createLevelHandler(req, res) {
+  let tenantClient = null;
   try {
     const { level_number, title, subtitle, duration_seconds, is_active } = req.body;
+    const schema = getAdminSchema(req);
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
 
     // Validate level number
     const levelNum = parseInt(level_number);
@@ -86,7 +112,7 @@ async function createLevelHandler(req, res) {
     }
 
     // Check if level already exists
-    const existing = await getLevelByNumber(levelNum);
+    const existing = await getLevelByNumber(levelNum, null, client);
     if (existing) {
       return res.render('level-create', {
         admin: req.session.adminUser,
@@ -103,7 +129,7 @@ async function createLevelHandler(req, res) {
       subtitle: subtitle ? subtitle.trim() : null,
       duration_seconds: parseInt(duration_seconds) || 300,
       is_active: is_active === 'on' || is_active === true
-    });
+    }, null, client);
 
     res.redirect('/admin/levels?message=Level+created+successfully');
 
@@ -116,6 +142,8 @@ async function createLevelHandler(req, res) {
       message: null,
       error: 'Error creating level: ' + err.message
     });
+  } finally {
+    if (tenantClient) tenantClient.release();
   }
 }
 
@@ -124,9 +152,14 @@ async function createLevelHandler(req, res) {
  * Show edit level form
  */
 async function showEditLevel(req, res) {
+  let tenantClient = null;
   try {
+    const schema = getAdminSchema(req);
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
+
     const levelNumber = parseInt(req.params.levelNumber);
-    const level = await getLevelByNumber(levelNumber);
+    const level = await getLevelByNumber(levelNumber, null, client);
 
     if (!level) {
       return res.redirect('/admin/levels?error=Level+not+found');
@@ -142,6 +175,8 @@ async function showEditLevel(req, res) {
   } catch (err) {
     console.error('Show edit level error:', err);
     res.status(500).send('Error loading level');
+  } finally {
+    if (tenantClient) tenantClient.release();
   }
 }
 
@@ -150,11 +185,16 @@ async function showEditLevel(req, res) {
  * Update level
  */
 async function updateLevelHandler(req, res) {
+  let tenantClient = null;
   try {
+    const schema = getAdminSchema(req);
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
+
     const levelNumber = parseInt(req.params.levelNumber);
     const { title, subtitle, duration_seconds, is_active } = req.body;
 
-    const level = await getLevelByNumber(levelNumber);
+    const level = await getLevelByNumber(levelNumber, null, client);
     if (!level) {
       return res.redirect('/admin/levels?error=Level+not+found');
     }
@@ -164,19 +204,27 @@ async function updateLevelHandler(req, res) {
       subtitle: subtitle ? subtitle.trim() : null,
       duration_seconds: parseInt(duration_seconds) || 300,
       is_active: is_active === 'on' || is_active === true
-    });
+    }, null, client);
 
     res.redirect('/admin/levels?message=Level+updated+successfully');
 
   } catch (err) {
     console.error('Update level error:', err);
-    const level = await getLevelByNumber(parseInt(req.params.levelNumber));
+    let level = null;
+    try {
+      const schema = getAdminSchema(req);
+      const tc = await getAdminTenantClient(schema);
+      level = await getLevelByNumber(parseInt(req.params.levelNumber), null, tc.client);
+      tc.release();
+    } catch (e) { /* ignore */ }
     res.render('level-edit', {
       admin: req.session.adminUser,
       level,
       message: null,
       error: 'Error updating level: ' + err.message
     });
+  } finally {
+    if (tenantClient) tenantClient.release();
   }
 }
 
@@ -185,10 +233,15 @@ async function updateLevelHandler(req, res) {
  * Delete level
  */
 async function deleteLevelHandler(req, res) {
+  let tenantClient = null;
   try {
+    const schema = getAdminSchema(req);
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
+
     const levelNumber = parseInt(req.params.levelNumber);
 
-    const deleted = await deleteLevel(levelNumber);
+    const deleted = await deleteLevel(levelNumber, null, client);
     if (!deleted) {
       return res.status(404).json({ success: false, error: 'Level not found' });
     }
@@ -198,6 +251,8 @@ async function deleteLevelHandler(req, res) {
   } catch (err) {
     console.error('Delete level error:', err);
     res.status(500).json({ success: false, error: err.message });
+  } finally {
+    if (tenantClient) tenantClient.release();
   }
 }
 
@@ -206,10 +261,15 @@ async function deleteLevelHandler(req, res) {
  * Toggle level active status
  */
 async function toggleLevelStatus(req, res) {
+  let tenantClient = null;
   try {
+    const schema = getAdminSchema(req);
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
+
     const levelNumber = parseInt(req.params.levelNumber);
 
-    const level = await getLevelByNumber(levelNumber);
+    const level = await getLevelByNumber(levelNumber, null, client);
     if (!level) {
       return res.status(404).json({ success: false, error: 'Level not found' });
     }
@@ -219,7 +279,7 @@ async function toggleLevelStatus(req, res) {
       subtitle: level.subtitle,
       duration_seconds: level.duration_seconds,
       is_active: !level.is_active
-    });
+    }, null, client);
 
     res.json({
       success: true,
@@ -230,6 +290,8 @@ async function toggleLevelStatus(req, res) {
   } catch (err) {
     console.error('Toggle level error:', err);
     res.status(500).json({ success: false, error: err.message });
+  } finally {
+    if (tenantClient) tenantClient.release();
   }
 }
 

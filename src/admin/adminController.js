@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { getAdminTenantClient, adminQuery } = require('../config/database');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
 const csvParser = require('csv-parser');
@@ -11,6 +12,19 @@ const { encrypt, decrypt, isUsingDefaultKey } = require('../utils/encryption');
 
 // Multer setup
 const upload = multer({ storage: multer.memoryStorage() });
+
+/**
+ * Get the current app schema from admin session
+ * Falls back to default schema if not set
+ */
+function getAdminSchema(req) {
+  // Check if admin has selected a specific app
+  if (req.session && req.session.currentApp && req.session.currentApp.schema) {
+    return req.session.currentApp.schema;
+  }
+  // Default to first app schema (can be configured)
+  return process.env.DEFAULT_APP_SCHEMA || 'app_jnvquiz';
+}
 
 /**
  * GET /admin/login
@@ -91,18 +105,20 @@ function logout(req, res) {
  */
 async function showDashboard(req, res) {
   try {
+    const schema = getAdminSchema(req);
+
     // Get overview stats
-    const usersCount = await pool.query('SELECT COUNT(*) as count FROM users_profile');
-    const questionsCount = await pool.query('SELECT COUNT(*) as count FROM questions');
-    const videosCount = await pool.query('SELECT COUNT(*) as count FROM promotional_videos');
-    const todayActiveUsers = await pool.query(`
+    const usersCount = await adminQuery(schema, 'SELECT COUNT(*) as count FROM users_profile');
+    const questionsCount = await adminQuery(schema, 'SELECT COUNT(*) as count FROM questions');
+    const videosCount = await adminQuery(schema, 'SELECT COUNT(*) as count FROM promotional_videos');
+    const todayActiveUsers = await adminQuery(schema, `
       SELECT COUNT(DISTINCT phone) as count
       FROM daily_xp_summary
       WHERE date = CURRENT_DATE
     `);
 
     // Get top 5 performers today
-    const topPerformers = await pool.query(`
+    const topPerformers = await adminQuery(schema, `
       SELECT u.name, u.phone, d.total_xp_today
       FROM daily_xp_summary d
       JOIN users_profile u ON d.phone = u.phone
@@ -347,6 +363,7 @@ async function updateWhatsAppConfig(req, res) {
  */
 async function showConfig(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const appConfigResult = await pool.query('SELECT * FROM app_config WHERE id = 1');
     const onlineConfigResult = await pool.query('SELECT * FROM online_users_config WHERE id = 1');
 
@@ -355,7 +372,7 @@ async function showConfig(req, res) {
     // For actual mode, calculate real count instead of showing cached fake count
     // Use IST timezone since last_active_at is stored in IST
     if (onlineConfig && onlineConfig.mode === 'actual') {
-      const activeUsersResult = await pool.query(`
+      const activeUsersResult = await adminQuery(schema, `
         SELECT COUNT(*) as count
         FROM users_profile
         WHERE last_active_at IS NOT NULL
@@ -451,6 +468,7 @@ async function updateConfig(req, res) {
     });
 
     // Reload config
+    const schema = getAdminSchema(req);
     const appConfigResult = await pool.query('SELECT * FROM app_config WHERE id = 1');
     const onlineConfigResult = await pool.query('SELECT * FROM online_users_config WHERE id = 1');
 
@@ -459,7 +477,7 @@ async function updateConfig(req, res) {
     // For actual mode, calculate real count instead of showing cached fake count
     // Use IST timezone since last_active_at is stored in IST
     if (onlineConfig && onlineConfig.mode === 'actual') {
-      const activeUsersResult = await pool.query(`
+      const activeUsersResult = await adminQuery(schema, `
         SELECT COUNT(*) as count
         FROM users_profile
         WHERE last_active_at IS NOT NULL
@@ -514,18 +532,20 @@ async function testEventWebhook(req, res) {
  */
 async function showUsers(req, res) {
   try {
-    const totalUsers = await pool.query('SELECT COUNT(*) as count FROM users_profile');
-    const newToday = await pool.query(`
+    const schema = getAdminSchema(req);
+
+    const totalUsers = await adminQuery(schema, 'SELECT COUNT(*) as count FROM users_profile');
+    const newToday = await adminQuery(schema, `
       SELECT COUNT(*) as count FROM users_profile WHERE date_joined = CURRENT_DATE
     `);
-    const activeLast7Days = await pool.query(`
+    const activeLast7Days = await adminQuery(schema, `
       SELECT COUNT(DISTINCT phone) as count
       FROM daily_xp_summary
       WHERE date >= CURRENT_DATE - INTERVAL '7 days'
     `);
-    const avgXP = await pool.query('SELECT AVG(xp_total) as avg FROM users_profile');
+    const avgXP = await adminQuery(schema, 'SELECT AVG(xp_total) as avg FROM users_profile');
 
-    const topUsers = await pool.query(`
+    const topUsers = await adminQuery(schema, `
       SELECT name, phone, xp_total, current_level
       FROM users_profile
       ORDER BY xp_total DESC
@@ -555,13 +575,14 @@ async function showUsers(req, res) {
  */
 async function listAllUsers(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { search, page = 1, sort = 'xp_total', filter = 'all' } = req.query;
     const limit = 50;
     const offset = (page - 1) * limit;
 
     // Get filter counts for all categories (IST timezone)
     // All timestamps are stored in IST, so use IST for all comparisons
-    const filterCountsResult = await pool.query(`
+    const filterCountsResult = await adminQuery(schema, `
       SELECT
         COUNT(*) as total,
         COUNT(CASE WHEN date_joined::date = (NOW() AT TIME ZONE 'Asia/Kolkata')::date THEN 1 END) as joined_today,
@@ -617,7 +638,7 @@ async function listAllUsers(req, res) {
     query += ` ORDER BY ${orderBy} LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
     params.push(limit, offset);
 
-    const result = await pool.query(query, params);
+    const result = await adminQuery(schema, query, params);
 
     // Get total count for pagination (with same filters applied)
     let countQuery = 'SELECT COUNT(*) FROM users_profile WHERE 1=1';
@@ -633,7 +654,7 @@ async function listAllUsers(req, res) {
       countParams.push(`%${search}%`);
     }
 
-    const countResult = await pool.query(countQuery, countParams);
+    const countResult = await adminQuery(schema, countQuery, countParams);
     const totalUsers = parseInt(countResult.rows[0].count);
     const totalPages = Math.ceil(totalUsers / limit);
 
@@ -671,17 +692,18 @@ async function listAllUsers(req, res) {
  */
 async function viewUserProfile(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { phone } = req.params;
 
     // Get user profile
-    const userResult = await pool.query('SELECT * FROM users_profile WHERE phone = $1', [phone]);
+    const userResult = await adminQuery(schema, 'SELECT * FROM users_profile WHERE phone = $1', [phone]);
     if (userResult.rows.length === 0) {
       return res.status(404).send('User not found');
     }
     const user = userResult.rows[0];
 
     // Get level history
-    const levelHistory = await pool.query(`
+    const levelHistory = await adminQuery(schema, `
       SELECT level, completion_status, accuracy_percentage, xp_earned_final, video_watched, attempt_date
       FROM level_attempts
       WHERE phone = $1
@@ -690,7 +712,7 @@ async function viewUserProfile(req, res) {
     `, [phone]);
 
     // Get recent XP activity (last 30 days)
-    const xpActivity = await pool.query(`
+    const xpActivity = await adminQuery(schema, `
       SELECT date, total_xp_today, levels_completed_today, videos_watched_today
       FROM daily_xp_summary
       WHERE phone = $1 AND date >= CURRENT_DATE - INTERVAL '30 days'
@@ -698,7 +720,7 @@ async function viewUserProfile(req, res) {
     `, [phone]);
 
     // Get referral stats
-    const referralStats = await pool.query(`
+    const referralStats = await adminQuery(schema, `
       SELECT
         COUNT(*) as total_referrals,
         SUM(xp_granted) as total_xp_earned
@@ -707,7 +729,7 @@ async function viewUserProfile(req, res) {
     `, [phone]);
 
     // Get referred users
-    const referredUsers = await pool.query(`
+    const referredUsers = await adminQuery(schema, `
       SELECT rt.referee_phone, rt.xp_granted, rt.referral_date, up.name
       FROM referral_tracking rt
       LEFT JOIN users_profile up ON rt.referee_phone = up.phone
@@ -717,7 +739,7 @@ async function viewUserProfile(req, res) {
     `, [phone]);
 
     // Get streak info
-    const streakResult = await pool.query(`
+    const streakResult = await adminQuery(schema, `
       SELECT current_streak, longest_streak, last_activity_date
       FROM streak_tracking
       WHERE phone = $1
@@ -745,9 +767,10 @@ async function viewUserProfile(req, res) {
  */
 async function showEditUser(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { phone } = req.params;
 
-    const result = await pool.query('SELECT * FROM users_profile WHERE phone = $1', [phone]);
+    const result = await adminQuery(schema, 'SELECT * FROM users_profile WHERE phone = $1', [phone]);
     if (result.rows.length === 0) {
       return res.status(404).send('User not found');
     }
@@ -771,6 +794,7 @@ async function showEditUser(req, res) {
  */
 async function updateUser(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { phone } = req.params;
     const {
       name,
@@ -781,7 +805,7 @@ async function updateUser(req, res) {
       total_ads_watched
     } = req.body;
 
-    await pool.query(`
+    await adminQuery(schema, `
       UPDATE users_profile SET
         name = $1,
         district = $2,
@@ -793,7 +817,7 @@ async function updateUser(req, res) {
       WHERE phone = $7
     `, [name, district, state, parseInt(xp_total), parseInt(current_level), parseInt(total_ads_watched), phone]);
 
-    const result = await pool.query('SELECT * FROM users_profile WHERE phone = $1', [phone]);
+    const result = await adminQuery(schema, 'SELECT * FROM users_profile WHERE phone = $1', [phone]);
 
     res.render('user-edit', {
       admin: req.session.adminUser,
@@ -804,7 +828,8 @@ async function updateUser(req, res) {
 
   } catch (err) {
     console.error('Update user error:', err);
-    const result = await pool.query('SELECT * FROM users_profile WHERE phone = $1', [req.params.phone]);
+    const schema = getAdminSchema(req);
+    const result = await adminQuery(schema, 'SELECT * FROM users_profile WHERE phone = $1', [req.params.phone]);
     res.render('user-edit', {
       admin: req.session.adminUser,
       user: result.rows[0],
@@ -873,9 +898,13 @@ async function uploadCSVForMapping(req, res) {
  * Insert questions from CSV after mapping
  */
 async function bulkInsertQuestions(req, res) {
-  const client = await pool.connect();
+  let tenantClient = null;
 
   try {
+    const schema = getAdminSchema(req);
+    tenantClient = await getAdminTenantClient(schema);
+    const { client } = tenantClient;
+
     const { mapping } = req.body; // mapping object from form
     const csvData = req.session.csvData;
 
@@ -933,7 +962,9 @@ async function bulkInsertQuestions(req, res) {
     });
 
   } catch (err) {
-    await client.query('ROLLBACK');
+    if (tenantClient) {
+      try { await tenantClient.client.query('ROLLBACK'); } catch (e) { /* ignore */ }
+    }
     console.error('Bulk insert error:', err);
     res.render('question-upload', {
       admin: req.session.adminUser,
@@ -941,7 +972,7 @@ async function bulkInsertQuestions(req, res) {
       error: 'Error inserting questions: ' + err.message
     });
   } finally {
-    client.release();
+    if (tenantClient) tenantClient.release();
   }
 }
 
@@ -951,6 +982,7 @@ async function bulkInsertQuestions(req, res) {
  */
 async function createQuestion(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const {
       level, question_order, question_text,
       option_1, option_2, option_3, option_4, correct_option,
@@ -992,7 +1024,7 @@ async function createQuestion(req, res) {
     // Use null for empty question_text (for image-only questions)
     const finalQuestionText = hasQuestionText ? question_text.trim() : null;
 
-    await pool.query(`
+    await adminQuery(schema, `
       INSERT INTO questions (
         level, question_order, question_text, question_image_url,
         option_1, option_2, option_3, option_4,
@@ -1026,6 +1058,7 @@ async function createQuestion(req, res) {
  */
 async function listQuestions(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { level, subject, search, page = 1 } = req.query;
     const limit = 50;
     const offset = (page - 1) * limit;
@@ -1055,7 +1088,7 @@ async function listQuestions(req, res) {
     query += ` ORDER BY level ASC, question_order ASC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
     params.push(limit, offset);
 
-    const result = await pool.query(query, params);
+    const result = await adminQuery(schema, query, params);
 
     // Get total count for pagination
     let countQuery = 'SELECT COUNT(*) FROM questions WHERE 1=1';
@@ -1079,7 +1112,7 @@ async function listQuestions(req, res) {
       countParams.push(`%${search}%`);
     }
 
-    const countResult = await pool.query(countQuery, countParams);
+    const countResult = await adminQuery(schema, countQuery, countParams);
     const totalQuestions = parseInt(countResult.rows[0].count);
     const totalPages = Math.ceil(totalQuestions / limit);
 
@@ -1106,9 +1139,10 @@ async function listQuestions(req, res) {
  */
 async function showEditQuestion(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { id } = req.params;
 
-    const result = await pool.query('SELECT * FROM questions WHERE sl = $1', [id]);
+    const result = await adminQuery(schema, 'SELECT * FROM questions WHERE sl = $1', [id]);
 
     if (result.rows.length === 0) {
       return res.redirect('/admin/questions');
@@ -1133,6 +1167,7 @@ async function showEditQuestion(req, res) {
  */
 async function updateQuestion(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { id } = req.params;
     const {
       level, question_order, question_text,
@@ -1141,7 +1176,7 @@ async function updateQuestion(req, res) {
     } = req.body;
 
     // Get existing question to preserve image URLs if not updated
-    const existingQuestion = await pool.query('SELECT * FROM questions WHERE sl = $1', [id]);
+    const existingQuestion = await adminQuery(schema, 'SELECT * FROM questions WHERE sl = $1', [id]);
     let questionImageUrl = existingQuestion.rows[0].question_image_url;
     let explanationUrl = existingQuestion.rows[0].explanation_url;
 
@@ -1169,7 +1204,7 @@ async function updateQuestion(req, res) {
     // Add @ to correct one
     options[correctIndex] = '@' + options[correctIndex];
 
-    await pool.query(`
+    await adminQuery(schema, `
       UPDATE questions SET
         level = $1, question_order = $2, question_text = $3, question_image_url = $4,
         option_1 = $5, option_2 = $6, option_3 = $7, option_4 = $8,
@@ -1181,7 +1216,7 @@ async function updateQuestion(req, res) {
       explanation_text, explanationUrl, subject, topic, difficulty, medium || 'english', id
     ]);
 
-    const result = await pool.query('SELECT * FROM questions WHERE sl = $1', [id]);
+    const result = await adminQuery(schema, 'SELECT * FROM questions WHERE sl = $1', [id]);
 
     res.render('question-edit', {
       admin: req.session.adminUser,
@@ -1192,7 +1227,8 @@ async function updateQuestion(req, res) {
 
   } catch (err) {
     console.error('Update question error:', err);
-    const result = await pool.query('SELECT * FROM questions WHERE sl = $1', [req.params.id]);
+    const schema = getAdminSchema(req);
+    const result = await adminQuery(schema, 'SELECT * FROM questions WHERE sl = $1', [req.params.id]);
     res.render('question-edit', {
       admin: req.session.adminUser,
       question: result.rows[0],
@@ -1208,9 +1244,10 @@ async function updateQuestion(req, res) {
  */
 async function deleteQuestion(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { id } = req.params;
 
-    await pool.query('DELETE FROM questions WHERE sl = $1', [id]);
+    await adminQuery(schema, 'DELETE FROM questions WHERE sl = $1', [id]);
 
     res.json({ success: true, message: 'Question deleted successfully' });
 
@@ -1226,6 +1263,7 @@ async function deleteQuestion(req, res) {
  */
 async function bulkDeleteQuestions(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { ids } = req.body;
 
     if (!ids || !Array.isArray(ids) || ids.length === 0) {
@@ -1234,7 +1272,7 @@ async function bulkDeleteQuestions(req, res) {
 
     // Hard delete - safe because questions aren't referenced by foreign keys
     const placeholders = ids.map((_, i) => `$${i + 1}`).join(',');
-    const result = await pool.query(
+    const result = await adminQuery(schema,
       `DELETE FROM questions WHERE sl IN (${placeholders})`,
       ids
     );
@@ -1261,7 +1299,8 @@ async function bulkDeleteQuestions(req, res) {
  */
 async function showVideos(req, res) {
   try {
-    const result = await pool.query(`
+    const schema = getAdminSchema(req);
+    const result = await adminQuery(schema, `
       SELECT * FROM promotional_videos
       ORDER BY level ASC, id DESC
     `);
@@ -1285,6 +1324,7 @@ async function showVideos(req, res) {
  */
 async function uploadVideo(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { level, video_name, duration_seconds, description, category } = req.body;
 
     if (!req.file) {
@@ -1294,12 +1334,12 @@ async function uploadVideo(req, res) {
     // Upload to MinIO
     const result = await uploadFile(req.file, 'videos');
 
-    await pool.query(`
+    await adminQuery(schema, `
       INSERT INTO promotional_videos (level, video_name, video_url, duration_seconds, description, category)
       VALUES ($1, $2, $3, $4, $5, $6)
     `, [level, video_name, result.publicUrl, duration_seconds, description, category || 'promotional']);
 
-    const videos = await pool.query('SELECT * FROM promotional_videos ORDER BY level ASC, id DESC');
+    const videos = await adminQuery(schema, 'SELECT * FROM promotional_videos ORDER BY level ASC, id DESC');
 
     res.render('video-upload', {
       admin: req.session.adminUser,
@@ -1310,7 +1350,8 @@ async function uploadVideo(req, res) {
 
   } catch (err) {
     console.error('Upload video error:', err);
-    const videos = await pool.query('SELECT * FROM promotional_videos ORDER BY level ASC, id DESC');
+    const schema = getAdminSchema(req);
+    const videos = await adminQuery(schema, 'SELECT * FROM promotional_videos ORDER BY level ASC, id DESC');
     res.render('video-upload', {
       admin: req.session.adminUser,
       videos: videos.rows,
@@ -1326,9 +1367,10 @@ async function uploadVideo(req, res) {
  */
 async function showEditVideo(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { id } = req.params;
 
-    const result = await pool.query('SELECT * FROM promotional_videos WHERE id = $1', [id]);
+    const result = await adminQuery(schema, 'SELECT * FROM promotional_videos WHERE id = $1', [id]);
 
     if (result.rows.length === 0) {
       return res.redirect('/admin/videos');
@@ -1353,10 +1395,11 @@ async function showEditVideo(req, res) {
  */
 async function updateVideo(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { id } = req.params;
     const { level, video_name, duration_seconds, description, category, is_active } = req.body;
 
-    await pool.query(`
+    await adminQuery(schema, `
       UPDATE promotional_videos SET
         level = $1,
         video_name = $2,
@@ -1367,7 +1410,7 @@ async function updateVideo(req, res) {
       WHERE id = $7
     `, [level, video_name, duration_seconds, description, category, is_active === 'on', id]);
 
-    const result = await pool.query('SELECT * FROM promotional_videos WHERE id = $1', [id]);
+    const result = await adminQuery(schema, 'SELECT * FROM promotional_videos WHERE id = $1', [id]);
 
     res.render('edit-video', {
       admin: req.session.adminUser,
@@ -1378,7 +1421,8 @@ async function updateVideo(req, res) {
 
   } catch (err) {
     console.error('Update video error:', err);
-    const result = await pool.query('SELECT * FROM promotional_videos WHERE id = $1', [req.params.id]);
+    const schema = getAdminSchema(req);
+    const result = await adminQuery(schema, 'SELECT * FROM promotional_videos WHERE id = $1', [req.params.id]);
     res.render('edit-video', {
       admin: req.session.adminUser,
       video: result.rows[0],
@@ -1394,9 +1438,10 @@ async function updateVideo(req, res) {
  */
 async function deleteVideo(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { id } = req.params;
 
-    await pool.query('DELETE FROM promotional_videos WHERE id = $1', [id]);
+    await adminQuery(schema, 'DELETE FROM promotional_videos WHERE id = $1', [id]);
 
     res.json({ success: true, message: 'Video deleted successfully' });
 
@@ -1412,6 +1457,7 @@ async function deleteVideo(req, res) {
  */
 async function bulkDeleteVideos(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { video_ids } = req.body;
 
     if (!video_ids || video_ids.length === 0) {
@@ -1420,7 +1466,7 @@ async function bulkDeleteVideos(req, res) {
 
     const ids = Array.isArray(video_ids) ? video_ids : [video_ids];
 
-    await pool.query(
+    await adminQuery(schema,
       'DELETE FROM promotional_videos WHERE id = ANY($1::int[])',
       [ids]
     );
@@ -1443,11 +1489,12 @@ async function bulkDeleteVideos(req, res) {
  */
 async function duplicateVideo(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const { id } = req.params;
     const { level, category } = req.body;
 
     // Get source video
-    const sourceResult = await pool.query(
+    const sourceResult = await adminQuery(schema,
       'SELECT * FROM promotional_videos WHERE id = $1',
       [id]
     );
@@ -1465,7 +1512,7 @@ async function duplicateVideo(req, res) {
     }
 
     // Insert duplicate with same video_url but new level/category
-    const result = await pool.query(`
+    const result = await adminQuery(schema, `
       INSERT INTO promotional_videos (
         level, video_name, video_url, duration_seconds, category, description, is_active, created_at, updated_at
       ) VALUES (
@@ -1517,6 +1564,7 @@ async function showVideoBulkUpload(req, res) {
  */
 async function uploadSingleVideo(req, res) {
   try {
+    const schema = getAdminSchema(req);
     const file = req.file;
     const { video_name, level, category, duration } = req.body;
 
@@ -1539,19 +1587,19 @@ async function uploadSingleVideo(req, res) {
 
     // If category is 'both', create entries for promotional and lifeline
     if (category === 'both') {
-      await pool.query(`
+      await adminQuery(schema, `
         INSERT INTO promotional_videos (level, video_name, video_url, duration_seconds, category, created_at, updated_at)
         VALUES ($1, $2, $3, $4, 'promotional', NOW(), NOW())
       `, [videoLevel, name, uploadResult.publicUrl, videoDuration]);
       entriesCreated++;
 
-      await pool.query(`
+      await adminQuery(schema, `
         INSERT INTO promotional_videos (level, video_name, video_url, duration_seconds, category, created_at, updated_at)
         VALUES ($1, $2, $3, $4, 'lifeline', NOW(), NOW())
       `, [videoLevel, name, uploadResult.publicUrl, videoDuration]);
       entriesCreated++;
     } else {
-      await pool.query(`
+      await adminQuery(schema, `
         INSERT INTO promotional_videos (level, video_name, video_url, duration_seconds, category, created_at, updated_at)
         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
       `, [videoLevel, name, uploadResult.publicUrl, videoDuration, category || 'promotional']);
@@ -1581,7 +1629,8 @@ async function uploadSingleVideo(req, res) {
  */
 async function showAnalytics(req, res) {
   try {
-    const result = await pool.query(`
+    const schema = getAdminSchema(req);
+    const result = await adminQuery(schema, `
       SELECT
         level,
         COUNT(*) as total_attempts,
