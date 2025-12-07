@@ -21,12 +21,12 @@ DROP TABLE IF EXISTS app_config CASCADE;
 DROP TABLE IF EXISTS session CASCADE;
 
 -- ============================================
--- Table 1: app_config (NEW - Configurable Settings)
+-- Table 1: app_config (Configurable Settings)
 -- ============================================
 CREATE TABLE app_config (
     id SERIAL PRIMARY KEY CHECK (id = 1),
 
-    -- OTP Rate Limiting (configurable)
+    -- OTP Rate Limiting
     otp_rate_limiting_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     otp_max_requests_per_hour INTEGER NOT NULL DEFAULT 3,
     otp_max_verification_attempts INTEGER NOT NULL DEFAULT 3,
@@ -37,6 +37,19 @@ CREATE TABLE app_config (
     -- WhatsApp Provider Settings
     whatsapp_interakt_enabled BOOLEAN NOT NULL DEFAULT TRUE,
     whatsapp_n8n_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+
+    -- WhatsApp Config (Interakt)
+    interakt_api_url TEXT DEFAULT 'https://api.interakt.ai/v1/public/message/',
+    interakt_secret_key_encrypted TEXT,
+    interakt_template_name TEXT DEFAULT 'otp_jnv_quiz_app',
+
+    -- WhatsApp Config (n8n)
+    n8n_webhook_url_encrypted TEXT,
+
+    -- Event Webhook Settings
+    event_webhook_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    event_webhook_url VARCHAR(500),
+    event_webhook_events TEXT[] DEFAULT ARRAY[]::TEXT[],
 
     -- Other app settings
     referral_bonus_xp INTEGER NOT NULL DEFAULT 50,
