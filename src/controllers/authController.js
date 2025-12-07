@@ -112,7 +112,7 @@ async function verifyOTPHandler(req, res, next) {
     // Send webhook event for new user registration (non-blocking)
     if (isNewUser) {
       const eventWebhook = require('../services/eventWebhookService');
-      eventWebhook.onUserRegistered(phone, name || null, user.referral_code, referral_code || null)
+      eventWebhook.onUserRegistered(phone, name || null, user.referral_code, referral_code || null, req)
         .catch(err => console.error('Webhook error (non-critical):', err.message));
     }
 

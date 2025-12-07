@@ -154,9 +154,9 @@ async function startLevel(req, res, next) {
       console.error('Streak update error (non-critical):', err);
     });
 
-    // Send webhook event (non-blocking)
+    // Send webhook event (non-blocking) with tenant context
     const eventWebhook = require('../services/eventWebhookService');
-    eventWebhook.onQuizStarted(phone, level, attemptId, isFirstAttempt)
+    eventWebhook.onQuizStarted(phone, level, attemptId, isFirstAttempt, req)
       .catch(err => console.error('Webhook error (non-critical):', err.message));
 
     // Format questions for response (with @ symbol intact)
@@ -317,7 +317,7 @@ async function answerQuestion(req, res, next) {
 
     await client.query('COMMIT');
 
-    // Send webhook events for quiz completion (non-blocking)
+    // Send webhook events for quiz completion (non-blocking) with tenant context
     if (quizCompleted) {
       const eventWebhook = require('../services/eventWebhookService');
 
@@ -325,12 +325,12 @@ async function answerQuestion(req, res, next) {
       eventWebhook.onQuizCompleted(
         phone, completedLevel, attempt_id,
         parseFloat(attempt.accuracy_percentage), baseXP, attempt.correct_answers,
-        levelUnlocked, newCurrentLevel
+        levelUnlocked, newCurrentLevel, req
       ).catch(err => console.error('Webhook error (non-critical):', err.message));
 
       // Level unlocked event (separate event for easier n8n handling)
       if (levelUnlocked) {
-        eventWebhook.onLevelUnlocked(phone, completedLevel, newCurrentLevel)
+        eventWebhook.onLevelUnlocked(phone, completedLevel, newCurrentLevel, req)
           .catch(err => console.error('Webhook error (non-critical):', err.message));
       }
     }

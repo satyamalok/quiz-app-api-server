@@ -1,37 +1,86 @@
 const interaktService = require('./interaktService');
 const n8nService = require('./n8nService');
 const pool = require('../config/database');
+const { tenantQuery } = require('../config/database');
+const { decrypt } = require('../utils/encryption');
 
 /**
  * WhatsApp OTP Orchestrator Service
  * Coordinates multiple WhatsApp OTP sending methods (Interakt API + n8n webhook)
- * Checks database settings first, then falls back to environment variables
+ *
+ * UPDATED: Now supports per-app configuration
+ * - Each app has its own webhook URLs and API keys in tenant's app_config table
+ * - Falls back to environment variables for backward compatibility
+ * - Enhanced payload includes app info and user status (new/old)
  */
 
 const WHATSAPP_OTP_ENABLED = process.env.WHATSAPP_OTP_ENABLED === 'true';
 const OTP_REQUIRE_ALL_METHODS = process.env.OTP_REQUIRE_ALL_METHODS === 'true';
 
 /**
- * Get provider settings from database
- * @returns {Promise<Object>} Provider settings
+ * Get provider settings from tenant's app_config table
+ * @param {Object} req - Express request with tenant context
+ * @returns {Promise<Object>} Provider settings with URLs and keys
  */
-async function getProviderSettings() {
+async function getTenantProviderSettings(req) {
   try {
-    const result = await pool.query('SELECT whatsapp_interakt_enabled, whatsapp_n8n_enabled FROM app_config WHERE id = 1');
+    const result = await tenantQuery(req, `
+      SELECT
+        whatsapp_interakt_enabled,
+        whatsapp_n8n_enabled,
+        interakt_api_url,
+        interakt_secret_key_encrypted,
+        interakt_template_name,
+        n8n_webhook_url_encrypted
+      FROM app_config WHERE id = 1
+    `);
+
     if (result.rows.length > 0) {
+      const config = result.rows[0];
+
+      // Decrypt sensitive values
+      let interaktSecretKey = null;
+      let n8nWebhookUrl = null;
+
+      if (config.interakt_secret_key_encrypted) {
+        try {
+          interaktSecretKey = decrypt(config.interakt_secret_key_encrypted);
+        } catch (err) {
+          console.warn('[WhatsApp OTP] Failed to decrypt Interakt key:', err.message);
+        }
+      }
+
+      if (config.n8n_webhook_url_encrypted) {
+        try {
+          n8nWebhookUrl = decrypt(config.n8n_webhook_url_encrypted);
+        } catch (err) {
+          console.warn('[WhatsApp OTP] Failed to decrypt n8n URL:', err.message);
+        }
+      }
+
       return {
-        interaktEnabled: result.rows[0].whatsapp_interakt_enabled,
-        n8nEnabled: result.rows[0].whatsapp_n8n_enabled
+        interaktEnabled: config.whatsapp_interakt_enabled,
+        n8nEnabled: config.whatsapp_n8n_enabled,
+        // Interakt config (decrypted)
+        interaktApiUrl: config.interakt_api_url,
+        interaktSecretKey: interaktSecretKey,
+        interaktTemplateName: config.interakt_template_name,
+        // n8n config (decrypted)
+        n8nWebhookUrl: n8nWebhookUrl
       };
     }
   } catch (err) {
-    console.warn('[WhatsApp OTP] Failed to get provider settings from database, using env vars:', err.message);
+    console.warn('[WhatsApp OTP] Failed to get tenant provider settings:', err.message);
   }
 
   // Fallback to environment variables
   return {
     interaktEnabled: process.env.WHATSAPP_INTERAKT_ENABLED === 'true',
-    n8nEnabled: process.env.WHATSAPP_N8N_ENABLED === 'true'
+    n8nEnabled: process.env.WHATSAPP_N8N_ENABLED === 'true',
+    interaktApiUrl: process.env.INTERAKT_API_URL,
+    interaktSecretKey: process.env.INTERAKT_SECRET_KEY,
+    interaktTemplateName: process.env.INTERAKT_TEMPLATE_NAME,
+    n8nWebhookUrl: process.env.N8N_WEBHOOK_URL
   };
 }
 
@@ -41,9 +90,14 @@ async function getProviderSettings() {
  *
  * @param {string} phoneNumber - 10 digit phone number without country code
  * @param {string} otp - 6 digit OTP
+ * @param {Object} options - Additional options
+ * @param {Object} options.req - Express request with tenant context
+ * @param {boolean} options.isNewUser - Whether this is a new user
  * @returns {Promise<Object>} Result object with status of each method
  */
-async function sendOTP(phoneNumber, otp) {
+async function sendOTP(phoneNumber, otp, options = {}) {
+  const { req, isNewUser = null } = options;
+
   if (!WHATSAPP_OTP_ENABLED) {
     console.log('[WhatsApp OTP] Service is disabled');
     return {
@@ -53,10 +107,21 @@ async function sendOTP(phoneNumber, otp) {
     };
   }
 
-  console.log(`[WhatsApp OTP] Sending OTP to ${phoneNumber} via enabled methods...`);
+  // Get tenant info from request
+  const appSlug = req?.tenant?.slug || 'unknown';
+  const appName = req?.tenant?.name || 'Unknown App';
 
-  // Get provider settings from database
-  const providerSettings = await getProviderSettings();
+  console.log(`[WhatsApp OTP] Sending OTP to ${phoneNumber} (app: ${appSlug}, user: ${isNewUser ? 'new' : 'existing'})...`);
+
+  // Get provider settings from tenant's app_config
+  const providerSettings = req ? await getTenantProviderSettings(req) : {
+    interaktEnabled: process.env.WHATSAPP_INTERAKT_ENABLED === 'true',
+    n8nEnabled: process.env.WHATSAPP_N8N_ENABLED === 'true',
+    interaktApiUrl: process.env.INTERAKT_API_URL,
+    interaktSecretKey: process.env.INTERAKT_SECRET_KEY,
+    interaktTemplateName: process.env.INTERAKT_TEMPLATE_NAME,
+    n8nWebhookUrl: process.env.N8N_WEBHOOK_URL
+  };
 
   const results = {
     interakt: null,
@@ -66,11 +131,17 @@ async function sendOTP(phoneNumber, otp) {
   const promises = [];
   const methodsAttempted = [];
 
-  // Call Interakt service if enabled (check database setting AND env config)
-  if (providerSettings.interaktEnabled && interaktService.isEnabled()) {
+  // Call Interakt service if enabled and configured
+  const interaktConfigured = interaktService.isConfigured(providerSettings.interaktSecretKey);
+  if (providerSettings.interaktEnabled && interaktConfigured) {
     methodsAttempted.push('interakt');
     promises.push(
-      interaktService.sendWhatsAppOTP(phoneNumber, otp)
+      interaktService.sendWhatsAppOTP(phoneNumber, otp, {
+        apiUrl: providerSettings.interaktApiUrl,
+        secretKey: providerSettings.interaktSecretKey,
+        templateName: providerSettings.interaktTemplateName,
+        appSlug: appSlug
+      })
         .then(res => {
           results.interakt = res;
           return res;
@@ -86,11 +157,17 @@ async function sendOTP(phoneNumber, otp) {
     );
   }
 
-  // Call n8n webhook if enabled (check database setting AND env config)
-  if (providerSettings.n8nEnabled && n8nService.isEnabled()) {
+  // Call n8n webhook if enabled and configured
+  const n8nConfigured = n8nService.isConfigured(providerSettings.n8nWebhookUrl);
+  if (providerSettings.n8nEnabled && n8nConfigured) {
     methodsAttempted.push('n8n');
     promises.push(
-      n8nService.sendToN8N(phoneNumber, otp)
+      n8nService.sendToN8N(phoneNumber, otp, {
+        webhookUrl: providerSettings.n8nWebhookUrl,
+        appSlug: appSlug,
+        appName: appName,
+        isNewUser: isNewUser
+      })
         .then(res => {
           results.n8n = res;
           return res;
@@ -108,10 +185,10 @@ async function sendOTP(phoneNumber, otp) {
 
   // If no methods are enabled
   if (promises.length === 0) {
-    console.warn('[WhatsApp OTP] No WhatsApp methods are enabled!');
+    console.warn(`[WhatsApp OTP] No WhatsApp methods are enabled for app: ${appSlug}`);
     return {
       success: false,
-      message: 'No WhatsApp OTP methods are configured',
+      message: 'No WhatsApp OTP methods are configured for this app',
       methods_used: [],
       results: {}
     };
@@ -158,7 +235,7 @@ async function sendOTP(phoneNumber, otp) {
   }
 
   // Log summary
-  console.log(`[WhatsApp OTP] Summary for ${phoneNumber}:`);
+  console.log(`[WhatsApp OTP] Summary for ${phoneNumber} (${appSlug}):`);
   console.log(`  - Success: ${overallSuccess}`);
   console.log(`  - Methods attempted: ${methodsAttempted.join(', ')}`);
   console.log(`  - Successful: ${successfulMethods.length}/${methodsAttempted.length}`);
@@ -178,16 +255,15 @@ async function sendOTP(phoneNumber, otp) {
 }
 
 /**
- * Check if WhatsApp OTP service is enabled
+ * Check if WhatsApp OTP service is enabled (global check)
  * @returns {boolean}
  */
 function isEnabled() {
-  return WHATSAPP_OTP_ENABLED &&
-         (interaktService.isEnabled() || n8nService.isEnabled());
+  return WHATSAPP_OTP_ENABLED;
 }
 
 /**
- * Get WhatsApp OTP service status
+ * Get WhatsApp OTP service status (fallback config)
  * @returns {Object}
  */
 function getStatus() {
@@ -206,5 +282,6 @@ function getStatus() {
 module.exports = {
   sendOTP,
   isEnabled,
-  getStatus
+  getStatus,
+  getTenantProviderSettings
 };

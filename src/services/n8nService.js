@@ -3,40 +3,54 @@ const axios = require('axios');
 /**
  * n8n Webhook Service
  * Sends OTP data to self-hosted n8n workflow via webhook
+ *
+ * UPDATED: Now supports per-app configuration
+ * - Webhook URL is read from tenant's app_config table
+ * - Enhanced payload includes app info and user status
  */
 
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || '';
-const N8N_ENABLED = process.env.WHATSAPP_N8N_ENABLED === 'true';
+// Fallback to env vars (for backward compatibility)
+const N8N_WEBHOOK_URL_FALLBACK = process.env.N8N_WEBHOOK_URL || '';
+const N8N_ENABLED_FALLBACK = process.env.WHATSAPP_N8N_ENABLED === 'true';
 
 /**
  * Send OTP data to n8n webhook
  * @param {string} phoneNumber - 10 digit phone number without country code
  * @param {string} otp - 6 digit OTP
+ * @param {Object} options - Additional options
+ * @param {string} options.webhookUrl - Webhook URL from tenant config (optional)
+ * @param {string} options.appSlug - App slug (e.g., 'ssc', 'ncert')
+ * @param {string} options.appName - App display name
+ * @param {boolean} options.isNewUser - Whether this is a new user
  * @returns {Promise<Object>} Webhook response
  */
-async function sendToN8N(phoneNumber, otp) {
-  if (!N8N_ENABLED) {
-    console.log('n8n service is disabled');
-    return { success: false, message: 'n8n service disabled' };
-  }
+async function sendToN8N(phoneNumber, otp, options = {}) {
+  const {
+    webhookUrl = N8N_WEBHOOK_URL_FALLBACK,
+    appSlug = 'unknown',
+    appName = 'Unknown App',
+    isNewUser = null
+  } = options;
 
-  if (!N8N_WEBHOOK_URL) {
-    console.error('N8N_WEBHOOK_URL not configured');
-    throw new Error('n8n webhook URL not configured');
+  if (!webhookUrl) {
+    console.error('[n8n] Webhook URL not configured');
+    return { success: false, provider: 'n8n', error: 'n8n webhook URL not configured' };
   }
 
   try {
     const payload = {
       phone: phoneNumber,
       otp: otp,
+      user_status: isNewUser === true ? 'new' : isNewUser === false ? 'old' : 'unknown',
+      app_slug: appSlug,
+      app_name: appName,
       timestamp: new Date().toISOString(),
-      app: 'jnv_quiz',
       country_code: '+91'
     };
 
-    console.log(`[n8n] Sending OTP data to webhook for ${phoneNumber}...`);
+    console.log(`[n8n] Sending OTP to webhook for ${phoneNumber} (app: ${appSlug}, user: ${payload.user_status})...`);
 
-    const response = await axios.post(N8N_WEBHOOK_URL, payload, {
+    const response = await axios.post(webhookUrl, payload, {
       headers: {
         'Content-Type': 'application/json'
       },
@@ -84,27 +98,38 @@ async function sendToN8N(phoneNumber, otp) {
 }
 
 /**
- * Check if n8n service is enabled
+ * Check if n8n service is enabled (based on env fallback)
+ * Note: Per-app enabled status is checked in whatsappOtpService
  * @returns {boolean}
  */
 function isEnabled() {
-  return N8N_ENABLED && !!N8N_WEBHOOK_URL;
+  return N8N_ENABLED_FALLBACK;
 }
 
 /**
- * Get n8n service configuration status
+ * Check if n8n is configured with given URL
+ * @param {string} webhookUrl - Webhook URL to check
+ * @returns {boolean}
+ */
+function isConfigured(webhookUrl) {
+  return !!webhookUrl;
+}
+
+/**
+ * Get n8n service configuration status (fallback config)
  * @returns {Object}
  */
 function getStatus() {
   return {
-    enabled: N8N_ENABLED,
-    configured: !!N8N_WEBHOOK_URL,
-    webhook_url: N8N_WEBHOOK_URL ? N8N_WEBHOOK_URL.substring(0, 50) + '...' : 'Not configured'
+    enabled: N8N_ENABLED_FALLBACK,
+    configured: !!N8N_WEBHOOK_URL_FALLBACK,
+    webhook_url: N8N_WEBHOOK_URL_FALLBACK ? N8N_WEBHOOK_URL_FALLBACK.substring(0, 50) + '...' : 'Not configured'
   };
 }
 
 module.exports = {
   sendToN8N,
   isEnabled,
+  isConfigured,
   getStatus
 };

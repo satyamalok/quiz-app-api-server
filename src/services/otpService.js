@@ -95,10 +95,13 @@ async function sendOTP(phone, ipAddress = null, req) {
     let otpSendResult = null;
 
     if (whatsappOtpService.isEnabled()) {
-      // Send via WhatsApp (Interakt/n8n)
-      console.log(`[OTP] Sending via WhatsApp to ${phone}...`);
+      // Send via WhatsApp (Interakt/n8n) with tenant context and user status
+      console.log(`[OTP] Sending via WhatsApp to ${phone} (app: ${req?.tenant?.slug || 'unknown'}, user: ${isNewUser ? 'new' : 'existing'})...`);
       try {
-        otpSendResult = await whatsappOtpService.sendOTP(phone, otp);
+        otpSendResult = await whatsappOtpService.sendOTP(phone, otp, {
+          req: req,        // Pass request for tenant context
+          isNewUser: isNewUser  // Pass user status (new/old)
+        });
         if (!otpSendResult.success) {
           console.error(`[OTP] WhatsApp sending failed:`, otpSendResult);
           // Continue anyway - OTP is saved in DB and can be verified
