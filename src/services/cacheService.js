@@ -8,6 +8,10 @@ const { redis, isReady } = require('../config/redis');
  * - Reels (active reels list)
  * - App config
  *
+ * Multi-tenancy support:
+ * - All keys are prefixed with app slug when tenant context is provided
+ * - Pattern: {appSlug}:questions:level:1:medium:english
+ *
  * Graceful degradation: If Redis is unavailable, returns null (caller fetches from DB)
  */
 
@@ -18,12 +22,37 @@ const TTL = {
   APP_CONFIG: 5 * 60           // 5 minutes
 };
 
-// Key prefixes
+// Key prefixes (base, without tenant prefix)
 const KEYS = {
   QUESTIONS: 'questions:level:',
   REELS: 'reels:active',
   APP_CONFIG: 'app:config'
 };
+
+/**
+ * Get tenant-prefixed key
+ * @param {string} baseKey - Base key without tenant prefix
+ * @param {object} req - Express request with req.tenant (optional)
+ * @returns {string} Prefixed key
+ */
+function getTenantKey(baseKey, req = null) {
+  if (req && req.tenant && req.tenant.redisPrefix) {
+    return `${req.tenant.redisPrefix}${baseKey}`;
+  }
+  return baseKey;
+}
+
+/**
+ * Get tenant prefix from request
+ * @param {object} req - Express request
+ * @returns {string} Prefix or empty string
+ */
+function getTenantPrefix(req) {
+  if (req && req.tenant && req.tenant.redisPrefix) {
+    return req.tenant.redisPrefix;
+  }
+  return '';
+}
 
 // ========================================
 // QUESTIONS CACHE
@@ -33,21 +62,23 @@ const KEYS = {
  * Get cached questions for a level and medium
  * @param {number} level - Level number (1-100)
  * @param {string} medium - Language medium ('hindi', 'english', 'both')
+ * @param {object} req - Express request with tenant context (optional)
  * @returns {Promise<array|null>} Cached questions or null if not cached
  */
-async function getCachedQuestions(level, medium) {
+async function getCachedQuestions(level, medium, req = null) {
   if (!isReady()) return null;
 
   try {
-    const key = `${KEYS.QUESTIONS}${level}:medium:${medium}`;
+    const baseKey = `${KEYS.QUESTIONS}${level}:medium:${medium}`;
+    const key = getTenantKey(baseKey, req);
     const cached = await redis.get(key);
 
     if (cached) {
-      console.log(`[Cache] Questions HIT: level=${level}, medium=${medium}`);
+      console.log(`[Cache] Questions HIT: key=${key}`);
       return JSON.parse(cached);
     }
 
-    console.log(`[Cache] Questions MISS: level=${level}, medium=${medium}`);
+    console.log(`[Cache] Questions MISS: key=${key}`);
     return null;
 
   } catch (err) {
@@ -61,14 +92,16 @@ async function getCachedQuestions(level, medium) {
  * @param {number} level - Level number
  * @param {string} medium - Language medium
  * @param {array} questions - Questions to cache
+ * @param {object} req - Express request with tenant context (optional)
  */
-async function setCachedQuestions(level, medium, questions) {
+async function setCachedQuestions(level, medium, questions, req = null) {
   if (!isReady()) return;
 
   try {
-    const key = `${KEYS.QUESTIONS}${level}:medium:${medium}`;
+    const baseKey = `${KEYS.QUESTIONS}${level}:medium:${medium}`;
+    const key = getTenantKey(baseKey, req);
     await redis.setex(key, TTL.QUESTIONS, JSON.stringify(questions));
-    console.log(`[Cache] Questions SET: level=${level}, medium=${medium}, count=${questions.length}`);
+    console.log(`[Cache] Questions SET: key=${key}, count=${questions.length}`);
 
   } catch (err) {
     console.error('[Cache] Error setting questions:', err.message);
@@ -78,26 +111,29 @@ async function setCachedQuestions(level, medium, questions) {
 /**
  * Invalidate questions cache for a specific level (all mediums)
  * @param {number} level - Level number (null = all levels)
+ * @param {object} req - Express request with tenant context (optional)
  */
-async function invalidateQuestionsCache(level = null) {
+async function invalidateQuestionsCache(level = null, req = null) {
   if (!isReady()) return;
 
   try {
+    const prefix = getTenantPrefix(req);
+
     if (level) {
       // Invalidate specific level (all mediums)
-      const pattern = `${KEYS.QUESTIONS}${level}:*`;
+      const pattern = `${prefix}${KEYS.QUESTIONS}${level}:*`;
       const keys = await redis.keys(pattern);
       if (keys.length > 0) {
         await redis.del(...keys);
-        console.log(`[Cache] Questions INVALIDATED: level=${level}, keys=${keys.length}`);
+        console.log(`[Cache] Questions INVALIDATED: pattern=${pattern}, keys=${keys.length}`);
       }
     } else {
-      // Invalidate all questions
-      const pattern = `${KEYS.QUESTIONS}*`;
+      // Invalidate all questions for this tenant
+      const pattern = `${prefix}${KEYS.QUESTIONS}*`;
       const keys = await redis.keys(pattern);
       if (keys.length > 0) {
         await redis.del(...keys);
-        console.log(`[Cache] All questions INVALIDATED: keys=${keys.length}`);
+        console.log(`[Cache] All questions INVALIDATED: pattern=${pattern}, keys=${keys.length}`);
       }
     }
   } catch (err) {
@@ -111,20 +147,22 @@ async function invalidateQuestionsCache(level = null) {
 
 /**
  * Get cached active reels
+ * @param {object} req - Express request with tenant context (optional)
  * @returns {Promise<array|null>} Cached reels or null if not cached
  */
-async function getCachedReels() {
+async function getCachedReels(req = null) {
   if (!isReady()) return null;
 
   try {
-    const cached = await redis.get(KEYS.REELS);
+    const key = getTenantKey(KEYS.REELS, req);
+    const cached = await redis.get(key);
 
     if (cached) {
-      console.log('[Cache] Reels HIT');
+      console.log(`[Cache] Reels HIT: key=${key}`);
       return JSON.parse(cached);
     }
 
-    console.log('[Cache] Reels MISS');
+    console.log(`[Cache] Reels MISS: key=${key}`);
     return null;
 
   } catch (err) {
@@ -136,13 +174,15 @@ async function getCachedReels() {
 /**
  * Cache active reels
  * @param {array} reels - Reels to cache
+ * @param {object} req - Express request with tenant context (optional)
  */
-async function setCachedReels(reels) {
+async function setCachedReels(reels, req = null) {
   if (!isReady()) return;
 
   try {
-    await redis.setex(KEYS.REELS, TTL.REELS, JSON.stringify(reels));
-    console.log(`[Cache] Reels SET: count=${reels.length}`);
+    const key = getTenantKey(KEYS.REELS, req);
+    await redis.setex(key, TTL.REELS, JSON.stringify(reels));
+    console.log(`[Cache] Reels SET: key=${key}, count=${reels.length}`);
 
   } catch (err) {
     console.error('[Cache] Error setting reels:', err.message);
@@ -151,13 +191,15 @@ async function setCachedReels(reels) {
 
 /**
  * Invalidate reels cache
+ * @param {object} req - Express request with tenant context (optional)
  */
-async function invalidateReelsCache() {
+async function invalidateReelsCache(req = null) {
   if (!isReady()) return;
 
   try {
-    await redis.del(KEYS.REELS);
-    console.log('[Cache] Reels INVALIDATED');
+    const key = getTenantKey(KEYS.REELS, req);
+    await redis.del(key);
+    console.log(`[Cache] Reels INVALIDATED: key=${key}`);
 
   } catch (err) {
     console.error('[Cache] Error invalidating reels:', err.message);
@@ -170,13 +212,15 @@ async function invalidateReelsCache() {
 
 /**
  * Get cached app config
+ * @param {object} req - Express request with tenant context (optional)
  * @returns {Promise<object|null>} Cached config or null if not cached
  */
-async function getCachedAppConfig() {
+async function getCachedAppConfig(req = null) {
   if (!isReady()) return null;
 
   try {
-    const cached = await redis.get(KEYS.APP_CONFIG);
+    const key = getTenantKey(KEYS.APP_CONFIG, req);
+    const cached = await redis.get(key);
 
     if (cached) {
       return JSON.parse(cached);
@@ -193,12 +237,14 @@ async function getCachedAppConfig() {
 /**
  * Cache app config
  * @param {object} config - Config to cache
+ * @param {object} req - Express request with tenant context (optional)
  */
-async function setCachedAppConfig(config) {
+async function setCachedAppConfig(config, req = null) {
   if (!isReady()) return;
 
   try {
-    await redis.setex(KEYS.APP_CONFIG, TTL.APP_CONFIG, JSON.stringify(config));
+    const key = getTenantKey(KEYS.APP_CONFIG, req);
+    await redis.setex(key, TTL.APP_CONFIG, JSON.stringify(config));
 
   } catch (err) {
     console.error('[Cache] Error setting app config:', err.message);
@@ -207,13 +253,15 @@ async function setCachedAppConfig(config) {
 
 /**
  * Invalidate app config cache
+ * @param {object} req - Express request with tenant context (optional)
  */
-async function invalidateAppConfigCache() {
+async function invalidateAppConfigCache(req = null) {
   if (!isReady()) return;
 
   try {
-    await redis.del(KEYS.APP_CONFIG);
-    console.log('[Cache] App config INVALIDATED');
+    const key = getTenantKey(KEYS.APP_CONFIG, req);
+    await redis.del(key);
+    console.log(`[Cache] App config INVALIDATED: key=${key}`);
 
   } catch (err) {
     console.error('[Cache] Error invalidating app config:', err.message);
@@ -225,10 +273,11 @@ async function invalidateAppConfigCache() {
 // ========================================
 
 /**
- * Refresh all caches (invalidate everything)
+ * Refresh all caches for a tenant (invalidate everything)
  * Called from admin panel
+ * @param {object} req - Express request with tenant context (optional)
  */
-async function refreshAllCaches() {
+async function refreshAllCaches(req = null) {
   if (!isReady()) {
     return {
       success: false,
@@ -237,8 +286,14 @@ async function refreshAllCaches() {
   }
 
   try {
-    // Get all keys with our prefixes
-    const patterns = ['questions:*', 'reels:*', 'app:*'];
+    const prefix = getTenantPrefix(req);
+
+    // Get all keys with our prefixes (tenant-scoped if applicable)
+    const patterns = [
+      `${prefix}questions:*`,
+      `${prefix}reels:*`,
+      `${prefix}app:*`
+    ];
     let totalKeys = 0;
 
     for (const pattern of patterns) {
@@ -249,7 +304,7 @@ async function refreshAllCaches() {
       }
     }
 
-    console.log(`[Cache] ALL CACHES CLEARED: ${totalKeys} keys`);
+    console.log(`[Cache] ALL CACHES CLEARED: prefix=${prefix || 'global'}, keys=${totalKeys}`);
 
     return {
       success: true,
@@ -267,10 +322,11 @@ async function refreshAllCaches() {
 }
 
 /**
- * Get cache statistics
+ * Get cache statistics for a tenant
  * For admin dashboard
+ * @param {object} req - Express request with tenant context (optional)
  */
-async function getCacheStats() {
+async function getCacheStats(req = null) {
   if (!isReady()) {
     return {
       connected: false,
@@ -279,10 +335,12 @@ async function getCacheStats() {
   }
 
   try {
-    // Count keys by type
-    const questionKeys = await redis.keys('questions:*');
-    const reelsKey = await redis.exists(KEYS.REELS);
-    const configKey = await redis.exists(KEYS.APP_CONFIG);
+    const prefix = getTenantPrefix(req);
+
+    // Count keys by type (tenant-scoped if applicable)
+    const questionKeys = await redis.keys(`${prefix}questions:*`);
+    const reelsKey = await redis.exists(getTenantKey(KEYS.REELS, req));
+    const configKey = await redis.exists(getTenantKey(KEYS.APP_CONFIG, req));
 
     // Get Redis info
     const info = await redis.info('memory');
@@ -327,6 +385,10 @@ module.exports = {
   // Management
   refreshAllCaches,
   getCacheStats,
+
+  // Helpers for multi-tenancy
+  getTenantKey,
+  getTenantPrefix,
 
   // Constants
   TTL,

@@ -9,15 +9,19 @@ const minioClient = new Minio.Client({
   secretKey: process.env.MINIO_SECRET_KEY
 });
 
-// Check if bucket exists, if not create it
+// Default bucket (for backward compatibility)
 const bucketName = process.env.MINIO_BUCKET;
 
-async function ensureBucketExists() {
+/**
+ * Ensure a bucket exists with public-read policy
+ * @param {string} bucket - Bucket name to ensure
+ */
+async function ensureBucketExists(bucket = bucketName) {
   try {
-    const exists = await minioClient.bucketExists(bucketName);
+    const exists = await minioClient.bucketExists(bucket);
     if (!exists) {
-      await minioClient.makeBucket(bucketName, 'us-east-1');
-      console.log(`✓ MinIO bucket "${bucketName}" created successfully`);
+      await minioClient.makeBucket(bucket, 'us-east-1');
+      console.log(`✓ MinIO bucket "${bucket}" created successfully`);
 
       // Set bucket policy to public-read
       const policy = {
@@ -27,21 +31,81 @@ async function ensureBucketExists() {
             Effect: 'Allow',
             Principal: { AWS: ['*'] },
             Action: ['s3:GetObject'],
-            Resource: [`arn:aws:s3:::${bucketName}/*`]
+            Resource: [`arn:aws:s3:::${bucket}/*`]
           }
         ]
       };
-      await minioClient.setBucketPolicy(bucketName, JSON.stringify(policy));
-      console.log(`✓ MinIO bucket "${bucketName}" set to public-read`);
+      await minioClient.setBucketPolicy(bucket, JSON.stringify(policy));
+      console.log(`✓ MinIO bucket "${bucket}" set to public-read`);
     } else {
-      console.log(`✓ MinIO bucket "${bucketName}" already exists`);
+      console.log(`✓ MinIO bucket "${bucket}" already exists`);
     }
+    return true;
   } catch (err) {
-    console.error('MinIO bucket setup error:', err);
+    console.error(`MinIO bucket setup error for "${bucket}":`, err);
+    return false;
   }
 }
 
-// Call on module load
+/**
+ * Create a new bucket for a tenant app
+ * @param {string} appSlug - App slug to use as bucket name
+ */
+async function createTenantBucket(appSlug) {
+  return ensureBucketExists(appSlug);
+}
+
+/**
+ * Delete a tenant bucket (use with caution!)
+ * @param {string} appSlug - App slug / bucket name
+ */
+async function deleteTenantBucket(appSlug) {
+  try {
+    // First, remove all objects in the bucket
+    const objectsList = [];
+    const stream = minioClient.listObjects(appSlug, '', true);
+
+    await new Promise((resolve, reject) => {
+      stream.on('data', obj => objectsList.push(obj.name));
+      stream.on('error', reject);
+      stream.on('end', resolve);
+    });
+
+    if (objectsList.length > 0) {
+      await minioClient.removeObjects(appSlug, objectsList);
+      console.log(`✓ Removed ${objectsList.length} objects from bucket "${appSlug}"`);
+    }
+
+    // Then remove the bucket
+    await minioClient.removeBucket(appSlug);
+    console.log(`✓ MinIO bucket "${appSlug}" deleted`);
+    return true;
+  } catch (err) {
+    console.error(`MinIO bucket delete error for "${appSlug}":`, err);
+    return false;
+  }
+}
+
+/**
+ * Check if a bucket exists
+ * @param {string} bucket - Bucket name
+ */
+async function bucketExists(bucket) {
+  try {
+    return await minioClient.bucketExists(bucket);
+  } catch (err) {
+    return false;
+  }
+}
+
+// Ensure default bucket exists on module load (for backward compatibility)
 ensureBucketExists();
 
-module.exports = { minioClient, bucketName };
+module.exports = {
+  minioClient,
+  bucketName,
+  ensureBucketExists,
+  createTenantBucket,
+  deleteTenantBucket,
+  bucketExists
+};
