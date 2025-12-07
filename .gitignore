@@ -35,6 +35,10 @@ minio-data/
 
 # Backups
 backups/
-*.sql
+backups/*.sql
 *.tar.gz
+
+# Keep SQL schema and migration files (negate the backup pattern)
+!scripts/*.sql
+!scripts/migrations/*.sql
 nul
