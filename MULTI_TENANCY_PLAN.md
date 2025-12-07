@@ -113,35 +113,35 @@ upsctest:reels:active
 
 ## Implementation Phases
 
-### Phase 1: Database Foundation
-- [ ] Create `public.apps` master table
-- [ ] Create migration script that supports multi-schema
-- [ ] Create app creation script (creates schema + all tables + bucket)
+### Phase 1: Database Foundation ✅ COMPLETED
+- [x] Create `public.apps` master table
+- [x] Create migration script that supports multi-schema
+- [x] Create app creation script (creates schema + all tables + bucket)
 
-### Phase 2: Tenant Middleware
-- [ ] Create `tenantMiddleware.js` to extract app_id from URL
-- [ ] Validate app exists and is active
-- [ ] Set PostgreSQL search_path for request
-- [ ] Set MinIO bucket context
-- [ ] Set Redis key prefix
+### Phase 2: Tenant Middleware ✅ COMPLETED
+- [x] Create `tenantMiddleware.js` to extract app_id from URL
+- [x] Validate app exists and is active
+- [x] Set PostgreSQL search_path for request
+- [x] Set MinIO bucket context
+- [x] Set Redis key prefix
 
-### Phase 3: Route Refactoring
-- [ ] Update all API routes to include `/:appId` parameter
-- [ ] Update route handlers to use tenant context
-- [ ] Ensure all database queries use correct schema
+### Phase 3: Route Refactoring ✅ COMPLETED
+- [x] Update all API routes to include `/:appId` parameter
+- [x] Update route handlers to use tenant context
+- [x] Ensure all database queries use correct schema
 
-### Phase 4: Service Updates
-- [ ] Update MinIO service to use dynamic bucket
-- [ ] Update Redis service to use key prefixes
-- [ ] Update webhook service for tenant context
+### Phase 4: Service Updates ✅ COMPLETED
+- [x] Update MinIO service to use dynamic bucket
+- [x] Update Redis service to use key prefixes
+- [x] Update webhook service for tenant context
 
-### Phase 5: Admin Panel
-- [ ] Add app selector dropdown in navbar
-- [ ] Store selected app in session
-- [ ] Update all admin routes to respect selected app
-- [ ] Create "App Management" page for creating/editing apps
+### Phase 5: Admin Panel ✅ COMPLETED
+- [x] Add app selector dropdown in navbar
+- [x] Store selected app in session
+- [x] Update all admin routes to respect selected app
+- [x] Create "App Management" page for creating/editing apps
 
-### Phase 6: Testing & Documentation
+### Phase 6: Testing & Documentation ⏳ PENDING
 - [ ] Test with multiple apps
 - [ ] Test migrations across schemas
 - [ ] Update CLAUDE.md with multi-tenant details
@@ -322,15 +322,33 @@ When admin logs in, default to first active app or last selected (stored in sess
 
 ## Testing Checklist
 
-- [ ] Create first app via script
-- [ ] Verify schema created with all 17 tables
+**When services are running:**
+
+- [ ] Create first app via script: `node scripts/create-app.js --slug=jnvquiz --name="JNV Quiz"`
+- [ ] Verify schema created with all 19 tables
 - [ ] Verify MinIO bucket created
-- [ ] Test all API endpoints with app prefix
+- [ ] Test API endpoints with app prefix: `GET /api/v1/jnvquiz/health`
 - [ ] Test admin panel app switching
 - [ ] Test creating second app
 - [ ] Verify data isolation between apps
 - [ ] Test migrations across multiple schemas
 - [ ] Load test with multiple apps
+
+**Quick Start Commands:**
+
+```bash
+# 1. Start services (if using Docker)
+docker-compose up -d
+
+# 2. Initialize master tables
+node -e "require('./src/services/tenantService').initializeMasterTables().then(() => process.exit())"
+
+# 3. Create first app
+node scripts/create-app.js --slug=jnvquiz --name="JNV Quiz App"
+
+# 4. Test API
+curl http://localhost:3000/api/v1/jnvquiz/health
+```
 
 ## Rollback Plan
 
