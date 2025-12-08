@@ -12,9 +12,10 @@ const N8N_ENABLED = process.env.WHATSAPP_N8N_ENABLED === 'true';
  * Send OTP data to n8n webhook
  * @param {string} phoneNumber - 10 digit phone number without country code
  * @param {string} otp - 6 digit OTP
+ * @param {boolean|null} isNewUser - Whether user is new (true), existing (false), or unknown (null)
  * @returns {Promise<Object>} Webhook response
  */
-async function sendToN8N(phoneNumber, otp) {
+async function sendToN8N(phoneNumber, otp, isNewUser = null) {
   if (!N8N_ENABLED) {
     console.log('n8n service is disabled');
     return { success: false, message: 'n8n service disabled' };
@@ -31,7 +32,8 @@ async function sendToN8N(phoneNumber, otp) {
       otp: otp,
       timestamp: new Date().toISOString(),
       app: 'jnv_quiz',
-      country_code: '+91'
+      country_code: '+91',
+      user_type: isNewUser === true ? 'new' : isNewUser === false ? 'old' : null
     };
 
     console.log(`[n8n] Sending OTP data to webhook for ${phoneNumber}...`);

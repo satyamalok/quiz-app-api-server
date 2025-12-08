@@ -96,7 +96,7 @@ async function sendOTP(phone, ipAddress = null) {
       // Send via WhatsApp (Interakt/n8n)
       console.log(`[OTP] Sending via WhatsApp to ${phone}...`);
       try {
-        otpSendResult = await whatsappOtpService.sendOTP(phone, otp);
+        otpSendResult = await whatsappOtpService.sendOTP(phone, otp, isNewUser);
         if (!otpSendResult.success) {
           console.error(`[OTP] WhatsApp sending failed:`, otpSendResult);
           // Continue anyway - OTP is saved in DB and can be verified

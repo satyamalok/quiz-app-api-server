@@ -41,9 +41,10 @@ async function getProviderSettings() {
  *
  * @param {string} phoneNumber - 10 digit phone number without country code
  * @param {string} otp - 6 digit OTP
+ * @param {boolean|null} isNewUser - Whether user is new (true), existing (false), or unknown (null)
  * @returns {Promise<Object>} Result object with status of each method
  */
-async function sendOTP(phoneNumber, otp) {
+async function sendOTP(phoneNumber, otp, isNewUser = null) {
   if (!WHATSAPP_OTP_ENABLED) {
     console.log('[WhatsApp OTP] Service is disabled');
     return {
@@ -90,7 +91,7 @@ async function sendOTP(phoneNumber, otp) {
   if (providerSettings.n8nEnabled && n8nService.isEnabled()) {
     methodsAttempted.push('n8n');
     promises.push(
-      n8nService.sendToN8N(phoneNumber, otp)
+      n8nService.sendToN8N(phoneNumber, otp, isNewUser)
         .then(res => {
           results.n8n = res;
           return res;
