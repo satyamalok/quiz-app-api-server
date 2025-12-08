@@ -1,9 +1,11 @@
 # JNV Quiz App - Complete API Documentation
 
-**Version**: 1.3.0
-**Base URL**: `http://your-domain.com/api/v1`
+**Version**: 1.4.0
+**Base URL**: `http://your-domain.com/api/v1/{appSlug}`
 **Authentication**: JWT Bearer Token
-**Date**: December 1, 2025
+**Date**: December 8, 2025
+
+> **Multi-tenancy Note**: All API endpoints now require the app slug in the URL path. For example: `/api/v1/jnvquiz/auth/send-otp` or `/api/v1/ncert/user/profile`
 
 ---
 
@@ -19,8 +21,10 @@
    - [Video APIs](#4-video-apis)
    - [Statistics APIs](#5-statistics-apis)
    - [App Configuration APIs](#6-app-configuration-apis)
-   - [Reels APIs](#7-reels-apis) *(NEW)*
-   - [Quiz Levels Metadata APIs](#8-quiz-levels-metadata-apis-unauthenticated) *(NEW - Unauthenticated)*
+   - [Reels APIs](#7-reels-apis)
+   - [Quiz Levels Metadata APIs](#8-quiz-levels-metadata-apis-unauthenticated) *(Unauthenticated)*
+   - [Shop APIs](#9-shop-apis) *(NEW)*
+   - [Balance Leaderboard APIs](#10-balance-leaderboard-apis) *(NEW)*
 5. [Common Workflows](#common-workflows)
 6. [Data Types & Enums](#data-types--enums)
 
@@ -37,7 +41,10 @@ This API powers the JNV Quiz App, a gamified learning platform with:
 - Leaderboards and streak tracking
 - Two-way referral tracking system (earn XP by referring friends)
 - **Language medium support** (Hindi/English questions)
-- **Video Reels** (TikTok/Shorts-style educational content) *(NEW)*
+- **Video Reels** (TikTok/Shorts-style educational content)
+- **Multi-tenancy** (multiple apps with isolated data)
+- **Shop System** (PDF notes marketplace with XP currency) *(NEW)*
+- **Balance Leaderboard** (rankings by remaining XP balance) *(NEW)*
 
 ---
 
@@ -108,6 +115,12 @@ All errors follow this structure:
 | `INVALID_LIMIT` | 400 | Pagination limit out of range (1-100) |
 | `INVALID_OFFSET` | 400 | Pagination offset must be >= 0 |
 | `REEL_NOT_FOUND` | 404 | Reel does not exist |
+| `CHAPTER_NOT_FOUND` | 404 | Shop chapter does not exist |
+| `ITEM_NOT_FOUND` | 404 | Shop item does not exist |
+| `ITEM_NOT_AVAILABLE` | 400 | Shop item is no longer active |
+| `OUT_OF_STOCK` | 400 | Shop item is sold out |
+| `ALREADY_PURCHASED` | 400 | User already owns this item |
+| `INSUFFICIENT_BALANCE` | 400 | Not enough XP to purchase |
 
 ---
 
@@ -2271,6 +2284,634 @@ sequenceDiagram
 
 ---
 
+## 9. SHOP APIS *(NEW)*
+
+The Shop system allows users to purchase PDF notes and study materials using their XP balance. Items are organized into chapters, and users can only purchase each item once.
+
+**Key Concepts:**
+- **XP Currency**: Users spend earned XP to purchase items (balance = xp_total - xp_spent)
+- **Chapters**: Items are organized into chapters (like book chapters)
+- **Stock Control**: Optional stock limits per item
+- **Sales**: Items can have limited-time sale prices
+- **Featured Items**: Highlighted items shown prominently
+
+### 9.1 Get All Chapters
+
+Get list of shop chapters with item counts.
+
+**Endpoint**: `GET /shop/chapters`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+```
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "chapters": [
+    {
+      "id": 1,
+      "name": "Mathematics",
+      "description": "Comprehensive math notes for JNV preparation",
+      "icon_url": "https://minio.example.com/shop/icons/math.png",
+      "display_order": 1,
+      "is_active": true,
+      "total_items": 15,
+      "created_at": "2025-12-01T10:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "name": "Science",
+      "description": "Physics, Chemistry, and Biology notes",
+      "icon_url": "https://minio.example.com/shop/icons/science.png",
+      "display_order": 2,
+      "is_active": true,
+      "total_items": 20,
+      "created_at": "2025-12-01T10:00:00.000Z"
+    }
+  ]
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET http://localhost:3000/api/v1/jnvquiz/shop/chapters \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 9.2 Get Chapter Details
+
+Get details of a specific chapter with its items.
+
+**Endpoint**: `GET /shop/chapters/:id`
+**Authentication**: Required
+
+#### URL Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| id | integer | Yes | Chapter ID |
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | integer | No | 50 | Number of items (1-100) |
+| offset | integer | No | 0 | Offset for pagination |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "chapter": {
+    "id": 1,
+    "name": "Mathematics",
+    "description": "Comprehensive math notes for JNV preparation",
+    "icon_url": "https://minio.example.com/shop/icons/math.png",
+    "display_order": 1,
+    "total_items": 15
+  },
+  "items": [
+    {
+      "id": 1,
+      "title": "Algebra Basics",
+      "description": "Complete guide to algebraic expressions and equations",
+      "thumbnail_url": "https://minio.example.com/shop/thumbnails/algebra.jpg",
+      "xp_price": 100,
+      "xp_original_price": null,
+      "is_on_sale": false,
+      "sale_ends_at": null,
+      "is_featured": true,
+      "is_purchased": false,
+      "is_free": false,
+      "page_count": 25,
+      "file_size_bytes": 2048576,
+      "total_purchases": 150,
+      "stock_remaining": null
+    }
+  ],
+  "pagination": {
+    "total": 15,
+    "limit": 50,
+    "offset": 0
+  }
+}
+```
+
+#### Error Responses
+
+**404 - Chapter Not Found**
+```json
+{
+  "success": false,
+  "error": "CHAPTER_NOT_FOUND",
+  "message": "Chapter not found"
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/shop/chapters/1?limit=20&offset=0" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 9.3 Get All Items
+
+Get all shop items with filtering and pagination.
+
+**Endpoint**: `GET /shop/items`
+**Authentication**: Required
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| chapter_id | integer | No | - | Filter by chapter |
+| is_featured | boolean | No | - | Filter featured items |
+| is_free | boolean | No | - | Filter free items (xp_price = 0) |
+| is_on_sale | boolean | No | - | Filter items on sale |
+| sort | string | No | newest | Sort: newest, oldest, price_low, price_high, popular |
+| limit | integer | No | 50 | Number of items (1-100) |
+| offset | integer | No | 0 | Offset for pagination |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "items": [
+    {
+      "id": 1,
+      "chapter_id": 1,
+      "chapter_name": "Mathematics",
+      "title": "Algebra Basics",
+      "description": "Complete guide to algebraic expressions",
+      "thumbnail_url": "https://minio.example.com/shop/thumbnails/algebra.jpg",
+      "xp_price": 100,
+      "xp_original_price": 150,
+      "is_on_sale": true,
+      "sale_ends_at": "2025-12-31T23:59:59.000Z",
+      "is_featured": true,
+      "is_purchased": false,
+      "is_free": false,
+      "page_count": 25,
+      "file_size_bytes": 2048576,
+      "total_purchases": 150,
+      "stock_remaining": null,
+      "created_at": "2025-12-01T10:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "total": 50,
+    "limit": 50,
+    "offset": 0
+  }
+}
+```
+
+#### cURL Examples
+
+```bash
+# Get all items
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/shop/items" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+# Get featured items
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/shop/items?is_featured=true" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+# Get items on sale, sorted by popularity
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/shop/items?is_on_sale=true&sort=popular" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 9.4 Get Featured Items
+
+Get featured and sale items for homepage display.
+
+**Endpoint**: `GET /shop/featured`
+**Authentication**: Required
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "featured_items": [
+    {
+      "id": 1,
+      "title": "Algebra Basics",
+      "chapter_name": "Mathematics",
+      "thumbnail_url": "https://minio.example.com/shop/thumbnails/algebra.jpg",
+      "xp_price": 100,
+      "xp_original_price": null,
+      "is_on_sale": false,
+      "is_purchased": false,
+      "total_purchases": 150
+    }
+  ],
+  "sale_items": [
+    {
+      "id": 5,
+      "title": "Physics Complete Guide",
+      "chapter_name": "Science",
+      "thumbnail_url": "https://minio.example.com/shop/thumbnails/physics.jpg",
+      "xp_price": 80,
+      "xp_original_price": 120,
+      "is_on_sale": true,
+      "sale_ends_at": "2025-12-31T23:59:59.000Z",
+      "is_purchased": false,
+      "total_purchases": 200
+    }
+  ]
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET http://localhost:3000/api/v1/jnvquiz/shop/featured \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 9.5 Get Item Details
+
+Get complete details of a specific shop item.
+
+**Endpoint**: `GET /shop/items/:id`
+**Authentication**: Required
+
+#### URL Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| id | integer | Yes | Item ID |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "item": {
+    "id": 1,
+    "chapter_id": 1,
+    "chapter_name": "Mathematics",
+    "title": "Algebra Basics",
+    "description": "Complete guide to algebraic expressions and equations. Covers linear equations, quadratic equations, polynomials, and more.",
+    "pdf_url": "https://minio.example.com/shop/pdfs/algebra-basics.pdf",
+    "thumbnail_url": "https://minio.example.com/shop/thumbnails/algebra.jpg",
+    "xp_price": 100,
+    "xp_original_price": 150,
+    "is_on_sale": true,
+    "sale_ends_at": "2025-12-31T23:59:59.000Z",
+    "is_featured": true,
+    "is_active": true,
+    "page_count": 25,
+    "file_size_bytes": 2048576,
+    "total_purchases": 150,
+    "is_stock_enabled": false,
+    "stock_total": null,
+    "stock_remaining": null,
+    "created_at": "2025-12-01T10:00:00.000Z"
+  },
+  "user_status": {
+    "is_purchased": false,
+    "can_afford": true,
+    "current_balance": 500
+  }
+}
+```
+
+**If already purchased:**
+```json
+{
+  "success": true,
+  "item": { ... },
+  "user_status": {
+    "is_purchased": true,
+    "purchased_at": "2025-12-05T14:30:00.000Z",
+    "can_afford": true,
+    "current_balance": 400
+  }
+}
+```
+
+#### Error Responses
+
+**404 - Item Not Found**
+```json
+{
+  "success": false,
+  "error": "ITEM_NOT_FOUND",
+  "message": "Item not found"
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET http://localhost:3000/api/v1/jnvquiz/shop/items/1 \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 9.6 Purchase Item
+
+Purchase a shop item using XP balance.
+
+**Endpoint**: `POST /shop/purchase`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "item_id": "integer (required)"
+}
+```
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "purchase_id": 42,
+  "purchased_at": "2025-12-08T10:30:00.000Z",
+  "item": {
+    "id": 1,
+    "title": "Algebra Basics",
+    "chapter_name": "Mathematics",
+    "pdf_url": "https://minio.example.com/shop/pdfs/algebra-basics.pdf",
+    "thumbnail_url": "https://minio.example.com/shop/thumbnails/algebra.jpg"
+  },
+  "xp_paid": 100,
+  "balance": {
+    "xp_earned": 500,
+    "xp_spent": 200,
+    "xp_remaining": 300
+  }
+}
+```
+
+#### Error Responses
+
+**404 - Item Not Found**
+```json
+{
+  "success": false,
+  "error": "ITEM_NOT_FOUND",
+  "message": "Item not found"
+}
+```
+
+**400 - Item Not Available**
+```json
+{
+  "success": false,
+  "error": "ITEM_NOT_AVAILABLE",
+  "message": "This item is no longer available"
+}
+```
+
+**400 - Out of Stock**
+```json
+{
+  "success": false,
+  "error": "OUT_OF_STOCK",
+  "message": "This item is sold out"
+}
+```
+
+**400 - Already Purchased**
+```json
+{
+  "success": false,
+  "error": "ALREADY_PURCHASED",
+  "message": "You already own this item",
+  "purchased_at": "2025-12-05T14:30:00.000Z"
+}
+```
+
+**400 - Insufficient Balance**
+```json
+{
+  "success": false,
+  "error": "INSUFFICIENT_BALANCE",
+  "message": "You need 100 XP but only have 50 XP",
+  "required": 100,
+  "available": 50
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X POST http://localhost:3000/api/v1/jnvquiz/shop/purchase \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "item_id": 1
+  }'
+```
+
+---
+
+### 9.7 Get My Purchases
+
+Get list of items the user has purchased.
+
+**Endpoint**: `GET /shop/my-purchases`
+**Authentication**: Required
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | integer | No | 50 | Number of items (1-100) |
+| offset | integer | No | 0 | Offset for pagination |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "purchases": [
+    {
+      "purchase_id": 42,
+      "item_id": 1,
+      "item_title": "Algebra Basics",
+      "chapter_id": 1,
+      "chapter_name": "Mathematics",
+      "xp_paid": 100,
+      "purchased_at": "2025-12-08T10:30:00.000Z",
+      "thumbnail_url": "https://minio.example.com/shop/thumbnails/algebra.jpg",
+      "pdf_url": "https://minio.example.com/shop/pdfs/algebra-basics.pdf",
+      "is_item_active": true,
+      "description": "Complete guide to algebraic expressions",
+      "file_size_bytes": 2048576,
+      "page_count": 25
+    }
+  ],
+  "total_items": 5,
+  "total_spent": 350
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/shop/my-purchases?limit=20&offset=0" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 9.8 Get User Balance
+
+Get user's XP balance details for the shop.
+
+**Endpoint**: `GET /user/balance`
+**Authentication**: Required
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "balance": {
+    "xp_earned": 500,
+    "xp_spent": 200,
+    "xp_remaining": 300,
+    "total_purchases": 5,
+    "balance_rank": 42
+  }
+}
+```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| xp_earned | integer | Total XP earned from quizzes, referrals, etc. |
+| xp_spent | integer | Total XP spent on shop purchases |
+| xp_remaining | integer | Available balance (xp_earned - xp_spent) |
+| total_purchases | integer | Number of items purchased |
+| balance_rank | integer | User's rank on the balance leaderboard |
+
+#### cURL Example
+
+```bash
+curl -X GET http://localhost:3000/api/v1/jnvquiz/user/balance \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## 10. BALANCE LEADERBOARD APIS *(NEW)*
+
+The Balance Leaderboard ranks users by their remaining XP balance (xp_earned - xp_spent). This complements the daily XP leaderboard by showing who has accumulated and saved the most XP.
+
+### 10.1 Get Balance Leaderboard
+
+Get leaderboard ranked by XP balance (remaining XP after purchases).
+
+**Endpoint**: `GET /leaderboard/balance`
+**Authentication**: Required
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | integer | No | 50 | Number of users (1-100) |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "leaderboard": [
+    {
+      "rank": 1,
+      "phone": "98***00001",
+      "name": "Top Saver",
+      "profile_image_url": "https://minio.example.com/profiles/user1.jpg",
+      "xp_earned": 5000,
+      "xp_spent": 500,
+      "xp_remaining": 4500,
+      "total_purchases": 5
+    },
+    {
+      "rank": 2,
+      "phone": "98***00002",
+      "name": "Second Place",
+      "profile_image_url": null,
+      "xp_earned": 4000,
+      "xp_spent": 200,
+      "xp_remaining": 3800,
+      "total_purchases": 2
+    }
+  ],
+  "user_position": {
+    "rank": 15,
+    "xp_earned": 500,
+    "xp_spent": 200,
+    "xp_remaining": 300,
+    "total_purchases": 5
+  },
+  "total_participants": 1500
+}
+```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| leaderboard | array | Top users ranked by xp_remaining |
+| leaderboard[].rank | integer | User's position (1-based) |
+| leaderboard[].phone | string | Masked phone for privacy (XX***XXXXX) |
+| leaderboard[].name | string | User's display name |
+| leaderboard[].xp_earned | integer | Total XP earned |
+| leaderboard[].xp_spent | integer | Total XP spent |
+| leaderboard[].xp_remaining | integer | Balance (earned - spent) |
+| leaderboard[].total_purchases | integer | Number of shop purchases |
+| user_position | object | Current user's position (null if no XP) |
+| total_participants | integer | Total users with XP > 0 |
+
+**Note:** Phone numbers are masked for privacy (e.g., "98***00001")
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/leaderboard/balance?limit=50" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
 ## Common Workflows
 
 ### 1. User Registration & First Quiz
@@ -2386,6 +3027,48 @@ sequenceDiagram
 - Hearts are toggleable (tap again to remove)
 - Prefetch next batch before user reaches last reel in queue
 
+### 6. Shop Purchase Flow *(NEW)*
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant API
+
+    Note over App: User opens Shop
+    App->>API: GET /shop/chapters
+    API->>App: List of chapters
+
+    App->>API: GET /shop/featured
+    API->>App: Featured & sale items
+
+    Note over App: User browses chapter
+    App->>API: GET /shop/chapters/1
+    API->>App: Chapter items with purchase status
+
+    Note over App: User views item details
+    App->>API: GET /shop/items/1
+    API->>App: Item details + can_afford status
+
+    Note over App: User purchases item
+    App->>API: POST /shop/purchase (item_id=1)
+    alt Sufficient balance
+        API->>App: Success + PDF URL + new balance
+    else Insufficient balance
+        API->>App: Error: INSUFFICIENT_BALANCE
+    end
+
+    Note over App: User views purchases
+    App->>API: GET /shop/my-purchases
+    API->>App: List of purchased PDFs
+```
+
+**Key Points:**
+- Check `is_purchased` flag before showing purchase button
+- Check `can_afford` in item details to enable/disable button
+- Show sale price with strikethrough original price when `is_on_sale = true`
+- Display `stock_remaining` if stock is limited
+- After purchase, navigate to PDF viewer with `pdf_url`
+
 ---
 
 ## Data Types & Enums
@@ -2460,6 +3143,24 @@ both     - Bilingual questions (shown to all users)
 
 **Fallback Logic**: If no questions match user's preferred medium, system falls back to `english` or `both`, then to any available questions.
 
+### Shop Item Sort Options *(NEW)*
+
+```
+newest     - Sort by creation date (newest first) - default
+oldest     - Sort by creation date (oldest first)
+price_low  - Sort by XP price (lowest first)
+price_high - Sort by XP price (highest first)
+popular    - Sort by total purchases (most popular first)
+```
+
+### XP Balance Calculation *(NEW)*
+
+```
+xp_earned    = Total XP from quizzes, referrals, etc.
+xp_spent     = Total XP spent on shop purchases
+xp_remaining = xp_earned - xp_spent (available balance)
+```
+
 ---
 
 ## Notes for Android Development
@@ -2490,6 +3191,21 @@ both     - Bilingual questions (shown to all users)
 19. **Offline Queue**: Queue started/watched/heart API calls if offline, sync when back online
 20. **Video Caching**: Use ExoPlayer's cache for smooth playback of prefetched reels
 21. **Loop Playback**: Loop reels that are shorter than watch threshold to count views properly
+
+### Shop Implementation Notes *(NEW)*
+
+22. **PDF Viewer**: Use Android's built-in PDF renderer or libraries like PDFium for viewing purchased PDFs
+23. **Download & Cache**: Download PDFs after purchase for offline access, use Room for tracking downloads
+24. **Balance Display**: Show XP balance prominently in shop header with animated updates after purchase
+25. **Purchase Confirmation**: Show confirmation dialog before purchase with item details and balance impact
+26. **Sale Timer**: Display countdown timer for `sale_ends_at` on sale items
+27. **Stock Indicator**: Show "Only X left!" when `stock_remaining` is low
+28. **Purchase Button States**:
+    - Green "Purchase" when `can_afford = true && is_purchased = false`
+    - Gray "Insufficient XP" when `can_afford = false`
+    - "Owned" or "View PDF" when `is_purchased = true`
+29. **Error Handling**: Handle ALREADY_PURCHASED gracefully (user may have purchased on another device)
+30. **Optimistic Updates**: Update local balance immediately on purchase, rollback on API error
 
 ---
 

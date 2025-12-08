@@ -55,7 +55,10 @@ async function getDataCounts(schema) {
     referrals: 'SELECT COUNT(*) FROM referral_tracking',
     streaks: 'SELECT COUNT(*) FROM streak_tracking',
     otp_logs: 'SELECT COUNT(*) FROM otp_logs',
-    lifeline_videos: 'SELECT COUNT(*) FROM lifeline_videos_watched'
+    lifeline_videos: 'SELECT COUNT(*) FROM lifeline_videos_watched',
+    shop_chapters: 'SELECT COUNT(*) FROM shop_chapters',
+    shop_items: 'SELECT COUNT(*) FROM shop_items',
+    user_purchases: 'SELECT COUNT(*) FROM user_purchases'
   };
 
   const counts = {};
@@ -113,6 +116,7 @@ async function performReset(req, res) {
           await client.query('DELETE FROM streak_tracking');
           await client.query('DELETE FROM referral_tracking');
           await client.query('DELETE FROM otp_logs');
+          await client.query('DELETE FROM user_purchases'); // Shop purchases
           const usersResult = await client.query('DELETE FROM users_profile');
           results.users = usersResult.rowCount;
           break;
@@ -186,6 +190,30 @@ async function performReset(req, res) {
           results.levels_metadata = 'Levels metadata reset';
           break;
 
+        case 'shop':
+          // Delete all shop data (purchases, items, chapters)
+          const purchasesResult = await client.query('DELETE FROM user_purchases');
+          const itemsResult = await client.query('DELETE FROM shop_items');
+          const chaptersResult = await client.query('DELETE FROM shop_chapters');
+          // Reset xp_spent for all users
+          await client.query(`UPDATE users_profile SET xp_spent = 0, updated_at = ${SQL_IST_NOW}`);
+          results.shop = {
+            purchases: purchasesResult.rowCount,
+            items: itemsResult.rowCount,
+            chapters: chaptersResult.rowCount
+          };
+          break;
+
+        case 'shop_purchases':
+          // Delete only user purchases, keep items and chapters
+          const shopPurchasesResult = await client.query('DELETE FROM user_purchases');
+          // Reset xp_spent for all users
+          await client.query(`UPDATE users_profile SET xp_spent = 0, updated_at = ${SQL_IST_NOW}`);
+          // Reset total_purchases count on items
+          await client.query(`UPDATE shop_items SET total_purchases = 0, updated_at = ${SQL_IST_NOW}`);
+          results.shop_purchases = shopPurchasesResult.rowCount;
+          break;
+
         default:
           console.log(`Unknown category: ${category}`);
       }
@@ -244,6 +272,10 @@ async function resetAllData(req, res) {
     await client.query('DELETE FROM streak_tracking');
     await client.query('DELETE FROM referral_tracking');
     await client.query('DELETE FROM otp_logs');
+    // Shop tables (must delete before users_profile due to FK)
+    await client.query('DELETE FROM user_purchases');
+    await client.query('DELETE FROM shop_items');
+    await client.query('DELETE FROM shop_chapters');
     await client.query('DELETE FROM users_profile');
     await client.query('DELETE FROM questions');
     await client.query('DELETE FROM promotional_videos');

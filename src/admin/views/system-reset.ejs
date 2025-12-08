@@ -173,6 +173,24 @@
                     <span class="count-badge">Level config</span>
                 </div>
 
+                <div class="category-card">
+                    <input type="checkbox" name="categories" value="shop" id="cat-shop">
+                    <div class="category-info">
+                        <h3><label for="cat-shop">Shop Data (All)</label></h3>
+                        <p>Delete all shop chapters, items, and user purchases. Resets xp_spent to 0.</p>
+                    </div>
+                    <span class="count-badge"><%= counts.shop_chapters %> chapters, <%= counts.shop_items %> items</span>
+                </div>
+
+                <div class="category-card">
+                    <input type="checkbox" name="categories" value="shop_purchases" id="cat-shop-purchases">
+                    <div class="category-info">
+                        <h3><label for="cat-shop-purchases">Shop Purchases Only</label></h3>
+                        <p>Clear all user purchases (keeps chapters & items). Resets xp_spent to 0.</p>
+                    </div>
+                    <span class="count-badge"><%= counts.user_purchases %> purchases</span>
+                </div>
+
                 <div class="warning-box">
                     <strong>To confirm, type:</strong> RESET DATABASE
                     <input type="text" id="confirmText" class="confirm-input" placeholder="Type confirmation text here...">
@@ -189,7 +207,7 @@
             <h2 style="color: #dc3545;">Nuclear Option: Reset Everything</h2>
             <p style="color: #666;">
                 This will delete ALL data from the database and start fresh.
-                User accounts, questions, videos, reels - everything will be gone.
+                User accounts, questions, videos, reels, shop data - everything will be gone.
             </p>
 
             <div class="warning-box" style="background: #f8d7da; border-color: #dc3545;">

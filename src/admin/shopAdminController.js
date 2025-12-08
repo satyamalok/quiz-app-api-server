@@ -115,7 +115,8 @@ async function createChapter(req, res) {
 
     let icon_url = null;
     if (req.file) {
-      icon_url = await uploadFile(req.file, 'shop/icons', req.tenant.slug);
+      const uploadResult = await uploadFile(req.file, 'shop/icons', req.tenant.slug);
+      icon_url = uploadResult.publicUrl;
     }
 
     await shopService.createChapter(req, {
@@ -175,7 +176,8 @@ async function updateChapter(req, res) {
     if (remove_icon === 'on') {
       icon_url = null;
     } else if (req.file) {
-      icon_url = await uploadFile(req.file, 'shop/icons', req.tenant.slug);
+      const uploadResult = await uploadFile(req.file, 'shop/icons', req.tenant.slug);
+      icon_url = uploadResult.publicUrl;
     }
 
     await shopService.updateChapter(req, parseInt(id), {
@@ -339,10 +341,12 @@ async function createItem(req, res) {
 
     if (req.files) {
       if (req.files.pdf_file && req.files.pdf_file[0]) {
-        pdf_url = await uploadFile(req.files.pdf_file[0], 'shop/pdfs', req.tenant.slug);
+        const pdfResult = await uploadFile(req.files.pdf_file[0], 'shop/pdfs', req.tenant.slug);
+        pdf_url = pdfResult.publicUrl;
       }
       if (req.files.thumbnail && req.files.thumbnail[0]) {
-        thumbnail_url = await uploadFile(req.files.thumbnail[0], 'shop/thumbnails', req.tenant.slug);
+        const thumbResult = await uploadFile(req.files.thumbnail[0], 'shop/thumbnails', req.tenant.slug);
+        thumbnail_url = thumbResult.publicUrl;
       }
     }
 
@@ -438,10 +442,12 @@ async function updateItem(req, res) {
 
     if (req.files) {
       if (req.files.pdf_file && req.files.pdf_file[0]) {
-        pdf_url = await uploadFile(req.files.pdf_file[0], 'shop/pdfs', req.tenant.slug);
+        const pdfUploadResult = await uploadFile(req.files.pdf_file[0], 'shop/pdfs', req.tenant.slug);
+        pdf_url = pdfUploadResult.publicUrl;
       }
       if (req.files.thumbnail && req.files.thumbnail[0]) {
-        thumbnail_url = await uploadFile(req.files.thumbnail[0], 'shop/thumbnails', req.tenant.slug);
+        const thumbnailUploadResult = await uploadFile(req.files.thumbnail[0], 'shop/thumbnails', req.tenant.slug);
+        thumbnail_url = thumbnailUploadResult.publicUrl;
       }
     }
 
