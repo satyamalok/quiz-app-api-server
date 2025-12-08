@@ -56,11 +56,11 @@ docker-compose up -d
 
 ## Critical Architecture Details
 
-### Database Schema (17 Tables)
+### Database Schema (20 Tables)
 
-The application uses 17 interconnected tables. Key relationships:
+The application uses 20 interconnected tables. Key relationships:
 
-1. **users_profile** - Core user data with unique 5-digit `referral_code`
+1. **users_profile** - Core user data with unique 5-digit `referral_code`, includes `xp_spent` for shop balance
 2. **questions** - 100 levels × 10 questions, uses **@ symbol prefix** for correct answers
 3. **referral_tracking** - Two-way referral tracking (who referred whom, XP granted, timestamps)
 4. **level_attempts** - Tracks each level attempt with XP calculations and lifelines
@@ -77,6 +77,9 @@ The application uses 17 interconnected tables. Key relationships:
 15. **app_config** - Application-wide configuration (OTP rate limiting, test mode, lifelines, reels settings)
 16. **reels** - Video reels (TikTok/Shorts style) with views, hearts, completion tracking
 17. **user_reel_progress** - User viewing progress per reel (started/watched status, hearts)
+18. **shop_chapters** - Shop categories for PDF items
+19. **shop_items** - PDF items for sale with XP pricing
+20. **user_purchases** - Purchase records tracking who bought what
 
 ### Correct Answer Format (CRITICAL)
 
@@ -990,6 +993,121 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 - Auth flow (OTP send/verify)
 - Quiz flow (start level, answer questions)
 - Read-heavy (leaderboard, profile, reels feed)
+
+## Shop Feature (2025-12-08)
+
+**PDF Notes Marketplace:** Students can purchase study materials (PDF notes) using their earned XP points.
+
+### Core Concept
+
+- **Chapters:** Categories for organizing PDF items (e.g., "Mathematics", "Science")
+- **Items:** Individual PDFs with XP pricing, thumbnails, and optional stock limits
+- **Purchases:** Track who bought what, at what price, with full history
+- **Balance Leaderboard:** Rank students by remaining XP (earned - spent)
+
+### Database Tables (3 New Tables)
+
+1. **shop_chapters** - Chapter/category management
+   - `id`, `name`, `description`, `icon_url`
+   - `display_order`, `is_active`, `total_items` (auto-updated via trigger)
+
+2. **shop_items** - PDF items for sale
+   - `id`, `chapter_id`, `title`, `description`
+   - `pdf_url`, `thumbnail_url`, `file_size_bytes`, `page_count`
+   - `xp_price` (0 for free items), `xp_original_price` (for sales), `sale_ends_at`
+   - `is_stock_enabled`, `stock_total`, `stock_remaining`
+   - `is_active`, `is_featured`, `display_order`, `total_purchases`
+
+3. **user_purchases** - Purchase records
+   - `id`, `phone`, `item_id`, `chapter_id`
+   - `xp_paid` (price at purchase time), `item_title` (snapshot)
+   - `purchased_at` (timestamp)
+
+**Schema Update:** `users_profile` gets `xp_spent` column for balance calculation.
+
+### API Endpoints
+
+**Public (with optional auth for purchase status):**
+```
+GET  /api/v1/{app}/shop/chapters         - List all chapters
+GET  /api/v1/{app}/shop/chapters/:id     - Get chapter with items
+GET  /api/v1/{app}/shop/items            - List all items (filterable)
+GET  /api/v1/{app}/shop/items/:id        - Get item details
+GET  /api/v1/{app}/shop/featured         - Get featured items
+```
+
+**Protected (requires JWT):**
+```
+POST /api/v1/{app}/shop/purchase         - Purchase item with XP
+GET  /api/v1/{app}/shop/my-purchases     - Get user's purchased items
+GET  /api/v1/{app}/user/balance          - Get XP balance (earned, spent, remaining)
+GET  /api/v1/{app}/leaderboard/balance   - Balance leaderboard (top 50)
+GET  /api/v1/{app}/user/balance-rank     - User's rank on balance leaderboard
+```
+
+### Key Files
+
+- `src/services/shopService.js` - Chapter/Item CRUD operations
+- `src/services/purchaseService.js` - Purchase logic, balance calculations
+- `src/services/balanceLeaderboardService.js` - Balance rankings
+- `src/controllers/shopController.js` - Public shop APIs
+- `src/controllers/balanceLeaderboardController.js` - Leaderboard APIs
+- `src/routes/shopRoutes.js` - Shop API routes
+- `src/middleware/optionalAuth.js` - Optional JWT authentication
+- `scripts/migrations/003_shop_feature.sql` - Database migration
+
+### Admin Panel
+
+- `/admin/shop/chapters` - Chapter management (CRUD)
+- `/admin/shop/items` - Item management with PDF upload
+- `/admin/shop/purchases` - Purchase history with filters
+- `/admin/shop/analytics` - Sales dashboard, top items, top buyers
+- `/admin/shop/leaderboard` - Balance leaderboard (admin view)
+- `/admin/shop/user/:phone/purchases` - User's purchase history
+
+### Business Rules
+
+1. **No refunds** - Digital goods, XP spent is permanent
+2. **Free items allowed** - Set `xp_price = 0`
+3. **Stock limiting** - Optional, shows "Sold Out" badge when depleted
+4. **Sale pricing** - Manual management (admin sets `xp_original_price` and `sale_ends_at`)
+5. **Purchase atomicity** - Uses database transaction with row-level locking
+6. **Price snapshot** - `xp_paid` records price at purchase time (handles future price changes)
+7. **Direct URLs** - PDFs use direct MinIO URLs (not signed URLs for simplicity)
+
+### Important Implementation Details
+
+**Purchase Flow:**
+1. Lock item row (`FOR UPDATE`) to prevent race conditions
+2. Verify item is active and in stock (if applicable)
+3. Check user hasn't already purchased
+4. Lock user row, verify sufficient balance
+5. Create purchase record with price snapshot
+6. Update user's `xp_spent`
+7. Decrement stock if enabled
+8. Return purchase confirmation with PDF URL
+
+**Balance Calculation:**
+- Balance = `xp_total` (earned) - `xp_spent` (spent in shop)
+- Balance leaderboard ranks by remaining balance, then by total earned
+
+**Optional Auth Pattern:**
+```javascript
+// optionalAuth middleware
+if (authHeader && authHeader.startsWith('Bearer ')) {
+  try { req.user = jwt.verify(token); }
+  catch { req.user = null; }
+} else { req.user = null; }
+```
+
+### Common Shop Gotchas
+
+56. **Purchase needs transaction** - Always use `getTenantClient()` for atomic purchase
+57. **Price at purchase time** - Store `xp_paid` separately, don't rely on current `xp_price`
+58. **Stock decrement is atomic** - Done in same transaction as purchase
+59. **Optional auth for browsing** - Use `optionalAuth` middleware for public endpoints
+60. **PDF URL only for purchased** - Only return `pdf_url` if user owns item (is_purchased = true)
+61. **Items on sale check expiry** - Compare `sale_ends_at` with current IST time
 
 ## Multi-Tenancy (2025-12-07)
 

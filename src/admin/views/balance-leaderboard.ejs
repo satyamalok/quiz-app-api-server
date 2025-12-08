@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Balance Leaderboard - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .shop-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .shop-nav a {
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #333;
+        }
+        .shop-nav a.active {
+            background: #007bff;
+            color: white;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card.gold {
+            background: linear-gradient(135deg, #ffd700, #ffb700);
+            color: #333;
+        }
+        .stat-card h3 {
+            margin: 0;
+            font-size: 24px;
+        }
+        .stat-card p {
+            margin: 5px 0 0;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .top-three {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .podium-card {
+            text-align: center;
+            padding: 20px;
+            border-radius: 12px;
+            width: 200px;
+        }
+        .podium-card.first {
+            background: linear-gradient(135deg, #ffd700, #ffb700);
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(255, 215, 0, 0.4);
+        }
+        .podium-card.second {
+            background: linear-gradient(135deg, #c0c0c0, #a8a8a8);
+        }
+        .podium-card.third {
+            background: linear-gradient(135deg, #cd7f32, #b87333);
+            color: white;
+        }
+        .podium-rank {
+            font-size: 32px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .podium-name {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .podium-phone {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-bottom: 10px;
+        }
+        .podium-balance {
+            font-size: 20px;
+            font-weight: bold;
+        }
+        .podium-details {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        .rank-badge {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            line-height: 30px;
+            font-weight: bold;
+            text-align: center;
+            font-size: 12px;
+        }
+        .rank-1 { background: #ffd700; color: #333; }
+        .rank-2 { background: #c0c0c0; color: #333; }
+        .rank-3 { background: #cd7f32; color: white; }
+        .rank-other { background: #f0f0f0; color: #333; }
+        .user-link {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .user-link:hover {
+            text-decoration: underline;
+        }
+        .balance-positive {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .balance-zero {
+            color: #6c757d;
+        }
+        .xp-earned {
+            color: #28a745;
+        }
+        .xp-spent {
+            color: #dc3545;
+        }
+        .pagination {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination a, .pagination span {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-decoration: none;
+            color: #333;
+        }
+        .pagination a:hover { background: #f0f0f0; }
+        .pagination .active { background: #007bff; color: white; border-color: #007bff; }
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        .filters input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="shop-nav">
+            <a href="/admin/shop/chapters">Chapters</a>
+            <a href="/admin/shop/items">Items</a>
+            <a href="/admin/shop/purchases">Purchases</a>
+            <a href="/admin/shop/analytics">Analytics</a>
+            <a href="/admin/shop/leaderboard" class="active">Balance Leaderboard</a>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card gold">
+                <h3><%= (stats.total_balance || 0).toLocaleString() %></h3>
+                <p>Total XP in Circulation</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= (stats.total_earned || 0).toLocaleString() %></h3>
+                <p>Total XP Earned</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= (stats.total_spent || 0).toLocaleString() %></h3>
+                <p>Total XP Spent</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= stats.users_with_balance || 0 %></h3>
+                <p>Users with Balance</p>
+            </div>
+        </div>
+
+        <div class="header-row">
+            <h2>Balance Leaderboard</h2>
+            <span>Ranking by XP Balance (Earned - Spent)</span>
+        </div>
+
+        <!-- Top 3 Podium -->
+        <% if (leaderboard && leaderboard.length >= 3) { %>
+        <div class="top-three">
+            <div class="podium-card second">
+                <div class="podium-rank">#2</div>
+                <div class="podium-name"><%= leaderboard[1].name || 'Anonymous' %></div>
+                <div class="podium-phone"><%= leaderboard[1].phone %></div>
+                <div class="podium-balance"><%= (leaderboard[1].balance || 0).toLocaleString() %> XP</div>
+                <div class="podium-details">
+                    Earned: <%= (leaderboard[1].xp_total || 0).toLocaleString() %> |
+                    Spent: <%= (leaderboard[1].xp_spent || 0).toLocaleString() %>
+                </div>
+            </div>
+            <div class="podium-card first">
+                <div class="podium-rank">#1</div>
+                <div class="podium-name"><%= leaderboard[0].name || 'Anonymous' %></div>
+                <div class="podium-phone"><%= leaderboard[0].phone %></div>
+                <div class="podium-balance"><%= (leaderboard[0].balance || 0).toLocaleString() %> XP</div>
+                <div class="podium-details">
+                    Earned: <%= (leaderboard[0].xp_total || 0).toLocaleString() %> |
+                    Spent: <%= (leaderboard[0].xp_spent || 0).toLocaleString() %>
+                </div>
+            </div>
+            <div class="podium-card third">
+                <div class="podium-rank">#3</div>
+                <div class="podium-name"><%= leaderboard[2].name || 'Anonymous' %></div>
+                <div class="podium-phone"><%= leaderboard[2].phone %></div>
+                <div class="podium-balance"><%= (leaderboard[2].balance || 0).toLocaleString() %> XP</div>
+                <div class="podium-details">
+                    Earned: <%= (leaderboard[2].xp_total || 0).toLocaleString() %> |
+                    Spent: <%= (leaderboard[2].xp_spent || 0).toLocaleString() %>
+                </div>
+            </div>
+        </div>
+        <% } %>
+
+        <!-- Search -->
+        <form method="GET" class="filters">
+            <input type="text" name="phone" placeholder="Search by phone..." value="<%= filters.phone || '' %>">
+            <button type="submit" class="btn btn-primary">Search</button>
+            <a href="/admin/shop/leaderboard" class="btn btn-secondary">Clear</a>
+        </form>
+
+        <!-- Full Leaderboard Table -->
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>User</th>
+                    <th>Phone</th>
+                    <th>Level</th>
+                    <th class="xp-earned">XP Earned</th>
+                    <th class="xp-spent">XP Spent</th>
+                    <th>Balance</th>
+                    <th>Purchases</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% leaderboard.forEach((user, index) => { %>
+                <tr>
+                    <td>
+                        <span class="rank-badge <%= index < 3 ? 'rank-' + (index + 1) : 'rank-other' %>">
+                            <%= index + 1 %>
+                        </span>
+                    </td>
+                    <td><%= user.name || 'Anonymous' %></td>
+                    <td>
+                        <a href="/admin/shop/user/<%= user.phone %>/purchases" class="user-link">
+                            <%= user.phone %>
+                        </a>
+                    </td>
+                    <td><%= user.current_level || 1 %></td>
+                    <td class="xp-earned">+<%= (user.xp_total || 0).toLocaleString() %></td>
+                    <td class="xp-spent">-<%= (user.xp_spent || 0).toLocaleString() %></td>
+                    <td class="<%= user.balance > 0 ? 'balance-positive' : 'balance-zero' %>">
+                        <%= (user.balance || 0).toLocaleString() %> XP
+                    </td>
+                    <td><%= user.total_purchases || 0 %></td>
+                </tr>
+                <% }); %>
+                <% if (leaderboard.length === 0) { %>
+                <tr>
+                    <td colspan="8" style="text-align:center;padding:30px;">
+                        No users found.
+                    </td>
+                </tr>
+                <% } %>
+            </tbody>
+        </table>
+
+        <% if (pagination.totalPages > 1) { %>
+        <div class="pagination">
+            <% if (pagination.page > 1) { %>
+            <a href="?page=<%= pagination.page - 1 %>&phone=<%= filters.phone || '' %>">Prev</a>
+            <% } %>
+            <% for (let i = Math.max(1, pagination.page - 2); i <= Math.min(pagination.totalPages, pagination.page + 2); i++) { %>
+            <% if (i === pagination.page) { %>
+            <span class="active"><%= i %></span>
+            <% } else { %>
+            <a href="?page=<%= i %>&phone=<%= filters.phone || '' %>"><%= i %></a>
+            <% } %>
+            <% } %>
+            <% if (pagination.page < pagination.totalPages) { %>
+            <a href="?page=<%= pagination.page + 1 %>&phone=<%= filters.phone || '' %>">Next</a>
+            <% } %>
+        </div>
+        <% } %>
+    </div>
+</body>
+</html>

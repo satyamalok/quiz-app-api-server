@@ -9,6 +9,7 @@ const videoRoutes = require('./videoRoutes');
 const statsRoutes = require('./statsRoutes');
 const reelsRoutes = require('./reelsRoutes');
 const levelsRoutes = require('./levelsRoutes');
+const shopRoutes = require('./shopRoutes');
 
 // Import tenant middleware
 const { tenantMiddleware, attachTenantHelpers } = require('../middleware/tenantMiddleware');
@@ -32,7 +33,8 @@ router.use('/:appId/user', userRoutes);
 router.use('/:appId/levels', levelsRoutes); // Quiz levels metadata (unauthenticated) - MUST be before quizRoutes
 router.use('/:appId', quizRoutes); // Includes /level/* and /question/*
 router.use('/:appId/video', videoRoutes);
-router.use('/:appId', statsRoutes); // Includes /leaderboard/*, /app/*
+router.use('/:appId', statsRoutes); // Includes /leaderboard/*, /app/*, /user/balance*
 router.use('/:appId/reels', reelsRoutes); // Video reels feature
+router.use('/:appId/shop', shopRoutes); // Shop for PDF notes
 
 module.exports = router;

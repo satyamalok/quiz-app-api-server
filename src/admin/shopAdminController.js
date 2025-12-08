@@ -1,0 +1,765 @@
+/**
+ * Shop Admin Controller
+ * Handles admin CRUD operations for shop chapters and items
+ */
+
+const shopService = require('../services/shopService');
+const purchaseService = require('../services/purchaseService');
+const balanceLeaderboardService = require('../services/balanceLeaderboardService');
+const { uploadFile, deleteFile } = require('../services/uploadService');
+const multer = require('multer');
+
+/**
+ * Prepare request object for tenant-aware services
+ * Sets req.tenant from admin session's currentApp
+ * This bridges admin panel (req.session.currentApp) with services (req.tenant)
+ */
+function prepareAdminReq(req) {
+  if (!req.session?.currentApp) {
+    throw new Error('No app selected. Please select an app first.');
+  }
+
+  // Set req.tenant for tenantQuery compatibility
+  req.tenant = {
+    id: req.session.currentApp.id,
+    slug: req.session.currentApp.slug,
+    schema: req.session.currentApp.schema,
+    bucket: req.session.currentApp.bucket || req.session.currentApp.slug
+  };
+
+  return req;
+}
+
+// Configure multer for file uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit for PDFs
+  fileFilter: (req, file, cb) => {
+    if (file.fieldname === 'pdf_file') {
+      if (file.mimetype === 'application/pdf') {
+        cb(null, true);
+      } else {
+        cb(new Error('Only PDF files are allowed'));
+      }
+    } else if (file.fieldname === 'thumbnail' || file.fieldname === 'icon') {
+      if (file.mimetype.startsWith('image/')) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only image files are allowed'));
+      }
+    } else {
+      cb(null, true);
+    }
+  }
+});
+
+// ============================================
+// CHAPTERS
+// ============================================
+
+/**
+ * GET /admin/shop/chapters
+ * List all chapters
+ */
+async function showChapters(req, res) {
+  try {
+    prepareAdminReq(req);
+    const chapters = await shopService.getAllChapters(req, false);
+    const stats = await shopService.getShopStats(req);
+
+    res.render('shop-chapters', {
+      title: 'Shop Chapters',
+      chapters,
+      stats,
+      currentApp: req.currentApp,
+      allApps: req.allApps,
+      success: req.query.success,
+      error: req.query.error
+    });
+  } catch (err) {
+    console.error('Error loading chapters:', err);
+    res.render('shop-chapters', {
+      title: 'Shop Chapters',
+      chapters: [],
+      stats: {},
+      currentApp: req.currentApp,
+      allApps: req.allApps,
+      error: 'Failed to load chapters: ' + err.message
+    });
+  }
+}
+
+/**
+ * GET /admin/shop/chapters/create
+ * Show create chapter form
+ */
+async function showCreateChapter(req, res) {
+  res.render('shop-chapter-form', {
+    title: 'Create Chapter',
+    chapter: null,
+    isEdit: false,
+    currentApp: req.currentApp,
+    allApps: req.allApps
+  });
+}
+
+/**
+ * POST /admin/shop/chapters/create
+ * Create a new chapter
+ */
+async function createChapter(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { name, description, display_order, is_active } = req.body;
+
+    let icon_url = null;
+    if (req.file) {
+      icon_url = await uploadFile(req.file, 'shop/icons', req.currentApp.slug);
+    }
+
+    await shopService.createChapter(req, {
+      name,
+      description,
+      icon_url,
+      display_order: parseInt(display_order) || 0,
+      is_active: is_active === 'on'
+    });
+
+    res.redirect('/admin/shop/chapters?success=Chapter created successfully');
+  } catch (err) {
+    console.error('Error creating chapter:', err);
+    res.redirect('/admin/shop/chapters?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * GET /admin/shop/chapters/:id/edit
+ * Show edit chapter form
+ */
+async function showEditChapter(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { id } = req.params;
+    const chapter = await shopService.getChapterById(req, parseInt(id));
+
+    if (!chapter) {
+      return res.redirect('/admin/shop/chapters?error=Chapter not found');
+    }
+
+    res.render('shop-chapter-form', {
+      title: 'Edit Chapter',
+      chapter,
+      isEdit: true,
+      currentApp: req.currentApp,
+      allApps: req.allApps
+    });
+  } catch (err) {
+    console.error('Error loading chapter:', err);
+    res.redirect('/admin/shop/chapters?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/shop/chapters/:id/update
+ * Update a chapter
+ */
+async function updateChapter(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { id } = req.params;
+    const { name, description, display_order, is_active, remove_icon } = req.body;
+
+    let icon_url = undefined; // undefined means don't change
+
+    if (remove_icon === 'on') {
+      icon_url = null;
+    } else if (req.file) {
+      icon_url = await uploadFile(req.file, 'shop/icons', req.currentApp.slug);
+    }
+
+    await shopService.updateChapter(req, parseInt(id), {
+      name,
+      description,
+      icon_url,
+      display_order: parseInt(display_order) || 0,
+      is_active: is_active === 'on'
+    });
+
+    res.redirect('/admin/shop/chapters?success=Chapter updated successfully');
+  } catch (err) {
+    console.error('Error updating chapter:', err);
+    res.redirect('/admin/shop/chapters?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/shop/chapters/:id/delete
+ * Delete a chapter
+ */
+async function deleteChapter(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { id } = req.params;
+    await shopService.deleteChapter(req, parseInt(id));
+    res.redirect('/admin/shop/chapters?success=Chapter deleted successfully');
+  } catch (err) {
+    console.error('Error deleting chapter:', err);
+    res.redirect('/admin/shop/chapters?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/shop/chapters/reorder
+ * Reorder chapters
+ */
+async function reorderChapters(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { order } = req.body; // Array of chapter IDs in new order
+    await shopService.reorderChapters(req, order);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error reordering chapters:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+// ============================================
+// ITEMS
+// ============================================
+
+/**
+ * GET /admin/shop/items
+ * List all items
+ */
+async function showItems(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { chapter_id, status, on_sale, stock_enabled, sort = 'newest', page = 1 } = req.query;
+
+    const limit = 20;
+    const offset = (parseInt(page) - 1) * limit;
+
+    const result = await shopService.getItemsForAdmin(req, {
+      chapter_id: chapter_id ? parseInt(chapter_id) : null,
+      status,
+      on_sale,
+      stock_enabled,
+      sort,
+      limit,
+      offset
+    });
+
+    const chapters = await shopService.getAllChapters(req, false);
+    const stats = await shopService.getShopStats(req);
+
+    const totalPages = Math.ceil(result.pagination.total / limit);
+
+    res.render('shop-items', {
+      title: 'Shop Items',
+      items: result.items,
+      chapters,
+      stats,
+      filters: { chapter_id, status, on_sale, stock_enabled, sort },
+      pagination: {
+        ...result.pagination,
+        page: parseInt(page),
+        totalPages
+      },
+      currentApp: req.currentApp,
+      allApps: req.allApps,
+      success: req.query.success,
+      error: req.query.error
+    });
+  } catch (err) {
+    console.error('Error loading items:', err);
+    res.render('shop-items', {
+      title: 'Shop Items',
+      items: [],
+      chapters: [],
+      stats: {},
+      filters: {},
+      pagination: { total: 0, page: 1, totalPages: 0 },
+      currentApp: req.currentApp,
+      allApps: req.allApps,
+      error: 'Failed to load items: ' + err.message
+    });
+  }
+}
+
+/**
+ * GET /admin/shop/items/create
+ * Show create item form
+ */
+async function showCreateItem(req, res) {
+  try {
+    prepareAdminReq(req);
+    const chapters = await shopService.getAllChapters(req, false);
+
+    res.render('shop-item-form', {
+      title: 'Create Item',
+      item: null,
+      chapters,
+      isEdit: false,
+      currentApp: req.currentApp,
+      allApps: req.allApps
+    });
+  } catch (err) {
+    console.error('Error loading form:', err);
+    res.redirect('/admin/shop/items?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/shop/items/create
+ * Create a new item
+ */
+async function createItem(req, res) {
+  try {
+    prepareAdminReq(req);
+    const {
+      chapter_id,
+      title,
+      description,
+      xp_price,
+      xp_original_price,
+      sale_ends_at,
+      is_stock_enabled,
+      stock_total,
+      display_order,
+      is_active,
+      is_featured,
+      page_count
+    } = req.body;
+
+    // Handle file uploads
+    let pdf_url = null;
+    let thumbnail_url = null;
+
+    if (req.files) {
+      if (req.files.pdf_file && req.files.pdf_file[0]) {
+        pdf_url = await uploadFile(req.files.pdf_file[0], 'shop/pdfs', req.currentApp.slug);
+      }
+      if (req.files.thumbnail && req.files.thumbnail[0]) {
+        thumbnail_url = await uploadFile(req.files.thumbnail[0], 'shop/thumbnails', req.currentApp.slug);
+      }
+    }
+
+    if (!pdf_url) {
+      return res.redirect('/admin/shop/items/create?error=PDF file is required');
+    }
+
+    // Get file size
+    const file_size_bytes = req.files.pdf_file[0].size;
+
+    await shopService.createItem(req, {
+      chapter_id: parseInt(chapter_id),
+      title,
+      description,
+      pdf_url,
+      thumbnail_url,
+      xp_price: parseInt(xp_price) || 0,
+      xp_original_price: xp_original_price ? parseInt(xp_original_price) : null,
+      sale_ends_at: sale_ends_at || null,
+      is_stock_enabled: is_stock_enabled === 'on',
+      stock_total: is_stock_enabled === 'on' ? parseInt(stock_total) : null,
+      display_order: parseInt(display_order) || 0,
+      is_active: is_active === 'on',
+      is_featured: is_featured === 'on',
+      file_size_bytes,
+      page_count: page_count ? parseInt(page_count) : null
+    });
+
+    res.redirect('/admin/shop/items?success=Item created successfully');
+  } catch (err) {
+    console.error('Error creating item:', err);
+    res.redirect('/admin/shop/items/create?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * GET /admin/shop/items/:id/edit
+ * Show edit item form
+ */
+async function showEditItem(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { id } = req.params;
+    const item = await shopService.getItemById(req, parseInt(id));
+    const chapters = await shopService.getAllChapters(req, false);
+
+    if (!item) {
+      return res.redirect('/admin/shop/items?error=Item not found');
+    }
+
+    res.render('shop-item-form', {
+      title: 'Edit Item',
+      item,
+      chapters,
+      isEdit: true,
+      currentApp: req.currentApp,
+      allApps: req.allApps
+    });
+  } catch (err) {
+    console.error('Error loading item:', err);
+    res.redirect('/admin/shop/items?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/shop/items/:id/update
+ * Update an item
+ */
+async function updateItem(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { id } = req.params;
+    const {
+      chapter_id,
+      title,
+      description,
+      xp_price,
+      xp_original_price,
+      sale_ends_at,
+      is_stock_enabled,
+      stock_total,
+      stock_remaining,
+      display_order,
+      is_active,
+      is_featured,
+      page_count,
+      remove_thumbnail,
+      clear_sale
+    } = req.body;
+
+    let pdf_url = undefined;
+    let thumbnail_url = undefined;
+
+    if (req.files) {
+      if (req.files.pdf_file && req.files.pdf_file[0]) {
+        pdf_url = await uploadFile(req.files.pdf_file[0], 'shop/pdfs', req.currentApp.slug);
+      }
+      if (req.files.thumbnail && req.files.thumbnail[0]) {
+        thumbnail_url = await uploadFile(req.files.thumbnail[0], 'shop/thumbnails', req.currentApp.slug);
+      }
+    }
+
+    if (remove_thumbnail === 'on') {
+      thumbnail_url = null;
+    }
+
+    // Handle sale clearing
+    let finalOriginalPrice = xp_original_price ? parseInt(xp_original_price) : null;
+    let finalSaleEndsAt = sale_ends_at || null;
+
+    if (clear_sale === 'on') {
+      finalOriginalPrice = null;
+      finalSaleEndsAt = null;
+    }
+
+    const updateData = {
+      chapter_id: parseInt(chapter_id),
+      title,
+      description,
+      xp_price: parseInt(xp_price) || 0,
+      xp_original_price: finalOriginalPrice,
+      sale_ends_at: finalSaleEndsAt,
+      is_stock_enabled: is_stock_enabled === 'on',
+      stock_total: is_stock_enabled === 'on' ? parseInt(stock_total) : null,
+      stock_remaining: is_stock_enabled === 'on' ? parseInt(stock_remaining) : null,
+      display_order: parseInt(display_order) || 0,
+      is_active: is_active === 'on',
+      is_featured: is_featured === 'on',
+      page_count: page_count ? parseInt(page_count) : null
+    };
+
+    if (pdf_url !== undefined) {
+      updateData.pdf_url = pdf_url;
+      if (req.files.pdf_file && req.files.pdf_file[0]) {
+        updateData.file_size_bytes = req.files.pdf_file[0].size;
+      }
+    }
+    if (thumbnail_url !== undefined) {
+      updateData.thumbnail_url = thumbnail_url;
+    }
+
+    await shopService.updateItem(req, parseInt(id), updateData);
+
+    res.redirect('/admin/shop/items?success=Item updated successfully');
+  } catch (err) {
+    console.error('Error updating item:', err);
+    res.redirect('/admin/shop/items/' + req.params.id + '/edit?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/shop/items/:id/delete
+ * Delete an item
+ */
+async function deleteItem(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { id } = req.params;
+    await shopService.deleteItem(req, parseInt(id));
+    res.redirect('/admin/shop/items?success=Item deleted successfully');
+  } catch (err) {
+    console.error('Error deleting item:', err);
+    res.redirect('/admin/shop/items?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/shop/items/bulk-action
+ * Bulk action on items
+ */
+async function bulkItemAction(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { action, item_ids } = req.body;
+
+    if (!item_ids || !Array.isArray(item_ids) || item_ids.length === 0) {
+      return res.redirect('/admin/shop/items?error=No items selected');
+    }
+
+    const ids = item_ids.map(id => parseInt(id));
+
+    switch (action) {
+      case 'activate':
+        await shopService.bulkUpdateItemStatus(req, ids, true);
+        break;
+      case 'deactivate':
+        await shopService.bulkUpdateItemStatus(req, ids, false);
+        break;
+      case 'delete':
+        await shopService.bulkDeleteItems(req, ids);
+        break;
+      default:
+        return res.redirect('/admin/shop/items?error=Invalid action');
+    }
+
+    res.redirect('/admin/shop/items?success=Bulk action completed');
+  } catch (err) {
+    console.error('Error performing bulk action:', err);
+    res.redirect('/admin/shop/items?error=' + encodeURIComponent(err.message));
+  }
+}
+
+// ============================================
+// PURCHASES & ANALYTICS
+// ============================================
+
+/**
+ * GET /admin/shop/purchases
+ * View purchase history
+ */
+async function showPurchases(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { phone, chapter_id, date_from, date_to, sort = 'newest', page = 1 } = req.query;
+
+    const limit = 50;
+    const offset = (parseInt(page) - 1) * limit;
+
+    const result = await purchaseService.getAllPurchases(req, {
+      phone,
+      chapter_id: chapter_id ? parseInt(chapter_id) : null,
+      date_from,
+      date_to,
+      sort,
+      limit,
+      offset
+    });
+
+    const chapters = await shopService.getAllChapters(req, false);
+    const totalPages = Math.ceil(result.pagination.total / limit);
+
+    res.render('shop-purchases', {
+      title: 'Purchase History',
+      purchases: result.purchases,
+      chapters,
+      filters: { phone, chapter_id, date_from, date_to, sort },
+      pagination: {
+        ...result.pagination,
+        page: parseInt(page),
+        totalPages
+      },
+      currentApp: req.currentApp,
+      allApps: req.allApps,
+      success: req.query.success,
+      error: req.query.error
+    });
+  } catch (err) {
+    console.error('Error loading purchases:', err);
+    res.render('shop-purchases', {
+      title: 'Purchase History',
+      purchases: [],
+      chapters: [],
+      filters: {},
+      pagination: { total: 0, page: 1, totalPages: 0 },
+      currentApp: req.currentApp,
+      allApps: req.allApps,
+      error: 'Failed to load purchases: ' + err.message
+    });
+  }
+}
+
+/**
+ * GET /admin/shop/analytics
+ * Shop analytics dashboard
+ */
+async function showShopAnalytics(req, res) {
+  try {
+    prepareAdminReq(req);
+    const analytics = await purchaseService.getPurchaseAnalytics(req);
+    const stats = await shopService.getShopStats(req);
+
+    // Get top selling items
+    const topItems = await shopService.getTopSellingItems(req, 10);
+
+    // Get top buyers
+    const topBuyers = await purchaseService.getTopBuyers(req, 10);
+
+    // Get sales by chapter
+    const chapterStats = await shopService.getChapterSalesStats(req);
+
+    // Get recent purchases
+    const recentResult = await purchaseService.getAllPurchases(req, { limit: 10, offset: 0 });
+
+    res.render('shop-analytics', {
+      title: 'Shop Analytics',
+      analytics: { ...analytics, ...stats },
+      topItems,
+      topBuyers,
+      chapterStats,
+      recentPurchases: recentResult.purchases,
+      currentApp: req.currentApp,
+      allApps: req.allApps
+    });
+  } catch (err) {
+    console.error('Error loading analytics:', err);
+    res.render('shop-analytics', {
+      title: 'Shop Analytics',
+      analytics: {},
+      topItems: [],
+      topBuyers: [],
+      chapterStats: [],
+      recentPurchases: [],
+      currentApp: req.currentApp,
+      allApps: req.allApps,
+      error: 'Failed to load analytics: ' + err.message
+    });
+  }
+}
+
+/**
+ * GET /admin/shop/leaderboard
+ * Balance leaderboard admin view
+ */
+async function showBalanceLeaderboard(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { page = 1, phone } = req.query;
+    const limit = 50;
+    const offset = (parseInt(page) - 1) * limit;
+
+    const result = await balanceLeaderboardService.getBalanceLeaderboardAdmin(req, limit, offset, phone);
+    const totalPages = Math.ceil(result.pagination.total / limit);
+
+    // Get overall balance stats
+    const stats = await balanceLeaderboardService.getBalanceStats(req);
+
+    res.render('balance-leaderboard', {
+      title: 'Balance Leaderboard',
+      leaderboard: result.users,
+      stats,
+      filters: { phone },
+      pagination: {
+        ...result.pagination,
+        page: parseInt(page),
+        totalPages
+      },
+      currentApp: req.currentApp,
+      allApps: req.allApps
+    });
+  } catch (err) {
+    console.error('Error loading leaderboard:', err);
+    res.render('balance-leaderboard', {
+      title: 'Balance Leaderboard',
+      leaderboard: [],
+      stats: {},
+      filters: {},
+      pagination: { total: 0, page: 1, totalPages: 0 },
+      currentApp: req.currentApp,
+      allApps: req.allApps,
+      error: 'Failed to load leaderboard: ' + err.message
+    });
+  }
+}
+
+/**
+ * GET /admin/shop/user/:phone/purchases
+ * View a specific user's purchases
+ */
+async function showUserPurchases(req, res) {
+  try {
+    prepareAdminReq(req);
+    const { phone } = req.params;
+    const { page = 1 } = req.query;
+    const limit = 50;
+    const offset = (parseInt(page) - 1) * limit;
+
+    // Get user info
+    const user = await purchaseService.getUserInfo(req, phone);
+    if (!user) {
+      return res.redirect('/admin/shop/purchases?error=User not found');
+    }
+
+    const result = await purchaseService.getUserPurchases(req, phone, { limit, offset });
+    const balance = await purchaseService.getUserBalance(req, phone);
+    const totalPages = Math.ceil((result.total_items || 0) / limit);
+
+    res.render('shop-user-purchases', {
+      title: `Purchases: ${user.name || phone}`,
+      user,
+      purchases: result.purchases,
+      balance,
+      pagination: {
+        total: result.total_items || 0,
+        page: parseInt(page),
+        totalPages
+      },
+      currentApp: req.currentApp,
+      allApps: req.allApps
+    });
+  } catch (err) {
+    console.error('Error loading user purchases:', err);
+    res.redirect('/admin/shop/purchases?error=' + encodeURIComponent(err.message));
+  }
+}
+
+module.exports = {
+  // Chapters
+  showChapters,
+  showCreateChapter,
+  createChapter,
+  showEditChapter,
+  updateChapter,
+  deleteChapter,
+  reorderChapters,
+  // Items
+  showItems,
+  showCreateItem,
+  createItem,
+  showEditItem,
+  updateItem,
+  deleteItem,
+  bulkItemAction,
+  // Purchases & Analytics
+  showPurchases,
+  showShopAnalytics,
+  showBalanceLeaderboard,
+  showUserPurchases,
+  // Multer upload middleware
+  upload
+};

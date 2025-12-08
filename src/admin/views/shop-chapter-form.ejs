@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= isEdit ? 'Edit' : 'Create' %> Chapter - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .form-container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .form-group textarea {
+            min-height: 100px;
+        }
+        .form-group small {
+            color: #666;
+            display: block;
+            margin-top: 5px;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .current-icon {
+            width: 80px;
+            height: 80px;
+            border-radius: 8px;
+            object-fit: cover;
+            margin-bottom: 10px;
+        }
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="form-container">
+            <h2><%= isEdit ? 'Edit' : 'Create' %> Chapter</h2>
+
+            <form action="/admin/shop/chapters/<%= isEdit ? chapter.id + '/update' : 'create' %>"
+                  method="POST" enctype="multipart/form-data">
+
+                <div class="form-group">
+                    <label for="name">Chapter Name *</label>
+                    <input type="text" id="name" name="name" required
+                           value="<%= chapter ? chapter.name : '' %>"
+                           placeholder="e.g., Mathematics">
+                </div>
+
+                <div class="form-group">
+                    <label for="description">Description</label>
+                    <textarea id="description" name="description"
+                              placeholder="Brief description of this chapter"><%= chapter ? chapter.description : '' %></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="icon">Chapter Icon</label>
+                    <% if (isEdit && chapter && chapter.icon_url) { %>
+                    <div>
+                        <img src="<%= chapter.icon_url %>" class="current-icon" alt="">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="remove_icon" name="remove_icon">
+                            <label for="remove_icon" style="font-weight:normal">Remove current icon</label>
+                        </div>
+                    </div>
+                    <% } %>
+                    <input type="file" id="icon" name="icon" accept="image/*">
+                    <small>Recommended size: 100x100px. Optional.</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="display_order">Display Order</label>
+                    <input type="number" id="display_order" name="display_order" min="0"
+                           value="<%= chapter ? chapter.display_order : 0 %>">
+                    <small>Lower numbers appear first.</small>
+                </div>
+
+                <div class="form-group">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="is_active" name="is_active"
+                               <%= (chapter && chapter.is_active) || !isEdit ? 'checked' : '' %>>
+                        <label for="is_active" style="font-weight:normal">Active (visible in app)</label>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <%= isEdit ? 'Update Chapter' : 'Create Chapter' %>
+                    </button>
+                    <a href="/admin/shop/chapters" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

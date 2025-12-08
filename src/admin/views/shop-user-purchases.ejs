@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Purchases - <%= user.name || user.phone %> - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .breadcrumb {
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .breadcrumb a {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .breadcrumb a:hover {
+            text-decoration: underline;
+        }
+        .user-header {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+            padding: 25px;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        .user-avatar {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            background: #007bff;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .user-details h2 {
+            margin: 0 0 5px;
+            font-size: 22px;
+        }
+        .user-details .phone {
+            font-size: 16px;
+            color: #666;
+        }
+        .user-details .meta {
+            font-size: 13px;
+            color: #888;
+            margin-top: 5px;
+        }
+        .balance-card {
+            background: linear-gradient(135deg, #28a745, #20c997);
+            color: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .balance-card h3 {
+            margin: 0;
+            font-size: 32px;
+        }
+        .balance-card p {
+            margin: 5px 0 0;
+            font-size: 13px;
+            opacity: 0.9;
+        }
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        .stat-box {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            text-align: center;
+        }
+        .stat-box h4 {
+            margin: 0;
+            font-size: 22px;
+            color: #333;
+        }
+        .stat-box.earned h4 { color: #28a745; }
+        .stat-box.spent h4 { color: #dc3545; }
+        .stat-box p {
+            margin: 5px 0 0;
+            font-size: 12px;
+            color: #666;
+        }
+        .section-title {
+            font-size: 18px;
+            font-weight: bold;
+            margin: 25px 0 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #007bff;
+        }
+        .purchase-card {
+            display: flex;
+            align-items: center;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 12px;
+            transition: box-shadow 0.2s;
+        }
+        .purchase-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .purchase-thumb {
+            width: 60px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 6px;
+            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+        .purchase-info {
+            flex: 1;
+            margin-left: 15px;
+        }
+        .purchase-title {
+            font-weight: 600;
+            font-size: 15px;
+            margin-bottom: 4px;
+        }
+        .purchase-chapter {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 4px;
+        }
+        .purchase-date {
+            font-size: 12px;
+            color: #888;
+        }
+        .purchase-xp {
+            text-align: right;
+        }
+        .purchase-xp-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #dc3545;
+        }
+        .purchase-xp-label {
+            font-size: 11px;
+            color: #666;
+        }
+        .status-badge {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-left: 8px;
+        }
+        .status-active { background: #d4edda; color: #155724; }
+        .status-inactive { background: #f8d7da; color: #721c24; }
+        .download-btn {
+            display: inline-block;
+            padding: 6px 12px;
+            background: #007bff;
+            color: white;
+            border-radius: 5px;
+            text-decoration: none;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+        .download-btn:hover {
+            background: #0056b3;
+            color: white;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 50px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            color: #666;
+        }
+        .pagination {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination a, .pagination span {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-decoration: none;
+            color: #333;
+        }
+        .pagination a:hover { background: #f0f0f0; }
+        .pagination .active { background: #007bff; color: white; border-color: #007bff; }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="breadcrumb">
+            <a href="/admin/shop/purchases">Purchases</a> /
+            <a href="/admin/shop/leaderboard">Leaderboard</a> /
+            <span>User: <%= user.phone %></span>
+        </div>
+
+        <!-- User Header -->
+        <div class="user-header">
+            <div class="user-info">
+                <div class="user-avatar">
+                    <%= user.name ? user.name.charAt(0).toUpperCase() : '?' %>
+                </div>
+                <div class="user-details">
+                    <h2><%= user.name || 'Anonymous User' %></h2>
+                    <div class="phone"><%= user.phone %></div>
+                    <div class="meta">
+                        Level <%= user.current_level || 1 %> &bull;
+                        Joined <%= new Date(user.created_at).toLocaleDateString('en-IN') %>
+                        <% if (user.district) { %> &bull; <%= user.district %><% } %>
+                    </div>
+                </div>
+            </div>
+            <div class="balance-card">
+                <h3><%= (balance.balance || 0).toLocaleString() %></h3>
+                <p>XP Balance</p>
+            </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="stats-row">
+            <div class="stat-box earned">
+                <h4>+<%= (balance.xp_total || 0).toLocaleString() %></h4>
+                <p>Total XP Earned</p>
+            </div>
+            <div class="stat-box spent">
+                <h4>-<%= (balance.xp_spent || 0).toLocaleString() %></h4>
+                <p>Total XP Spent</p>
+            </div>
+            <div class="stat-box">
+                <h4><%= purchases.length %></h4>
+                <p>Items Purchased</p>
+            </div>
+            <div class="stat-box">
+                <h4><%= user.current_level || 1 %></h4>
+                <p>Current Level</p>
+            </div>
+        </div>
+
+        <!-- Purchase History -->
+        <div class="section-title">Purchase History</div>
+
+        <% if (purchases && purchases.length > 0) { %>
+            <% purchases.forEach(p => { %>
+            <div class="purchase-card">
+                <% if (p.thumbnail_url) { %>
+                <img src="<%= p.thumbnail_url %>" class="purchase-thumb" alt="">
+                <% } else { %>
+                <div class="purchase-thumb">📄</div>
+                <% } %>
+                <div class="purchase-info">
+                    <div class="purchase-title">
+                        <%= p.item_title %>
+                        <span class="status-badge <%= p.is_item_active ? 'status-active' : 'status-inactive' %>">
+                            <%= p.is_item_active ? 'Active' : 'Inactive' %>
+                        </span>
+                    </div>
+                    <div class="purchase-chapter"><%= p.chapter_name %></div>
+                    <div class="purchase-date">
+                        Purchased on <%= new Date(p.purchased_at).toLocaleString('en-IN', {
+                            timeZone: 'Asia/Kolkata',
+                            dateStyle: 'medium',
+                            timeStyle: 'short'
+                        }) %>
+                    </div>
+                    <% if (p.pdf_url) { %>
+                    <a href="<%= p.pdf_url %>" target="_blank" class="download-btn">Download PDF</a>
+                    <% } %>
+                </div>
+                <div class="purchase-xp">
+                    <div class="purchase-xp-value">-<%= p.xp_paid %> XP</div>
+                    <div class="purchase-xp-label">Paid</div>
+                </div>
+            </div>
+            <% }); %>
+        <% } else { %>
+            <div class="empty-state">
+                <h3>No Purchases Yet</h3>
+                <p>This user hasn't purchased any items from the shop.</p>
+            </div>
+        <% } %>
+
+        <% if (pagination.totalPages > 1) { %>
+        <div class="pagination">
+            <% if (pagination.page > 1) { %>
+            <a href="?page=<%= pagination.page - 1 %>">Prev</a>
+            <% } %>
+            <% for (let i = Math.max(1, pagination.page - 2); i <= Math.min(pagination.totalPages, pagination.page + 2); i++) { %>
+            <% if (i === pagination.page) { %>
+            <span class="active"><%= i %></span>
+            <% } else { %>
+            <a href="?page=<%= i %>"><%= i %></a>
+            <% } %>
+            <% } %>
+            <% if (pagination.page < pagination.totalPages) { %>
+            <a href="?page=<%= pagination.page + 1 %>">Next</a>
+            <% } %>
+        </div>
+        <% } %>
+    </div>
+</body>
+</html>

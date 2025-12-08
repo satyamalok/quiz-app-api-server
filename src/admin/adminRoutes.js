@@ -88,6 +88,27 @@ const {
   performReset,
   resetAllData
 } = require('./systemResetController');
+const {
+  showChapters,
+  showCreateChapter,
+  createChapter,
+  showEditChapter,
+  updateChapter,
+  deleteChapter,
+  reorderChapters,
+  showItems,
+  showCreateItem,
+  createItem,
+  showEditItem,
+  updateItem,
+  deleteItem,
+  bulkItemAction,
+  showPurchases,
+  showShopAnalytics,
+  showBalanceLeaderboard,
+  showUserPurchases,
+  upload: shopUpload
+} = require('./shopAdminController');
 const { requireAdminAuth, redirectIfAuthenticated } = require('../middleware/adminAuth');
 const { requireAppSelection } = require('../middleware/requireAppSelection');
 
@@ -232,5 +253,33 @@ router.post('/levels/:levelNumber/toggle', toggleLevelStatus);
 router.get('/system/reset', showResetPage);
 router.post('/system/reset', performReset);
 router.post('/system/reset-all', resetAllData);
+
+// Shop Management
+router.get('/shop/chapters', showChapters);
+router.get('/shop/chapters/create', showCreateChapter);
+router.post('/shop/chapters/create', shopUpload.single('icon'), createChapter);
+router.get('/shop/chapters/:id/edit', showEditChapter);
+router.post('/shop/chapters/:id/update', shopUpload.single('icon'), updateChapter);
+router.post('/shop/chapters/:id/delete', deleteChapter);
+router.post('/shop/chapters/reorder', reorderChapters);
+
+router.get('/shop/items', showItems);
+router.get('/shop/items/create', showCreateItem);
+router.post('/shop/items/create', shopUpload.fields([
+  { name: 'pdf_file', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), createItem);
+router.get('/shop/items/:id/edit', showEditItem);
+router.post('/shop/items/:id/update', shopUpload.fields([
+  { name: 'pdf_file', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), updateItem);
+router.post('/shop/items/:id/delete', deleteItem);
+router.post('/shop/items/bulk-action', bulkItemAction);
+
+router.get('/shop/purchases', showPurchases);
+router.get('/shop/analytics', showShopAnalytics);
+router.get('/shop/leaderboard', showBalanceLeaderboard);
+router.get('/shop/user/:phone/purchases', showUserPurchases);
 
 module.exports = router;

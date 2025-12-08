@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shop Items - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .shop-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .shop-nav a {
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #333;
+        }
+        .shop-nav a.active {
+            background: #007bff;
+            color: white;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin: 0;
+            font-size: 24px;
+            color: #333;
+        }
+        .stat-card p {
+            margin: 5px 0 0;
+            color: #666;
+            font-size: 12px;
+        }
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filters select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .bulk-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        .bulk-actions button {
+            padding: 8px 15px;
+            font-size: 13px;
+        }
+        .item-thumbnail {
+            width: 60px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 4px;
+            background: #f0f0f0;
+        }
+        .item-title {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .price-cell {
+            white-space: nowrap;
+        }
+        .original-price {
+            text-decoration: line-through;
+            color: #999;
+            font-size: 12px;
+        }
+        .sale-badge {
+            background: #ff6b6b;
+            color: white;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-size: 10px;
+            margin-left: 5px;
+        }
+        .status-badge {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        .status-active { background: #d4edda; color: #155724; }
+        .status-inactive { background: #f8d7da; color: #721c24; }
+        .status-sold-out { background: #6c757d; color: white; }
+        .status-featured { background: #fff3cd; color: #856404; }
+        .actions-cell {
+            white-space: nowrap;
+        }
+        .actions-cell button, .actions-cell a {
+            padding: 4px 8px;
+            font-size: 11px;
+            margin: 2px;
+        }
+        .pagination {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination a, .pagination span {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-decoration: none;
+            color: #333;
+        }
+        .pagination a:hover { background: #f0f0f0; }
+        .pagination .active { background: #007bff; color: white; border-color: #007bff; }
+        .alert {
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .alert-success { background: #d4edda; color: #155724; }
+        .alert-error { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="shop-nav">
+            <a href="/admin/shop/chapters">Chapters</a>
+            <a href="/admin/shop/items" class="active">Items</a>
+            <a href="/admin/shop/purchases">Purchases</a>
+            <a href="/admin/shop/analytics">Analytics</a>
+            <a href="/admin/shop/leaderboard">Balance Leaderboard</a>
+        </div>
+
+        <% if (success) { %>
+        <div class="alert alert-success"><%= success %></div>
+        <% } %>
+        <% if (error) { %>
+        <div class="alert alert-error"><%= error %></div>
+        <% } %>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3><%= stats.total_items || 0 %></h3>
+                <p>Total Items</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= stats.featured_items || 0 %></h3>
+                <p>Featured</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= stats.total_purchases || 0 %></h3>
+                <p>Total Sales</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= stats.unique_buyers || 0 %></h3>
+                <p>Unique Buyers</p>
+            </div>
+        </div>
+
+        <div class="header-row">
+            <h2>Shop Items</h2>
+            <a href="/admin/shop/items/create" class="btn btn-primary">+ New Item</a>
+        </div>
+
+        <form method="GET" class="filters">
+            <select name="chapter_id" onchange="this.form.submit()">
+                <option value="">All Chapters</option>
+                <% chapters.forEach(c => { %>
+                <option value="<%= c.id %>" <%= filters.chapter_id == c.id ? 'selected' : '' %>>
+                    <%= c.name %>
+                </option>
+                <% }); %>
+            </select>
+            <select name="status" onchange="this.form.submit()">
+                <option value="">All Status</option>
+                <option value="active" <%= filters.status === 'active' ? 'selected' : '' %>>Active</option>
+                <option value="inactive" <%= filters.status === 'inactive' ? 'selected' : '' %>>Inactive</option>
+            </select>
+            <select name="sort" onchange="this.form.submit()">
+                <option value="newest" <%= filters.sort === 'newest' ? 'selected' : '' %>>Newest First</option>
+                <option value="oldest" <%= filters.sort === 'oldest' ? 'selected' : '' %>>Oldest First</option>
+                <option value="price_asc" <%= filters.sort === 'price_asc' ? 'selected' : '' %>>Price Low-High</option>
+                <option value="price_desc" <%= filters.sort === 'price_desc' ? 'selected' : '' %>>Price High-Low</option>
+                <option value="popular" <%= filters.sort === 'popular' ? 'selected' : '' %>>Most Popular</option>
+                <option value="title" <%= filters.sort === 'title' ? 'selected' : '' %>>Title A-Z</option>
+            </select>
+            <a href="/admin/shop/items" class="btn btn-secondary" style="padding:8px 12px">Clear</a>
+        </form>
+
+        <form action="/admin/shop/items/bulk-action" method="POST" id="bulkForm">
+            <div class="bulk-actions">
+                <label>
+                    <input type="checkbox" id="selectAll" onchange="toggleSelectAll()"> Select All
+                </label>
+                <select name="action" id="bulkAction">
+                    <option value="">Bulk Action</option>
+                    <option value="activate">Activate</option>
+                    <option value="deactivate">Deactivate</option>
+                    <option value="delete">Delete</option>
+                </select>
+                <button type="submit" class="btn btn-secondary" onclick="return confirmBulkAction()">Apply</button>
+            </div>
+
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="headerCheck" onchange="toggleSelectAll()"></th>
+                        <th>Thumb</th>
+                        <th>Title</th>
+                        <th>Chapter</th>
+                        <th>Price</th>
+                        <th>Stock</th>
+                        <th>Sales</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% items.forEach(item => { %>
+                    <tr>
+                        <td><input type="checkbox" name="item_ids[]" value="<%= item.id %>" class="item-checkbox"></td>
+                        <td>
+                            <% if (item.thumbnail_url) { %>
+                            <img src="<%= item.thumbnail_url %>" class="item-thumbnail" alt="">
+                            <% } else { %>
+                            <div class="item-thumbnail" style="display:flex;align-items:center;justify-content:center;font-size:24px;">📄</div>
+                            <% } %>
+                        </td>
+                        <td class="item-title" title="<%= item.title %>"><%= item.title %></td>
+                        <td><%= item.chapter_name %></td>
+                        <td class="price-cell">
+                            <% if (item.is_on_sale && item.xp_original_price) { %>
+                            <span class="original-price"><%= item.xp_original_price %> XP</span><br>
+                            <strong><%= item.xp_price %> XP</strong>
+                            <span class="sale-badge">SALE</span>
+                            <% } else { %>
+                            <strong><%= item.xp_price %> XP</strong>
+                            <% if (item.xp_price === 0) { %><span class="sale-badge" style="background:#28a745">FREE</span><% } %>
+                            <% } %>
+                        </td>
+                        <td>
+                            <% if (item.is_stock_enabled) { %>
+                            <%= item.stock_remaining %>/<%= item.stock_total %>
+                            <% if (item.is_sold_out) { %><span class="status-badge status-sold-out">Sold Out</span><% } %>
+                            <% } else { %>
+                            <span style="color:#999">Unlimited</span>
+                            <% } %>
+                        </td>
+                        <td><%= item.total_purchases %></td>
+                        <td>
+                            <% if (item.is_featured) { %><span class="status-badge status-featured">Featured</span><% } %>
+                            <span class="status-badge <%= item.is_active ? 'status-active' : 'status-inactive' %>">
+                                <%= item.is_active ? 'Active' : 'Inactive' %>
+                            </span>
+                        </td>
+                        <td class="actions-cell">
+                            <a href="/admin/shop/items/<%= item.id %>/edit" class="btn btn-secondary">Edit</a>
+                            <form action="/admin/shop/items/<%= item.id %>/delete" method="POST" style="display:inline"
+                                  onsubmit="return confirm('Delete this item?')">
+                                <button type="submit" class="btn btn-danger">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <% }); %>
+                    <% if (items.length === 0) { %>
+                    <tr>
+                        <td colspan="9" style="text-align:center;padding:30px;">
+                            No items found. <a href="/admin/shop/items/create">Create your first item</a>
+                        </td>
+                    </tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </form>
+
+        <% if (pagination.totalPages > 1) { %>
+        <div class="pagination">
+            <% if (pagination.page > 1) { %>
+            <a href="?page=<%= pagination.page - 1 %>&chapter_id=<%= filters.chapter_id || '' %>&status=<%= filters.status || '' %>&sort=<%= filters.sort || 'newest' %>">Prev</a>
+            <% } %>
+            <% for (let i = 1; i <= pagination.totalPages; i++) { %>
+            <% if (i === pagination.page) { %>
+            <span class="active"><%= i %></span>
+            <% } else { %>
+            <a href="?page=<%= i %>&chapter_id=<%= filters.chapter_id || '' %>&status=<%= filters.status || '' %>&sort=<%= filters.sort || 'newest' %>"><%= i %></a>
+            <% } %>
+            <% } %>
+            <% if (pagination.page < pagination.totalPages) { %>
+            <a href="?page=<%= pagination.page + 1 %>&chapter_id=<%= filters.chapter_id || '' %>&status=<%= filters.status || '' %>&sort=<%= filters.sort || 'newest' %>">Next</a>
+            <% } %>
+        </div>
+        <% } %>
+    </div>
+
+    <script>
+        function toggleSelectAll() {
+            const checked = document.getElementById('selectAll').checked || document.getElementById('headerCheck').checked;
+            document.querySelectorAll('.item-checkbox').forEach(cb => cb.checked = checked);
+            document.getElementById('selectAll').checked = checked;
+            document.getElementById('headerCheck').checked = checked;
+        }
+        function confirmBulkAction() {
+            const action = document.getElementById('bulkAction').value;
+            if (!action) {
+                alert('Please select an action');
+                return false;
+            }
+            const checked = document.querySelectorAll('.item-checkbox:checked');
+            if (checked.length === 0) {
+                alert('Please select at least one item');
+                return false;
+            }
+            if (action === 'delete') {
+                return confirm('Delete ' + checked.length + ' items?');
+            }
+            return true;
+        }
+    </script>
+</body>
+</html>

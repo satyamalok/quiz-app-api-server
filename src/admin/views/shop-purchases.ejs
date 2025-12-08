@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchase History - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .shop-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .shop-nav a {
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #333;
+        }
+        .shop-nav a.active {
+            background: #007bff;
+            color: white;
+        }
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filters input, .filters select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .user-link {
+            color: #007bff;
+            text-decoration: none;
+        }
+        .user-link:hover {
+            text-decoration: underline;
+        }
+        .pagination {
+            display: flex;
+            gap: 5px;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination a, .pagination span {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            text-decoration: none;
+            color: #333;
+        }
+        .pagination a:hover { background: #f0f0f0; }
+        .pagination .active { background: #007bff; color: white; border-color: #007bff; }
+        .alert {
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .alert-success { background: #d4edda; color: #155724; }
+        .alert-error { background: #f8d7da; color: #721c24; }
+        .thumbnail-small {
+            width: 40px;
+            height: 50px;
+            object-fit: cover;
+            border-radius: 4px;
+            background: #f0f0f0;
+        }
+        .status-badge {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        .status-active { background: #d4edda; color: #155724; }
+        .status-inactive { background: #f8d7da; color: #721c24; }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="shop-nav">
+            <a href="/admin/shop/chapters">Chapters</a>
+            <a href="/admin/shop/items">Items</a>
+            <a href="/admin/shop/purchases" class="active">Purchases</a>
+            <a href="/admin/shop/analytics">Analytics</a>
+            <a href="/admin/shop/leaderboard">Balance Leaderboard</a>
+        </div>
+
+        <% if (success) { %>
+        <div class="alert alert-success"><%= success %></div>
+        <% } %>
+        <% if (error) { %>
+        <div class="alert alert-error"><%= error %></div>
+        <% } %>
+
+        <div class="header-row">
+            <h2>Purchase History</h2>
+            <span>Total: <%= pagination.total %> purchases</span>
+        </div>
+
+        <form method="GET" class="filters">
+            <input type="text" name="phone" placeholder="Search phone..." value="<%= filters.phone || '' %>">
+            <select name="chapter_id" onchange="this.form.submit()">
+                <option value="">All Chapters</option>
+                <% chapters.forEach(c => { %>
+                <option value="<%= c.id %>" <%= filters.chapter_id == c.id ? 'selected' : '' %>>
+                    <%= c.name %>
+                </option>
+                <% }); %>
+            </select>
+            <input type="date" name="date_from" value="<%= filters.date_from || '' %>" placeholder="From">
+            <input type="date" name="date_to" value="<%= filters.date_to || '' %>" placeholder="To">
+            <button type="submit" class="btn btn-primary">Filter</button>
+            <a href="/admin/shop/purchases" class="btn btn-secondary">Clear</a>
+        </form>
+
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Thumb</th>
+                    <th>Item</th>
+                    <th>Chapter</th>
+                    <th>User</th>
+                    <th>Phone</th>
+                    <th>XP Paid</th>
+                    <th>Item Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% purchases.forEach(p => { %>
+                <tr>
+                    <td><%= new Date(p.purchased_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) %></td>
+                    <td>
+                        <% if (p.thumbnail_url) { %>
+                        <img src="<%= p.thumbnail_url %>" class="thumbnail-small" alt="">
+                        <% } else { %>
+                        <div class="thumbnail-small" style="display:flex;align-items:center;justify-content:center;">📄</div>
+                        <% } %>
+                    </td>
+                    <td><%= p.item_title %></td>
+                    <td><%= p.chapter_name %></td>
+                    <td><%= p.user_name || '-' %></td>
+                    <td>
+                        <a href="/admin/shop/user/<%= p.phone %>/purchases" class="user-link"><%= p.phone %></a>
+                    </td>
+                    <td><strong><%= p.xp_paid %> XP</strong></td>
+                    <td>
+                        <span class="status-badge <%= p.is_item_active ? 'status-active' : 'status-inactive' %>">
+                            <%= p.is_item_active ? 'Active' : 'Inactive' %>
+                        </span>
+                    </td>
+                </tr>
+                <% }); %>
+                <% if (purchases.length === 0) { %>
+                <tr>
+                    <td colspan="8" style="text-align:center;padding:30px;">
+                        No purchases found.
+                    </td>
+                </tr>
+                <% } %>
+            </tbody>
+        </table>
+
+        <% if (pagination.totalPages > 1) { %>
+        <div class="pagination">
+            <% if (pagination.page > 1) { %>
+            <a href="?page=<%= pagination.page - 1 %>&phone=<%= filters.phone || '' %>&chapter_id=<%= filters.chapter_id || '' %>&date_from=<%= filters.date_from || '' %>&date_to=<%= filters.date_to || '' %>">Prev</a>
+            <% } %>
+            <% for (let i = Math.max(1, pagination.page - 2); i <= Math.min(pagination.totalPages, pagination.page + 2); i++) { %>
+            <% if (i === pagination.page) { %>
+            <span class="active"><%= i %></span>
+            <% } else { %>
+            <a href="?page=<%= i %>&phone=<%= filters.phone || '' %>&chapter_id=<%= filters.chapter_id || '' %>&date_from=<%= filters.date_from || '' %>&date_to=<%= filters.date_to || '' %>"><%= i %></a>
+            <% } %>
+            <% } %>
+            <% if (pagination.page < pagination.totalPages) { %>
+            <a href="?page=<%= pagination.page + 1 %>&phone=<%= filters.phone || '' %>&chapter_id=<%= filters.chapter_id || '' %>&date_from=<%= filters.date_from || '' %>&date_to=<%= filters.date_to || '' %>">Next</a>
+            <% } %>
+        </div>
+        <% } %>
+    </div>
+</body>
+</html>

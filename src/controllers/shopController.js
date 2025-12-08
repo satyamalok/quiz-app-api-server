@@ -1,0 +1,430 @@
+/**
+ * Shop Controller
+ * Handles public shop browsing APIs (chapters, items)
+ * Optional authentication - provides extra info for logged-in users
+ */
+
+const shopService = require('../services/shopService');
+const purchaseService = require('../services/purchaseService');
+
+/**
+ * Format file size for display
+ */
+function formatFileSize(bytes) {
+  if (!bytes) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * GET /api/v1/{appId}/shop/chapters
+ * List all active chapters with item counts and price ranges
+ */
+async function getChapters(req, res, next) {
+  try {
+    const userPhone = req.user?.phone || null;
+
+    const chapters = await shopService.getAllChapters(req, true);
+
+    // If user is authenticated, add their purchase count per chapter
+    let response = {
+      success: true,
+      data: {
+        chapters: chapters.map(c => ({
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          icon_url: c.icon_url,
+          display_order: c.display_order,
+          total_items: c.total_items,
+          price_range: {
+            min: c.min_price,
+            max: c.max_price
+          }
+        }))
+      }
+    };
+
+    // Add user purchase counts if authenticated
+    if (userPhone) {
+      const progress = await purchaseService.getUserChapterProgress(req, userPhone);
+      const progressMap = {};
+      progress.forEach(p => {
+        progressMap[p.chapter_id] = parseInt(p.purchased_count);
+      });
+
+      response.data.chapters = response.data.chapters.map(c => ({
+        ...c,
+        user_purchased_count: progressMap[c.id] || 0
+      }));
+
+      // Add user balance
+      const balance = await purchaseService.getUserBalance(req, userPhone);
+      if (balance) {
+        response.data.user_balance = balance.xp_remaining;
+      }
+    }
+
+    res.json(response);
+
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/{appId}/shop/chapters/:id
+ * Get chapter details with its items
+ */
+async function getChapterById(req, res, next) {
+  try {
+    const { id } = req.params;
+    const userPhone = req.user?.phone || null;
+
+    const chapter = await shopService.getChapterById(req, parseInt(id), userPhone);
+
+    if (!chapter) {
+      return res.status(404).json({
+        success: false,
+        error: 'CHAPTER_NOT_FOUND',
+        message: 'Chapter not found'
+      });
+    }
+
+    // Format items
+    const items = chapter.items.map(item => formatItemResponse(item, userPhone));
+
+    let response = {
+      success: true,
+      data: {
+        chapter: {
+          id: chapter.id,
+          name: chapter.name,
+          description: chapter.description,
+          icon_url: chapter.icon_url,
+          total_items: chapter.total_items
+        },
+        items
+      }
+    };
+
+    // Add user balance if authenticated
+    if (userPhone) {
+      const balance = await purchaseService.getUserBalance(req, userPhone);
+      if (balance) {
+        response.data.user_balance = balance.xp_remaining;
+      }
+    }
+
+    res.json(response);
+
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/{appId}/shop/items
+ * List all items with optional filters
+ */
+async function getItems(req, res, next) {
+  try {
+    const userPhone = req.user?.phone || null;
+    const {
+      chapter_id,
+      featured,
+      sort = 'display_order',
+      limit = 50,
+      offset = 0
+    } = req.query;
+
+    const options = {
+      chapter_id: chapter_id ? parseInt(chapter_id) : null,
+      featured_only: featured === 'true',
+      active_only: true,
+      sort,
+      limit: Math.min(parseInt(limit) || 50, 100),
+      offset: parseInt(offset) || 0
+    };
+
+    const result = await shopService.getAllItems(req, options, userPhone);
+
+    // Format items
+    const items = result.items.map(item => formatItemResponse(item, userPhone));
+
+    let response = {
+      success: true,
+      data: {
+        items,
+        pagination: result.pagination
+      }
+    };
+
+    // Add user balance if authenticated
+    if (userPhone) {
+      const balance = await purchaseService.getUserBalance(req, userPhone);
+      if (balance) {
+        response.data.user_balance = balance.xp_remaining;
+      }
+    }
+
+    res.json(response);
+
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/{appId}/shop/items/:id
+ * Get item details
+ */
+async function getItemById(req, res, next) {
+  try {
+    const { id } = req.params;
+    const userPhone = req.user?.phone || null;
+
+    const item = await shopService.getItemById(req, parseInt(id), userPhone);
+
+    if (!item) {
+      return res.status(404).json({
+        success: false,
+        error: 'ITEM_NOT_FOUND',
+        message: 'Item not found'
+      });
+    }
+
+    // Don't show inactive items to regular users
+    if (!item.is_active) {
+      return res.status(404).json({
+        success: false,
+        error: 'ITEM_NOT_AVAILABLE',
+        message: 'This item is no longer available'
+      });
+    }
+
+    const formattedItem = formatItemResponse(item, userPhone);
+
+    // Include PDF URL only if user has purchased
+    if (userPhone && item.is_purchased) {
+      formattedItem.pdf_url = item.pdf_url;
+    }
+
+    let response = {
+      success: true,
+      data: {
+        item: formattedItem
+      }
+    };
+
+    // Add user balance if authenticated
+    if (userPhone) {
+      const balance = await purchaseService.getUserBalance(req, userPhone);
+      if (balance) {
+        response.data.user_balance = balance.xp_remaining;
+      }
+    }
+
+    res.json(response);
+
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/{appId}/shop/featured
+ * Get featured items for homepage
+ */
+async function getFeatured(req, res, next) {
+  try {
+    const userPhone = req.user?.phone || null;
+    const { limit = 6 } = req.query;
+
+    const result = await shopService.getFeaturedItems(
+      req,
+      Math.min(parseInt(limit) || 6, 20),
+      userPhone
+    );
+
+    const items = result.items.map(item => formatItemResponse(item, userPhone));
+
+    res.json({
+      success: true,
+      data: {
+        items
+      }
+    });
+
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * POST /api/v1/{appId}/shop/purchase
+ * Purchase an item with XP
+ * Requires authentication
+ */
+async function purchaseItem(req, res, next) {
+  try {
+    const { phone } = req.user;
+    const { item_id } = req.body;
+
+    if (!item_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_ITEM_ID',
+        message: 'item_id is required'
+      });
+    }
+
+    const result = await purchaseService.purchaseItem(req, phone, parseInt(item_id));
+
+    res.json({
+      success: true,
+      message: 'Purchase successful!',
+      data: result
+    });
+
+  } catch (err) {
+    // Handle specific purchase errors
+    if (err.code) {
+      const statusMap = {
+        'ITEM_NOT_FOUND': 404,
+        'ITEM_NOT_AVAILABLE': 400,
+        'OUT_OF_STOCK': 400,
+        'ALREADY_PURCHASED': 400,
+        'INSUFFICIENT_BALANCE': 400,
+        'USER_NOT_FOUND': 404
+      };
+
+      const status = statusMap[err.code] || 400;
+
+      return res.status(status).json({
+        success: false,
+        error: err.code,
+        message: err.message,
+        data: err.code === 'INSUFFICIENT_BALANCE'
+          ? { required: err.required, available: err.available }
+          : err.code === 'ALREADY_PURCHASED'
+            ? { purchased_at: err.purchased_at }
+            : undefined
+      });
+    }
+
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/{appId}/shop/my-purchases
+ * Get user's purchased items
+ * Requires authentication
+ */
+async function getMyPurchases(req, res, next) {
+  try {
+    const { phone } = req.user;
+    const { limit = 50, offset = 0 } = req.query;
+
+    const result = await purchaseService.getUserPurchases(req, phone, {
+      limit: Math.min(parseInt(limit) || 50, 100),
+      offset: parseInt(offset) || 0
+    });
+
+    res.json({
+      success: true,
+      data: {
+        purchases: result.purchases.map(p => ({
+          ...p,
+          file_size: formatFileSize(p.file_size_bytes)
+        })),
+        total_items: result.total_items,
+        total_spent: result.total_spent
+      }
+    });
+
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/{appId}/user/balance
+ * Get user's XP balance details
+ * Requires authentication
+ */
+async function getUserBalance(req, res, next) {
+  try {
+    const { phone } = req.user;
+
+    const balance = await purchaseService.getUserBalance(req, phone);
+
+    if (!balance) {
+      return res.status(404).json({
+        success: false,
+        error: 'USER_NOT_FOUND',
+        message: 'User not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: balance
+    });
+
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Format item for API response
+ */
+function formatItemResponse(item, userPhone) {
+  const response = {
+    id: item.id,
+    chapter_id: item.chapter_id,
+    chapter_name: item.chapter_name,
+    title: item.title,
+    description: item.description,
+    thumbnail_url: item.thumbnail_url,
+    xp_price: item.xp_price,
+    xp_original_price: item.xp_original_price,
+    is_on_sale: item.is_on_sale,
+    discount_percent: item.discount_percent ? parseInt(item.discount_percent) : null,
+    sale_ends_at: item.sale_ends_at,
+    is_stock_enabled: item.is_stock_enabled,
+    stock_remaining: item.is_stock_enabled ? item.stock_remaining : null,
+    is_sold_out: item.is_sold_out,
+    is_featured: item.is_featured,
+    file_size: formatFileSize(item.file_size_bytes),
+    page_count: item.page_count,
+    total_purchases: item.total_purchases
+  };
+
+  // Add purchase status if user is authenticated
+  if (userPhone) {
+    response.is_purchased = item.is_purchased || false;
+    response.purchased_at = item.purchased_at || null;
+
+    // Include download URL if purchased
+    if (item.is_purchased && item.pdf_url) {
+      response.download_url = item.pdf_url;
+    }
+  }
+
+  return response;
+}
+
+module.exports = {
+  getChapters,
+  getChapterById,
+  getItems,
+  getItemById,
+  getFeatured,
+  purchaseItem,
+  getMyPurchases,
+  getUserBalance
+};
