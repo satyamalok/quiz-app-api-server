@@ -259,6 +259,9 @@ async function getAllItems(req, options = {}, userPhone = null) {
       orderBy = 'i.display_order, i.id';
   }
 
+  // Store count of where params before adding userPhone/limit/offset
+  const whereParamsCount = params.length;
+
   let query;
   if (userPhone) {
     params.push(userPhone);
@@ -331,13 +334,14 @@ async function getAllItems(req, options = {}, userPhone = null) {
 
   const result = await tenantQuery(req, query, params);
 
-  // Get total count
+  // Get total count - only use whereClause params (not userPhone, limit, offset)
   const countQuery = `
     SELECT COUNT(*) as total
     FROM shop_items i
     ${whereClause}
   `;
-  const countResult = await tenantQuery(req, countQuery, params.slice(0, params.length - 2));
+  const countParams = params.slice(0, whereParamsCount);
+  const countResult = await tenantQuery(req, countQuery, countParams);
   const total = parseInt(countResult.rows[0].total);
 
   return {

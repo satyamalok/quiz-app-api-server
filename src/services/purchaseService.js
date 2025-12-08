@@ -180,11 +180,13 @@ async function getUserBalance(req, phone) {
   );
 
   // Get user's rank on balance leaderboard
+  // Calculate balance in JS to avoid type ambiguity in SQL
+  const userBalance = user.xp_total - user.xp_spent;
   const rankResult = await tenantQuery(req,
     `SELECT COUNT(*) + 1 as rank
      FROM users_profile
-     WHERE (xp_total - xp_spent) > ($1 - $2)`,
-    [user.xp_total, user.xp_spent]
+     WHERE (xp_total - xp_spent) > $1`,
+    [userBalance]
   );
 
   return {

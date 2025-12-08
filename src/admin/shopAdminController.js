@@ -72,7 +72,7 @@ async function showChapters(req, res) {
       title: 'Shop Chapters',
       chapters,
       stats,
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps,
       success: req.query.success,
       error: req.query.error
@@ -83,7 +83,7 @@ async function showChapters(req, res) {
       title: 'Shop Chapters',
       chapters: [],
       stats: {},
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps,
       error: 'Failed to load chapters: ' + err.message
     });
@@ -99,7 +99,7 @@ async function showCreateChapter(req, res) {
     title: 'Create Chapter',
     chapter: null,
     isEdit: false,
-    currentApp: req.currentApp,
+    currentApp: req.tenant,
     allApps: req.allApps
   });
 }
@@ -115,7 +115,7 @@ async function createChapter(req, res) {
 
     let icon_url = null;
     if (req.file) {
-      icon_url = await uploadFile(req.file, 'shop/icons', req.currentApp.slug);
+      icon_url = await uploadFile(req.file, 'shop/icons', req.tenant.slug);
     }
 
     await shopService.createChapter(req, {
@@ -151,7 +151,7 @@ async function showEditChapter(req, res) {
       title: 'Edit Chapter',
       chapter,
       isEdit: true,
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps
     });
   } catch (err) {
@@ -175,7 +175,7 @@ async function updateChapter(req, res) {
     if (remove_icon === 'on') {
       icon_url = null;
     } else if (req.file) {
-      icon_url = await uploadFile(req.file, 'shop/icons', req.currentApp.slug);
+      icon_url = await uploadFile(req.file, 'shop/icons', req.tenant.slug);
     }
 
     await shopService.updateChapter(req, parseInt(id), {
@@ -267,7 +267,7 @@ async function showItems(req, res) {
         page: parseInt(page),
         totalPages
       },
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps,
       success: req.query.success,
       error: req.query.error
@@ -281,7 +281,7 @@ async function showItems(req, res) {
       stats: {},
       filters: {},
       pagination: { total: 0, page: 1, totalPages: 0 },
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps,
       error: 'Failed to load items: ' + err.message
     });
@@ -302,7 +302,7 @@ async function showCreateItem(req, res) {
       item: null,
       chapters,
       isEdit: false,
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps
     });
   } catch (err) {
@@ -339,10 +339,10 @@ async function createItem(req, res) {
 
     if (req.files) {
       if (req.files.pdf_file && req.files.pdf_file[0]) {
-        pdf_url = await uploadFile(req.files.pdf_file[0], 'shop/pdfs', req.currentApp.slug);
+        pdf_url = await uploadFile(req.files.pdf_file[0], 'shop/pdfs', req.tenant.slug);
       }
       if (req.files.thumbnail && req.files.thumbnail[0]) {
-        thumbnail_url = await uploadFile(req.files.thumbnail[0], 'shop/thumbnails', req.currentApp.slug);
+        thumbnail_url = await uploadFile(req.files.thumbnail[0], 'shop/thumbnails', req.tenant.slug);
       }
     }
 
@@ -398,7 +398,7 @@ async function showEditItem(req, res) {
       item,
       chapters,
       isEdit: true,
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps
     });
   } catch (err) {
@@ -438,10 +438,10 @@ async function updateItem(req, res) {
 
     if (req.files) {
       if (req.files.pdf_file && req.files.pdf_file[0]) {
-        pdf_url = await uploadFile(req.files.pdf_file[0], 'shop/pdfs', req.currentApp.slug);
+        pdf_url = await uploadFile(req.files.pdf_file[0], 'shop/pdfs', req.tenant.slug);
       }
       if (req.files.thumbnail && req.files.thumbnail[0]) {
-        thumbnail_url = await uploadFile(req.files.thumbnail[0], 'shop/thumbnails', req.currentApp.slug);
+        thumbnail_url = await uploadFile(req.files.thumbnail[0], 'shop/thumbnails', req.tenant.slug);
       }
     }
 
@@ -584,7 +584,7 @@ async function showPurchases(req, res) {
         page: parseInt(page),
         totalPages
       },
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps,
       success: req.query.success,
       error: req.query.error
@@ -597,7 +597,7 @@ async function showPurchases(req, res) {
       chapters: [],
       filters: {},
       pagination: { total: 0, page: 1, totalPages: 0 },
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps,
       error: 'Failed to load purchases: ' + err.message
     });
@@ -633,7 +633,7 @@ async function showShopAnalytics(req, res) {
       topBuyers,
       chapterStats,
       recentPurchases: recentResult.purchases,
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps
     });
   } catch (err) {
@@ -645,7 +645,7 @@ async function showShopAnalytics(req, res) {
       topBuyers: [],
       chapterStats: [],
       recentPurchases: [],
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps,
       error: 'Failed to load analytics: ' + err.message
     });
@@ -679,7 +679,7 @@ async function showBalanceLeaderboard(req, res) {
         page: parseInt(page),
         totalPages
       },
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps
     });
   } catch (err) {
@@ -690,7 +690,7 @@ async function showBalanceLeaderboard(req, res) {
       stats: {},
       filters: {},
       pagination: { total: 0, page: 1, totalPages: 0 },
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps,
       error: 'Failed to load leaderboard: ' + err.message
     });
@@ -729,7 +729,7 @@ async function showUserPurchases(req, res) {
         page: parseInt(page),
         totalPages
       },
-      currentApp: req.currentApp,
+      currentApp: req.tenant,
       allApps: req.allApps
     });
   } catch (err) {
