@@ -9,6 +9,11 @@ const { updateOnlineConfig, getOnlineConfig } = require('../services/onlineUsers
 const { parseCSV, getQuestionColumns, mapRowsToDatabase, validateMappedRows } = require('../services/csvService');
 const whatsappOtpService = require('../services/whatsappOtpService');
 const { encrypt, decrypt, isUsingDefaultKey } = require('../utils/encryption');
+const {
+  invalidateQuestionsCache,
+  invalidateVideosCache,
+  createMockReq
+} = require('../services/cacheService');
 
 // Multer setup
 const upload = multer({ storage: multer.memoryStorage() });
@@ -1077,6 +1082,12 @@ async function createQuestion(req, res) {
       explanation_text, explanationUrl, subject, topic, difficulty, medium || 'english'
     ]);
 
+    // Invalidate questions cache for this level (non-blocking)
+    const mockReq = createMockReq(schema);
+    invalidateQuestionsCache(parseInt(level), mockReq).catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
+
     res.render('question-upload', {
       admin: req.session.adminUser,
       message: 'Question created successfully!',
@@ -1260,6 +1271,12 @@ async function updateQuestion(req, res) {
 
     const result = await adminQuery(schema, 'SELECT * FROM questions WHERE sl = $1', [id]);
 
+    // Invalidate questions cache for this level (non-blocking)
+    const mockReq = createMockReq(schema);
+    invalidateQuestionsCache(parseInt(level), mockReq).catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
+
     res.render('question-edit', {
       admin: req.session.adminUser,
       question: result.rows[0],
@@ -1289,7 +1306,19 @@ async function deleteQuestion(req, res) {
     const schema = getAdminSchema(req);
     const { id } = req.params;
 
+    // Get the question level before deleting (for cache invalidation)
+    const questionResult = await adminQuery(schema, 'SELECT level FROM questions WHERE sl = $1', [id]);
+    const level = questionResult.rows[0]?.level;
+
     await adminQuery(schema, 'DELETE FROM questions WHERE sl = $1', [id]);
+
+    // Invalidate questions cache for this level (non-blocking)
+    if (level) {
+      const mockReq = createMockReq(schema);
+      invalidateQuestionsCache(level, mockReq).catch(err =>
+        console.error('Cache invalidation error (non-critical):', err.message)
+      );
+    }
 
     res.json({ success: true, message: 'Question deleted successfully' });
 
@@ -1384,6 +1413,15 @@ async function uploadVideo(req, res) {
 
     const videos = await adminQuery(schema, 'SELECT * FROM promotional_videos ORDER BY level ASC, id DESC');
 
+    // Invalidate videos cache (non-blocking)
+    const mockReq = createMockReq(schema);
+    invalidateVideosCache(category || 'promotional', mockReq).catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
+    invalidateVideosCache('all', mockReq).catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
+
     res.render('video-upload', {
       admin: req.session.adminUser,
       videos: videos.rows,
@@ -1455,6 +1493,12 @@ async function updateVideo(req, res) {
 
     const result = await adminQuery(schema, 'SELECT * FROM promotional_videos WHERE id = $1', [id]);
 
+    // Invalidate videos cache (non-blocking)
+    const mockReq = createMockReq(schema);
+    invalidateVideosCache(null, mockReq).catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
+
     res.render('edit-video', {
       admin: req.session.adminUser,
       video: result.rows[0],
@@ -1485,6 +1529,12 @@ async function deleteVideo(req, res) {
     const { id } = req.params;
 
     await adminQuery(schema, 'DELETE FROM promotional_videos WHERE id = $1', [id]);
+
+    // Invalidate videos cache (non-blocking)
+    const mockReq = createMockReq(schema);
+    invalidateVideosCache(null, mockReq).catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
 
     res.json({ success: true, message: 'Video deleted successfully' });
 

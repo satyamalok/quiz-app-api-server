@@ -158,21 +158,86 @@ router.post('/config/test-webhook', testEventWebhook);
 // Cache Management
 const cacheService = require('../services/cacheService');
 
-router.post('/cache/refresh', async (req, res) => {
+/**
+ * Helper to prepare tenant context from admin session
+ * Admin panel uses req.session.currentApp instead of req.tenant
+ */
+function prepareAdminReqWithTenant(req) {
+  if (req.session?.currentApp) {
+    req.tenant = {
+      slug: req.session.currentApp.slug,
+      redisPrefix: `${req.session.currentApp.slug}:`,
+      schema: req.session.currentApp.slug
+    };
+  }
+  return req;
+}
+
+// Cache management page
+router.get('/cache', async (req, res) => {
+  res.render('cache-management', {
+    currentApp: req.session.currentApp
+  });
+});
+
+// Get cache stats for current app
+router.get('/cache/stats', async (req, res) => {
   try {
-    const result = await cacheService.refreshAllCaches();
+    prepareAdminReqWithTenant(req);
+    const stats = await cacheService.getCacheStats(req);
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ connected: false, error: err.message });
+  }
+});
+
+// Get all cache keys for current app
+router.get('/cache/keys', async (req, res) => {
+  try {
+    prepareAdminReqWithTenant(req);
+    const result = await cacheService.getAllCacheKeys(req);
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-router.get('/cache/stats', async (req, res) => {
+// Flush cache (by type or all)
+router.post('/cache/flush', async (req, res) => {
   try {
-    const stats = await cacheService.getCacheStats();
-    res.json(stats);
+    prepareAdminReqWithTenant(req);
+    const { type = 'all' } = req.body;
+    const result = await cacheService.flushCache(type, req);
+    res.json(result);
   } catch (err) {
-    res.status(500).json({ connected: false, error: err.message });
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Refresh all caches (alias for flush all)
+router.post('/cache/refresh', async (req, res) => {
+  try {
+    prepareAdminReqWithTenant(req);
+    const result = await cacheService.refreshAllCaches(req);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Reload cache (pre-warm after flush)
+const { reloadCacheForApp } = require('../services/prewarmService');
+
+router.post('/cache/reload', async (req, res) => {
+  try {
+    prepareAdminReqWithTenant(req);
+    if (!req.session?.currentApp?.slug) {
+      return res.status(400).json({ success: false, error: 'No app selected' });
+    }
+    const result = await reloadCacheForApp(req.session.currentApp.slug);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

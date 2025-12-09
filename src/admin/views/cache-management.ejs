@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cache Management - JNV Quiz Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .cache-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .cache-card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .cache-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .cache-card .count {
+            font-size: 2em;
+            font-weight: bold;
+            color: #2196f3;
+        }
+        .cache-card .label {
+            color: #666;
+            font-size: 0.9em;
+        }
+        .cache-card .cached {
+            color: #4caf50;
+        }
+        .cache-card .not-cached {
+            color: #ff9800;
+        }
+        .action-buttons {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: opacity 0.2s;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn-flush {
+            background: #f44336;
+            color: white;
+        }
+        .btn-reload {
+            background: #4caf50;
+            color: white;
+        }
+        .btn-refresh {
+            background: #2196f3;
+            color: white;
+        }
+        .stats-overview {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .stats-overview h2 {
+            margin: 0 0 20px 0;
+        }
+        .stats-row {
+            display: flex;
+            gap: 40px;
+            flex-wrap: wrap;
+        }
+        .stat-item {
+            text-align: center;
+        }
+        .stat-item .value {
+            font-size: 2.5em;
+            font-weight: bold;
+        }
+        .stat-item .label {
+            opacity: 0.9;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status-connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .prewarm-info {
+            background: #e7f3ff;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .loading {
+            display: none;
+        }
+        .loading.active {
+            display: inline-block;
+        }
+        .alert {
+            padding: 15px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <h1>Cache Management</h1>
+        <p style="color: #666; margin-bottom: 20px;">
+            App: <strong><%= currentApp.name %></strong> (<code><%= currentApp.slug %></code>)
+        </p>
+
+        <div id="alertContainer"></div>
+
+        <!-- Stats Overview -->
+        <div class="stats-overview">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2>Cache Statistics</h2>
+                <span id="connectionStatus" class="status-badge status-disconnected">Loading...</span>
+            </div>
+            <div class="stats-row">
+                <div class="stat-item">
+                    <div class="value" id="totalKeys">-</div>
+                    <div class="label">Total Keys</div>
+                </div>
+                <div class="stat-item">
+                    <div class="value" id="memoryUsed">-</div>
+                    <div class="label">Memory Used</div>
+                </div>
+                <div class="stat-item">
+                    <div class="value" id="questionsCount">-</div>
+                    <div class="label">Question Sets</div>
+                </div>
+                <div class="stat-item">
+                    <div class="value" id="videosCount">-</div>
+                    <div class="label">Video Caches</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pre-warm Info -->
+        <div class="prewarm-info" id="prewarmInfo" style="display: none;">
+            <strong>Last Pre-warm:</strong> <span id="prewarmTime">-</span>
+        </div>
+
+        <!-- Cache Cards -->
+        <div class="cache-grid">
+            <div class="cache-card">
+                <h3>Questions</h3>
+                <div class="count" id="questionsCard">-</div>
+                <div class="label">question sets cached</div>
+                <div class="action-buttons">
+                    <button class="btn btn-flush" onclick="flushCache('questions')">Flush</button>
+                </div>
+            </div>
+
+            <div class="cache-card">
+                <h3>Reels</h3>
+                <div id="reelsStatus" class="label">-</div>
+                <div class="action-buttons">
+                    <button class="btn btn-flush" onclick="flushCache('reels')">Flush</button>
+                </div>
+            </div>
+
+            <div class="cache-card">
+                <h3>Videos</h3>
+                <div class="count" id="videosCard">-</div>
+                <div class="label">video caches</div>
+                <div class="action-buttons">
+                    <button class="btn btn-flush" onclick="flushCache('videos')">Flush</button>
+                </div>
+            </div>
+
+            <div class="cache-card">
+                <h3>Levels Metadata</h3>
+                <div id="levelsStatus" class="label">-</div>
+                <div class="action-buttons">
+                    <button class="btn btn-flush" onclick="flushCache('levels')">Flush</button>
+                </div>
+            </div>
+
+            <div class="cache-card">
+                <h3>Leaderboards</h3>
+                <div class="count" id="leaderboardsCard">-</div>
+                <div class="label">historical leaderboards (4+ days)</div>
+                <div class="action-buttons">
+                    <button class="btn btn-flush" onclick="flushCache('leaderboard')">Flush</button>
+                </div>
+            </div>
+
+            <div class="cache-card">
+                <h3>App Config</h3>
+                <div id="configStatus" class="label">-</div>
+                <div class="action-buttons">
+                    <button class="btn btn-flush" onclick="flushCache('config')">Flush</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Global Actions -->
+        <div class="card" style="margin-top: 30px;">
+            <h2>Global Actions</h2>
+            <p style="color: #666; margin-bottom: 15px;">
+                These actions affect all cache types for the current app.
+            </p>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <button class="btn btn-flush" onclick="flushCache('all')" id="flushAllBtn">
+                    Flush All Cache
+                </button>
+                <button class="btn btn-reload" onclick="reloadCache()" id="reloadBtn">
+                    Reload All Cache (Pre-warm)
+                </button>
+                <button class="btn btn-refresh" onclick="refreshStats()">
+                    Refresh Stats
+                </button>
+            </div>
+        </div>
+
+        <!-- How It Works -->
+        <div class="card" style="margin-top: 30px;">
+            <h2>How Caching Works</h2>
+            <ul style="line-height: 1.8; color: #555;">
+                <li><strong>Questions, Reels, Videos, Levels:</strong> Cached with no TTL (manual flush only)</li>
+                <li><strong>Leaderboard:</strong> Only cached for dates 4+ days old (recent data always fresh)</li>
+                <li><strong>App Config:</strong> Cached with 5-minute TTL</li>
+                <li><strong>Pre-warm:</strong> Cache is automatically loaded on server startup</li>
+                <li><strong>Flush:</strong> Clears cache - next request will reload from database</li>
+                <li><strong>Reload:</strong> Flushes then immediately pre-warms all cache</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Load stats on page load
+        document.addEventListener('DOMContentLoaded', refreshStats);
+
+        function showAlert(message, type) {
+            const container = document.getElementById('alertContainer');
+            container.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+            setTimeout(() => container.innerHTML = '', 5000);
+        }
+
+        async function refreshStats() {
+            try {
+                const response = await fetch('/admin/cache/stats');
+                const data = await response.json();
+
+                const statusBadge = document.getElementById('connectionStatus');
+                if (data.connected) {
+                    statusBadge.textContent = 'Connected';
+                    statusBadge.className = 'status-badge status-connected';
+
+                    document.getElementById('totalKeys').textContent = data.stats.total_keys;
+                    document.getElementById('memoryUsed').textContent = data.stats.memory_used;
+                    document.getElementById('questionsCount').textContent = data.stats.questions_cached;
+                    document.getElementById('videosCount').textContent = data.stats.videos_cached;
+                    document.getElementById('questionsCard').textContent = data.stats.questions_cached;
+                    document.getElementById('videosCard').textContent = data.stats.videos_cached;
+                    document.getElementById('leaderboardsCard').textContent = data.stats.leaderboards_cached;
+
+                    document.getElementById('reelsStatus').innerHTML = data.stats.reels_cached
+                        ? '<span class="cached">Cached</span>'
+                        : '<span class="not-cached">Not cached</span>';
+
+                    document.getElementById('levelsStatus').innerHTML = data.stats.levels_cached
+                        ? '<span class="cached">Cached</span>'
+                        : '<span class="not-cached">Not cached</span>';
+
+                    document.getElementById('configStatus').innerHTML = data.stats.config_cached
+                        ? '<span class="cached">Cached (5min TTL)</span>'
+                        : '<span class="not-cached">Not cached</span>';
+
+                    if (data.prewarm) {
+                        document.getElementById('prewarmInfo').style.display = 'block';
+                        document.getElementById('prewarmTime').textContent =
+                            new Date(data.prewarm.timestamp).toLocaleString();
+                    }
+                } else {
+                    statusBadge.textContent = 'Disconnected';
+                    statusBadge.className = 'status-badge status-disconnected';
+                    showAlert('Redis is not connected', 'error');
+                }
+            } catch (err) {
+                showAlert('Error loading cache stats: ' + err.message, 'error');
+            }
+        }
+
+        async function flushCache(type) {
+            if (!confirm(`Are you sure you want to flush ${type === 'all' ? 'ALL' : type} cache?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/admin/cache/flush', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert(`Flushed ${data.keys_deleted} cached items (${type})`, 'success');
+                    refreshStats();
+                } else {
+                    showAlert('Flush failed: ' + data.error, 'error');
+                }
+            } catch (err) {
+                showAlert('Error flushing cache: ' + err.message, 'error');
+            }
+        }
+
+        async function reloadCache() {
+            const btn = document.getElementById('reloadBtn');
+            btn.disabled = true;
+            btn.textContent = 'Reloading...';
+
+            try {
+                const response = await fetch('/admin/cache/reload', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    const stats = data.stats;
+                    showAlert(
+                        `Cache reloaded! Questions: ${stats.questions}, Reels: ${stats.reels}, Videos: ${stats.videos}, Levels: ${stats.levels}`,
+                        'success'
+                    );
+                    refreshStats();
+                } else {
+                    showAlert('Reload failed: ' + data.error, 'error');
+                }
+            } catch (err) {
+                showAlert('Error reloading cache: ' + err.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Reload All Cache (Pre-warm)';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -25,6 +25,11 @@ Thumbs.db
 coverage/
 load-tests/
 
+# Stress test results (keep scripts, ignore outputs)
+stress-tests/*-results.json
+stress-tests/*.json
+!stress-tests/k6-config.js
+
 # Build
 dist/
 build/
@@ -41,4 +46,3 @@ backups/*.sql
 # Keep SQL schema and migration files (negate the backup pattern)
 !scripts/*.sql
 !scripts/migrations/*.sql
-nul

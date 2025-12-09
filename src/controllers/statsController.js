@@ -1,18 +1,76 @@
 const { tenantQuery } = require('../config/database');
 const { getStreak } = require('../services/streakService');
 const { getOnlineCount } = require('../services/onlineUsersService');
+const {
+  getCachedLeaderboard,
+  setCachedLeaderboard,
+  shouldCacheLeaderboard
+} = require('../services/cacheService');
+const { getISTDate } = require('../utils/timezone');
 
 /**
  * GET /api/v1/leaderboard/daily?date=YYYY-MM-DD
  * Get daily leaderboard
+ *
+ * Caching: Only cache leaderboards for dates 4+ days old (data is stable)
  */
 async function getDailyLeaderboard(req, res, next) {
   try {
     const { phone } = req.user;
     const { date } = req.query;
-    const targetDate = date || new Date().toISOString().split('T')[0];
 
-    // Get top 50 for the date (tenant-aware)
+    // Use IST date to avoid timezone issues (not toISOString which converts to UTC)
+    const targetDate = date || getISTDate();
+
+    // Try cache first for historical dates (4+ days old)
+    const cached = await getCachedLeaderboard(targetDate, req);
+
+    if (cached) {
+      // For cached results, we still need to get user's live data
+      // since their stats might have changed even if the historical leaderboard hasn't
+      const userStatsResult = await tenantQuery(req, `
+        SELECT total_xp_today
+        FROM daily_xp_summary
+        WHERE phone = $1 AND date = $2
+      `, [phone, targetDate]);
+
+      let userStats = cached.user_stats_template;  // Default empty stats
+
+      if (userStatsResult.rows.length > 0) {
+        const userXP = userStatsResult.rows[0].total_xp_today;
+        const rankResult = await tenantQuery(req, `
+          SELECT COUNT(*) + 1 as rank
+          FROM daily_xp_summary
+          WHERE date = $1 AND total_xp_today > $2
+        `, [targetDate, userXP]);
+
+        const userProfileResult = await tenantQuery(req,
+          'SELECT name, district, state, xp_total, profile_image_url FROM users_profile WHERE phone = $1',
+          [phone]
+        );
+
+        const profile = userProfileResult.rows[0];
+        userStats = {
+          rank: parseInt(rankResult.rows[0].rank),
+          name: profile?.name,
+          district: profile?.district,
+          state: profile?.state,
+          total_xp: profile?.xp_total || 0,
+          image_url: profile?.profile_image_url,
+          today_xp: userXP
+        };
+      }
+
+      return res.json({
+        success: true,
+        date: targetDate,
+        user_stats: userStats,
+        top_50: cached.top_50,
+        cached: true  // Debug flag
+      });
+    }
+
+    // Cache miss or recent date - fetch from database
     const top50Result = await tenantQuery(req, `
       SELECT
         d.phone, u.name, u.district, u.state,
@@ -78,6 +136,24 @@ async function getDailyLeaderboard(req, res, next) {
       image_url: row.profile_image_url,
       today_xp: row.total_xp_today
     }));
+
+    // Cache the leaderboard if it's old enough (4+ days)
+    // Only cache the top_50, not user-specific data
+    if (shouldCacheLeaderboard(targetDate)) {
+      setCachedLeaderboard(targetDate, {
+        top_50: leaderboard,
+        user_stats_template: {
+          rank: null,
+          name: null,
+          district: null,
+          state: null,
+          total_xp: 0,
+          image_url: null,
+          today_xp: 0
+        },
+        cached_at: new Date().toISOString()
+      }, req).catch(err => console.error('Leaderboard cache error (non-critical):', err.message));
+    }
 
     res.json({
       success: true,

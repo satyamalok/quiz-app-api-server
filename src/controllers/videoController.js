@@ -2,16 +2,45 @@ const { tenantQuery, getTenantClient } = require('../config/database');
 const { addXPToUser } = require('../services/xpService');
 const { restoreLifelines } = require('../services/lifelineService');
 const { getISTDate, SQL_IST_NOW } = require('../utils/timezone');
+const { getCachedVideos, setCachedVideos } = require('../services/cacheService');
 
 /**
  * GET /api/v1/video/url?level=N&category=promotional
  * Get promotional video URL for a level
  * If category is not specified, returns all videos for the level
+ *
+ * Caching: Videos are cached by category (no TTL)
  */
 async function getVideoURL(req, res, next) {
   try {
     const { level, category } = req.query;
+    const cacheCategory = category || 'all';
 
+    // Try cache first
+    const cached = await getCachedVideos(cacheCategory, req);
+
+    if (cached && cached.by_level && cached.by_level[level]) {
+      // Filter by level from cached data
+      let videos = cached.by_level[level];
+
+      // If category specified, filter further (though cache is already by category)
+      if (category && cacheCategory !== 'all') {
+        videos = videos.filter(v => v.category === category);
+      }
+
+      if (videos.length === 0) {
+        throw { code: 'VIDEO_NOT_FOUND', message: 'No video available for this level' };
+      }
+
+      return res.json({
+        success: true,
+        video: videos[0],
+        videos: videos,
+        cached: true  // Debug flag
+      });
+    }
+
+    // Cache miss - fetch from database
     let query = `
       SELECT id, level, video_name, video_url, duration_seconds, description, category
       FROM promotional_videos
@@ -34,6 +63,12 @@ async function getVideoURL(req, res, next) {
       throw { code: 'VIDEO_NOT_FOUND', message: 'No video available for this level' };
     }
 
+    // Cache all videos for this category (non-blocking)
+    // Fetch all videos for this category/all to build complete cache
+    cacheAllVideos(cacheCategory, req).catch(err =>
+      console.error('Video cache error (non-critical):', err.message)
+    );
+
     // If multiple videos, return array; if single video, return object for backward compatibility
     res.json({
       success: true,
@@ -44,6 +79,43 @@ async function getVideoURL(req, res, next) {
   } catch (err) {
     next(err);
   }
+}
+
+/**
+ * Helper: Cache all videos for a category
+ */
+async function cacheAllVideos(category, req) {
+  let query = `
+    SELECT id, level, video_name, video_url, duration_seconds, description, category
+    FROM promotional_videos
+    WHERE is_active = TRUE
+  `;
+
+  const params = [];
+  if (category && category !== 'all') {
+    query += ` AND category = $1`;
+    params.push(category);
+  }
+
+  query += ` ORDER BY level, id DESC`;
+
+  const result = await tenantQuery(req, query, params);
+
+  // Group by level for quick lookup
+  const byLevel = {};
+  for (const video of result.rows) {
+    if (!byLevel[video.level]) {
+      byLevel[video.level] = [];
+    }
+    byLevel[video.level].push(video);
+  }
+
+  await setCachedVideos(category, {
+    videos: result.rows,
+    by_level: byLevel,
+    count: result.rows.length,
+    cached_at: new Date().toISOString()
+  }, req);
 }
 
 /**

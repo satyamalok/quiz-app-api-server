@@ -1,6 +1,11 @@
 const pool = require('../config/database');
 const { tenantQuery } = require('../config/database');
 const { SQL_IST_NOW } = require('../utils/timezone');
+const {
+  getCachedLevelsMetadata,
+  setCachedLevelsMetadata,
+  invalidateLevelsCache
+} = require('./cacheService');
 
 /**
  * Get current levels version
@@ -61,22 +66,42 @@ async function getAllLevels(req = null, client = null) {
 
 /**
  * Get all levels with version info (for API response)
+ * Caching: Levels metadata is cached (no TTL)
  * @param {Object} req - Express request with tenant context (or null for admin)
  * @param {Object} client - Database client (optional, for admin with session-based schema)
  * @returns {Promise<Object>} {levels, version, last_updated_at}
  */
 async function getLevelsWithVersion(req = null, client = null) {
+  // Try cache first (only for API requests with tenant context)
+  if (req && req.tenant && !client) {
+    const cached = await getCachedLevelsMetadata(req);
+    if (cached) {
+      return { ...cached, cached: true };
+    }
+  }
+
+  // Cache miss - fetch from database
   const [levels, versionInfo] = await Promise.all([
     getAllLevels(req, client),
     getLevelsVersion(req, client)
   ]);
 
-  return {
+  const result = {
     levels,
     version: versionInfo.version,
     last_updated_at: versionInfo.last_updated_at,
-    total_levels: levels.length
+    total_levels: levels.length,
+    cached_at: new Date().toISOString()
   };
+
+  // Cache the result (non-blocking, only for tenant context)
+  if (req && req.tenant && !client) {
+    setCachedLevelsMetadata(result, req).catch(err =>
+      console.error('Levels cache error (non-critical):', err.message)
+    );
+  }
+
+  return result;
 }
 
 /**
@@ -185,17 +210,22 @@ async function createLevel(data, req = null, client = null) {
   `;
   const params = [level_number, title, subtitle, duration_seconds, is_active];
 
+  let result;
   if (client) {
-    const result = await client.query(query, params);
-    return result.rows[0];
+    result = await client.query(query, params);
+  } else if (req && req.tenant) {
+    result = await tenantQuery(req, query, params);
+  } else {
+    result = await pool.query(query, params);
   }
 
-  if (req && req.tenant) {
-    const result = await tenantQuery(req, query, params);
-    return result.rows[0];
+  // Invalidate cache (non-blocking)
+  if (req) {
+    invalidateLevelsCache(req).catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
   }
 
-  const result = await pool.query(query, params);
   return result.rows[0];
 }
 
@@ -218,17 +248,22 @@ async function updateLevel(levelNumber, data, req = null, client = null) {
   `;
   const params = [levelNumber, title, subtitle, duration_seconds, is_active];
 
+  let result;
   if (client) {
-    const result = await client.query(query, params);
-    return result.rows[0];
+    result = await client.query(query, params);
+  } else if (req && req.tenant) {
+    result = await tenantQuery(req, query, params);
+  } else {
+    result = await pool.query(query, params);
   }
 
-  if (req && req.tenant) {
-    const result = await tenantQuery(req, query, params);
-    return result.rows[0];
+  // Invalidate cache (non-blocking)
+  if (req) {
+    invalidateLevelsCache(req).catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
   }
 
-  const result = await pool.query(query, params);
   return result.rows[0];
 }
 
@@ -243,17 +278,22 @@ async function deleteLevel(levelNumber, req = null, client = null) {
   const query = 'DELETE FROM quiz_levels WHERE level_number = $1 RETURNING id';
   const params = [levelNumber];
 
+  let result;
   if (client) {
-    const result = await client.query(query, params);
-    return result.rows.length > 0;
+    result = await client.query(query, params);
+  } else if (req && req.tenant) {
+    result = await tenantQuery(req, query, params);
+  } else {
+    result = await pool.query(query, params);
   }
 
-  if (req && req.tenant) {
-    const result = await tenantQuery(req, query, params);
-    return result.rows.length > 0;
+  // Invalidate cache (non-blocking)
+  if (req) {
+    invalidateLevelsCache(req).catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
   }
 
-  const result = await pool.query(query, params);
   return result.rows.length > 0;
 }
 

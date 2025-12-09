@@ -1,6 +1,7 @@
 const app = require('./src/app');
 const { startAutoUpdateJob } = require('./src/services/onlineUsersService');
 const { connect: connectRedis, disconnect: disconnectRedis } = require('./src/config/redis');
+const { prewarmAllApps } = require('./src/services/prewarmService');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3000;
@@ -29,8 +30,14 @@ const server = app.listen(PORT, async () => {
   if (isPrimaryWorker) {
     console.log('Starting background jobs (primary worker)...\n');
     startAutoUpdateJob();
+
+    // Pre-warm cache on startup (primary worker only to avoid duplicate work)
+    console.log('Pre-warming cache...\n');
+    prewarmAllApps().catch(err => {
+      console.error('Cache pre-warm error (non-critical):', err.message);
+    });
   } else {
-    console.log('Skipping background jobs (handled by primary worker)\n');
+    console.log('Skipping background jobs and cache pre-warm (handled by primary worker)\n');
   }
 
   console.log('==============================================\n');
