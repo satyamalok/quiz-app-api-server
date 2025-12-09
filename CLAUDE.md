@@ -1217,3 +1217,59 @@ node scripts/create-app.js <slug> "<name>" "<description>"
 54. **Webhook URLs are encrypted** - Use `encrypt()`/`decrypt()` from `src/utils/encryption.js`
 55. **Schema name = app slug** - They're the same, used interchangeably
 56. **Migration creates master tables first** - `npm run migrate` runs 001_master_tables.sql before schema.sql
+
+## Stress Testing & Capacity (2025-12-09)
+
+### Test Infrastructure
+- **VPS:** 8GB RAM
+- **PM2 Cluster:** 6 workers
+- **Redis:** Caching questions, levels, reels metadata
+- **PostgreSQL:** Connection pool at 50
+
+### Stress Test Results (k6)
+
+| Test Type | Rate Range | Result |
+|-----------|------------|--------|
+| Aggressive (`cache-stress-test.js`) | 300→1300 req/s | Breaking point ~700-900 req/s |
+| Moderate (`find-limit-test.js`) | 100→700 req/s | Timeouts start ~400-500 req/s |
+| Conservative (`stable-point-test.js`) | 50→350 req/s | Stable at ~150-200 req/s |
+
+### Capacity Summary
+
+| Metric | Value |
+|--------|-------|
+| **Comfortable API rate** | ~150-200 req/s |
+| **Breaking point** | ~400-500 req/s |
+| **Concurrent users (real-world)** | ~10,000 |
+| **Daily Active Users supported** | ~100,000 |
+
+### Why Real-World Capacity Is Higher Than Stress Tests
+
+Stress tests simulate bots with zero think time. Real users:
+- Login once per session (not every request)
+- Take 10-30 seconds per quiz question
+- Watch videos for 30-60 seconds
+- Have idle/browsing time between actions
+
+### Scaling Triggers (When to Upgrade)
+
+Monitor these metrics as you approach 100,000 DAU:
+- PostgreSQL connections (`pg_stat_activity`)
+- Redis memory usage and hit rate
+- PM2 worker CPU/memory
+- API response times > 500ms
+
+**Quick scaling options:**
+1. Increase PostgreSQL pool to 100
+2. Add PM2 workers (8-10)
+3. Add PostgreSQL read replica for reporting
+4. Consider PgBouncer for connection pooling
+
+### Stress Test Scripts
+
+Located in `stress-tests/` folder:
+- `cache-stress-test.js` - Aggressive breaking point test
+- `find-limit-test.js` - Moderate limit finder
+- `stable-point-test.js` - Conservative stability test
+
+Run with: `k6 run stress-tests/<script>.js`
