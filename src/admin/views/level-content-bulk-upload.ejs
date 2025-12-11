@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bulk Upload Level Content - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .upload-container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .drop-zone {
+            border: 3px dashed #ddd;
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 30px;
+        }
+        .drop-zone:hover, .drop-zone.drag-over {
+            border-color: #6f42c1;
+            background: #f3e8ff;
+        }
+        .drop-zone-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        .drop-zone-text {
+            font-size: 18px;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        .drop-zone-hint {
+            font-size: 14px;
+            color: #999;
+        }
+        .files-list {
+            margin-bottom: 20px;
+        }
+        .file-item {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .file-item.error {
+            border-color: #dc3545;
+            background: #fff5f5;
+        }
+        .file-item.uploading {
+            opacity: 0.7;
+        }
+        .file-item.success {
+            border-color: #28a745;
+            background: #f0fff4;
+        }
+        .file-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .file-icon {
+            font-size: 24px;
+        }
+        .file-name {
+            font-weight: 500;
+        }
+        .file-size {
+            color: #666;
+            font-size: 14px;
+        }
+        .file-remove {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .file-fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr auto auto;
+            gap: 10px;
+            align-items: end;
+        }
+        .file-fields .form-group {
+            margin: 0;
+        }
+        .file-fields label {
+            display: block;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .file-fields input,
+        .file-fields select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .file-fields .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding-top: 20px;
+        }
+        .upload-progress {
+            height: 4px;
+            background: #e9ecef;
+            border-radius: 2px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .upload-progress-bar {
+            height: 100%;
+            background: #6f42c1;
+            transition: width 0.3s;
+        }
+        .upload-status {
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .upload-status.error { color: #dc3545; }
+        .upload-status.success { color: #28a745; }
+        .actions-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .file-count {
+            font-weight: 500;
+        }
+        .hidden {
+            display: none;
+        }
+        .alert {
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .alert-info {
+            background: #e7f3ff;
+            color: #004085;
+        }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .level-helper {
+            font-size: 11px;
+            color: #6f42c1;
+            margin-top: 3px;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="upload-container">
+            <h2>Bulk Upload Level Content</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Upload multiple content files at once. Set the level, XP price, and content type for each file.
+            </p>
+
+            <div class="alert alert-info">
+                <strong>Tip:</strong> Content is associated with levels (1-100). After uploading, you can edit each item to add descriptions, thumbnails, sale pricing, and more.
+            </div>
+
+            <!-- Drop Zone -->
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-icon">📚</div>
+                <div class="drop-zone-text">Drag & drop files here or click to select</div>
+                <div class="drop-zone-hint">PDF, MP4, WebM files. Max 100MB each, up to 20 files.</div>
+                <input type="file" id="fileInput" multiple accept=".pdf,.mp4,.webm,.mov" class="hidden">
+            </div>
+
+            <!-- Actions Bar (hidden until files are added) -->
+            <div class="actions-bar hidden" id="actionsBar">
+                <div class="file-count">
+                    <span id="fileCount">0</span> files selected
+                </div>
+                <div>
+                    <button type="button" class="btn btn-secondary" onclick="setAllToLevel()">Set All to Level...</button>
+                    <button type="button" class="btn btn-secondary" onclick="clearAllFiles()">Clear All</button>
+                    <button type="button" class="btn btn-primary" onclick="uploadAllFiles()" id="uploadBtn">
+                        Upload All Content
+                    </button>
+                </div>
+            </div>
+
+            <!-- Files List -->
+            <div class="files-list" id="filesList"></div>
+
+            <!-- Results Summary (hidden until upload completes) -->
+            <div id="uploadResults" class="hidden">
+                <div class="alert alert-success" id="successAlert">
+                    <strong>Upload Complete!</strong> <span id="successCount">0</span> items uploaded successfully.
+                    <a href="/admin/level-content">View Content</a>
+                </div>
+                <div class="alert alert-danger hidden" id="errorAlert">
+                    <strong>Some uploads failed:</strong> <span id="errorCount">0</span> items failed.
+                </div>
+            </div>
+
+            <div style="margin-top: 20px;">
+                <a href="/admin/level-content" class="btn btn-secondary">Back to Level Content</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const filesList = document.getElementById('filesList');
+        const actionsBar = document.getElementById('actionsBar');
+        const fileCountEl = document.getElementById('fileCount');
+
+        let files = [];
+
+        // Drop zone events
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        function handleFiles(newFiles) {
+            const allowedTypes = ['application/pdf', 'video/mp4', 'video/webm', 'video/quicktime'];
+            const maxSize = 100 * 1024 * 1024; // 100MB
+            const maxFiles = 20;
+
+            for (let file of newFiles) {
+                if (files.length >= maxFiles) {
+                    alert('Maximum 20 files allowed');
+                    break;
+                }
+                if (!allowedTypes.includes(file.type)) {
+                    alert(`${file.name}: Only PDF and video files are allowed`);
+                    continue;
+                }
+                if (file.size > maxSize) {
+                    alert(`${file.name}: File too large (max 100MB)`);
+                    continue;
+                }
+                // Auto-detect content type from mimetype
+                let contentType = 'pdf';
+                if (file.type.startsWith('video/')) {
+                    contentType = 'video';
+                }
+                files.push({
+                    file: file,
+                    id: Date.now() + Math.random(),
+                    level: 1,
+                    content_type: contentType,
+                    xp_price: 0,
+                    is_active: true,
+                    is_featured: false,
+                    status: 'pending' // pending, uploading, success, error
+                });
+            }
+            renderFilesList();
+        }
+
+        function renderFilesList() {
+            filesList.innerHTML = '';
+            files.forEach((item, index) => {
+                const icon = item.file.type === 'application/pdf' ? '📄' : '🎬';
+                const size = (item.file.size / 1024 / 1024).toFixed(2);
+
+                const div = document.createElement('div');
+                div.className = `file-item ${item.status}`;
+                div.id = `file-${item.id}`;
+                div.innerHTML = `
+                    <div class="file-header">
+                        <div class="file-info">
+                            <span class="file-icon">${icon}</span>
+                            <span class="file-name">${item.file.name}</span>
+                            <span class="file-size">(${size} MB)</span>
+                        </div>
+                        <button type="button" class="file-remove" onclick="removeFile(${index})" ${item.status !== 'pending' ? 'disabled' : ''}>Remove</button>
+                    </div>
+                    <div class="file-fields">
+                        <div class="form-group">
+                            <label>Level (1-100) *</label>
+                            <input type="number" min="1" max="100" value="${item.level}"
+                                   onchange="updateFile(${index}, 'level', this.value)"
+                                   ${item.status !== 'pending' ? 'disabled' : ''}>
+                        </div>
+                        <div class="form-group">
+                            <label>Content Type</label>
+                            <select onchange="updateFile(${index}, 'content_type', this.value)" ${item.status !== 'pending' ? 'disabled' : ''}>
+                                <option value="pdf" ${item.content_type === 'pdf' ? 'selected' : ''}>PDF</option>
+                                <option value="video" ${item.content_type === 'video' ? 'selected' : ''}>Video</option>
+                                <option value="notes" ${item.content_type === 'notes' ? 'selected' : ''}>Notes</option>
+                                <option value="practice" ${item.content_type === 'practice' ? 'selected' : ''}>Practice</option>
+                                <option value="other" ${item.content_type === 'other' ? 'selected' : ''}>Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>XP Price</label>
+                            <input type="number" min="0" value="${item.xp_price}"
+                                   onchange="updateFile(${index}, 'xp_price', this.value)"
+                                   ${item.status !== 'pending' ? 'disabled' : ''}>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="active-${index}" ${item.is_active ? 'checked' : ''}
+                                   onchange="updateFile(${index}, 'is_active', this.checked)"
+                                   ${item.status !== 'pending' ? 'disabled' : ''}>
+                            <label for="active-${index}">Active</label>
+                        </div>
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="featured-${index}" ${item.is_featured ? 'checked' : ''}
+                                   onchange="updateFile(${index}, 'is_featured', this.checked)"
+                                   ${item.status !== 'pending' ? 'disabled' : ''}>
+                            <label for="featured-${index}">Featured</label>
+                        </div>
+                    </div>
+                    ${item.status === 'uploading' ? '<div class="upload-progress"><div class="upload-progress-bar" style="width: 50%"></div></div>' : ''}
+                    ${item.status === 'success' ? '<div class="upload-status success">Uploaded successfully</div>' : ''}
+                    ${item.status === 'error' ? `<div class="upload-status error">Error: ${item.errorMessage || 'Upload failed'}</div>` : ''}
+                `;
+                filesList.appendChild(div);
+            });
+
+            // Update UI
+            actionsBar.classList.toggle('hidden', files.length === 0);
+            fileCountEl.textContent = files.length;
+        }
+
+        function updateFile(index, field, value) {
+            if (field === 'xp_price' || field === 'level') value = parseInt(value) || 0;
+            if (field === 'level') {
+                value = Math.max(1, Math.min(100, value)); // Clamp to 1-100
+            }
+            files[index][field] = value;
+        }
+
+        function removeFile(index) {
+            files.splice(index, 1);
+            renderFilesList();
+        }
+
+        function clearAllFiles() {
+            files = [];
+            renderFilesList();
+            document.getElementById('uploadResults').classList.add('hidden');
+        }
+
+        function setAllToLevel() {
+            const level = prompt('Set all files to which level? (1-100)', '1');
+            if (level === null) return;
+
+            const levelNum = parseInt(level);
+            if (isNaN(levelNum) || levelNum < 1 || levelNum > 100) {
+                alert('Please enter a valid level between 1 and 100');
+                return;
+            }
+
+            files.forEach((item, index) => {
+                if (item.status === 'pending') {
+                    files[index].level = levelNum;
+                }
+            });
+
+            renderFilesList();
+        }
+
+        async function uploadAllFiles() {
+            const uploadBtn = document.getElementById('uploadBtn');
+            uploadBtn.disabled = true;
+            uploadBtn.textContent = 'Uploading...';
+
+            let successCount = 0;
+            let errorCount = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                const item = files[i];
+                if (item.status !== 'pending') continue;
+
+                // Validate level
+                if (item.level < 1 || item.level > 100) {
+                    item.status = 'error';
+                    item.errorMessage = 'Level must be between 1 and 100';
+                    errorCount++;
+                    renderFilesList();
+                    continue;
+                }
+
+                item.status = 'uploading';
+                renderFilesList();
+
+                try {
+                    const formData = new FormData();
+                    formData.append('files', item.file);
+                    formData.append('level', item.level);
+                    formData.append('content_type', item.content_type);
+                    formData.append('xp_price', item.xp_price);
+                    formData.append('is_active', item.is_active ? 'on' : '');
+                    formData.append('is_featured', item.is_featured ? 'on' : '');
+                    // Title from filename
+                    formData.append('title', item.file.name.replace(/\.[^/.]+$/, ''));
+
+                    const response = await fetch('/admin/level-content/bulk-upload-single', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        item.status = 'success';
+                        successCount++;
+                    } else {
+                        item.status = 'error';
+                        item.errorMessage = result.error || 'Upload failed';
+                        errorCount++;
+                    }
+                } catch (err) {
+                    item.status = 'error';
+                    item.errorMessage = err.message;
+                    errorCount++;
+                }
+
+                renderFilesList();
+            }
+
+            uploadBtn.disabled = false;
+            uploadBtn.textContent = 'Upload All Content';
+
+            // Show results
+            const resultsDiv = document.getElementById('uploadResults');
+            resultsDiv.classList.remove('hidden');
+            document.getElementById('successCount').textContent = successCount;
+            document.getElementById('errorCount').textContent = errorCount;
+            document.getElementById('successAlert').classList.toggle('hidden', successCount === 0);
+            document.getElementById('errorAlert').classList.toggle('hidden', errorCount === 0);
+        }
+    </script>
+</body>
+</html>

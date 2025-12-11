@@ -106,14 +106,25 @@
 
                 <!-- Basic Info -->
                 <div class="form-group">
-                    <label for="chapter_id">Chapter *</label>
-                    <select id="chapter_id" name="chapter_id" required>
-                        <option value="">Select Chapter</option>
+                    <label for="chapter_id">Chapter</label>
+                    <select id="chapter_id" name="chapter_id">
+                        <option value="" <%= !item || !item.chapter_id ? 'selected' : '' %>>-- No Chapter (Independent Item) --</option>
                         <% chapters.forEach(c => { %>
                         <option value="<%= c.id %>" <%= item && item.chapter_id === c.id ? 'selected' : '' %>>
                             <%= c.name %>
                         </option>
                         <% }); %>
+                    </select>
+                    <small>Leave empty for independent items that aren't part of any chapter</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="item_type">Item Type *</label>
+                    <select id="item_type" name="item_type" required>
+                        <option value="pdf" <%= !item || item.item_type === 'pdf' ? 'selected' : '' %>>PDF</option>
+                        <option value="video" <%= item && item.item_type === 'video' ? 'selected' : '' %>>Video</option>
+                        <option value="notes" <%= item && item.item_type === 'notes' ? 'selected' : '' %>>Notes</option>
+                        <option value="other" <%= item && item.item_type === 'other' ? 'selected' : '' %>>Other</option>
                     </select>
                 </div>
 
@@ -134,19 +145,19 @@
                 <div class="section-title">Files</div>
 
                 <div class="form-group">
-                    <label for="pdf_file">PDF File <%= isEdit ? '' : '*' %></label>
+                    <label for="pdf_file">Content File <%= isEdit ? '' : '*' %></label>
                     <% if (isEdit && item && item.pdf_url) { %>
                     <div class="current-file">
-                        <strong>Current PDF:</strong>
-                        <a href="<%= item.pdf_url %>" target="_blank">View PDF</a>
+                        <strong>Current File:</strong>
+                        <a href="<%= item.pdf_url %>" target="_blank">View/Download</a>
                         <% if (item.file_size_bytes) { %>
                         (<%= (item.file_size_bytes / 1024 / 1024).toFixed(2) %> MB)
                         <% } %>
                     </div>
                     <small>Upload new file to replace:</small>
                     <% } %>
-                    <input type="file" id="pdf_file" name="pdf_file" accept=".pdf" <%= isEdit ? '' : 'required' %>>
-                    <small>Max file size: 50MB</small>
+                    <input type="file" id="pdf_file" name="pdf_file" accept=".pdf,.mp4,.webm,.mov" <%= isEdit ? '' : 'required' %>>
+                    <small>PDF or Video files. Max size: 100MB</small>
                 </div>
 
                 <div class="form-group">

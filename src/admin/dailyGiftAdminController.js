@@ -405,6 +405,85 @@ async function toggleGiftStatus(req, res) {
   }
 }
 
+// ============================================
+// BULK UPLOAD
+// ============================================
+
+/**
+ * GET /admin/daily-gifts/bulk-upload
+ * Show bulk upload page
+ */
+async function showBulkUpload(req, res) {
+  try {
+    prepareAdminReq(req);
+
+    res.render('daily-gifts-bulk-upload', {
+      title: 'Bulk Upload Daily Gifts',
+      currentApp: req.session.currentApp
+    });
+  } catch (err) {
+    console.error('Error loading bulk upload page:', err);
+    res.redirect('/admin/daily-gifts?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/daily-gifts/bulk-upload-single
+ * Upload a single gift (called by bulk upload JS)
+ */
+async function bulkUploadSingle(req, res) {
+  try {
+    prepareAdminReq(req);
+    const {
+      title,
+      content_type = 'pdf',
+      available_date,
+      available_time,
+      xp_price,
+      is_active
+    } = req.body;
+
+    if (!available_date) {
+      return res.status(400).json({ success: false, error: 'Available date is required' });
+    }
+
+    // Handle file upload
+    let file_url = null;
+    let file_size_bytes = null;
+
+    if (req.files && req.files.files && req.files.files[0]) {
+      const file = req.files.files[0];
+      const fileResult = await uploadFile(file, 'daily-gifts', req.tenant.slug);
+      file_url = fileResult.publicUrl;
+      file_size_bytes = file.size;
+    }
+
+    if (!file_url) {
+      return res.status(400).json({ success: false, error: 'File is required' });
+    }
+
+    await dailyGiftService.createGift(req, {
+      title: title || 'Untitled Gift',
+      description: '',
+      content_type,
+      file_url,
+      thumbnail_url: null,
+      xp_price: parseInt(xp_price) || 0,
+      available_date,
+      available_time: available_time || '00:00:00',
+      file_size_bytes,
+      page_count: null,
+      duration_seconds: null,
+      is_active: is_active === 'on'
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error in bulk upload single:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
 module.exports = {
   // List & View
   showDailyGifts,
@@ -418,6 +497,9 @@ module.exports = {
   // Delete & Toggle
   deleteGift,
   toggleGiftStatus,
+  // Bulk Upload
+  showBulkUpload,
+  bulkUploadSingle,
   // Multer upload middleware
   upload
 };

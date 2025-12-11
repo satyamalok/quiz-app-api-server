@@ -110,6 +110,8 @@ const {
   updateItem,
   deleteItem,
   bulkItemAction,
+  showBulkUpload: showShopBulkUpload,
+  bulkUploadSingle: shopBulkUploadSingle,
   showPurchases,
   showShopAnalytics,
   showBalanceLeaderboard,
@@ -126,6 +128,8 @@ const {
   updateContent: updateLevelContent,
   deleteContent: deleteLevelContent,
   bulkAction: levelContentBulkAction,
+  showBulkUpload: showLevelContentBulkUpload,
+  bulkUploadSingle: levelContentBulkUploadSingle,
   showAnalytics: showLevelContentAnalytics,
   upload: levelContentUpload
 } = require('./levelContentAdminController');
@@ -139,6 +143,8 @@ const {
   updateGift,
   deleteGift,
   toggleGiftStatus,
+  showBulkUpload: showDailyGiftsBulkUpload,
+  bulkUploadSingle: dailyGiftsBulkUploadSingle,
   upload: dailyGiftUpload
 } = require('./dailyGiftAdminController');
 // Feature 7: Sales Agents Admin
@@ -387,10 +393,14 @@ router.post('/shop/chapters/reorder', reorderChapters);
 
 router.get('/shop/items', showItems);
 router.get('/shop/items/create', showCreateItem);
+router.get('/shop/items/bulk-upload', showShopBulkUpload);
 router.post('/shop/items/create', shopUpload.fields([
   { name: 'pdf_file', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
 ]), createItem);
+router.post('/shop/items/bulk-upload-single', shopUpload.fields([
+  { name: 'files', maxCount: 1 }
+]), shopBulkUploadSingle);
 router.get('/shop/items/:id/edit', showEditItem);
 router.post('/shop/items/:id/update', shopUpload.fields([
   { name: 'pdf_file', maxCount: 1 },
@@ -407,10 +417,14 @@ router.get('/shop/user/:phone/purchases', showUserPurchases);
 // Feature 2: Level Content Management
 router.get('/level-content', showLevelContent);
 router.get('/level-content/create', showCreateLevelContent);
+router.get('/level-content/bulk-upload', showLevelContentBulkUpload);
 router.post('/level-content/create', levelContentUpload.fields([
   { name: 'content_file', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
 ]), createLevelContent);
+router.post('/level-content/bulk-upload-single', levelContentUpload.fields([
+  { name: 'files', maxCount: 1 }
+]), levelContentBulkUploadSingle);
 router.get('/level-content/analytics', showLevelContentAnalytics);
 router.get('/level-content/level/:level', showLevelContentByLevel);
 router.get('/level-content/:id/edit', showEditLevelContent);
@@ -425,10 +439,14 @@ router.post('/level-content/bulk-action', levelContentBulkAction);
 router.get('/daily-gifts', showDailyGifts);
 router.get('/daily-gifts/calendar', showDailyGiftsCalendar);
 router.get('/daily-gifts/create', showCreateGift);
+router.get('/daily-gifts/bulk-upload', showDailyGiftsBulkUpload);
 router.post('/daily-gifts/create', dailyGiftUpload.fields([
   { name: 'gift_file', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
 ]), createGift);
+router.post('/daily-gifts/bulk-upload-single', dailyGiftUpload.fields([
+  { name: 'files', maxCount: 1 }
+]), dailyGiftsBulkUploadSingle);
 router.get('/daily-gifts/:id/edit', showEditGift);
 router.post('/daily-gifts/:id/update', dailyGiftUpload.fields([
   { name: 'gift_file', maxCount: 1 },

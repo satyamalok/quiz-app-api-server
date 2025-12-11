@@ -48,4 +48,8 @@ function authenticateJWT(req, res, next) {
   }
 }
 
+// Support both import styles:
+// const authenticateJWT = require('./auth')  (existing pattern)
+// const { authenticateJWT } = require('./auth')  (destructuring pattern)
 module.exports = authenticateJWT;
+module.exports.authenticateJWT = authenticateJWT;

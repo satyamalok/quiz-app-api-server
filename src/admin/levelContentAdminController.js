@@ -455,6 +455,90 @@ async function bulkAction(req, res) {
 }
 
 // ============================================
+// BULK UPLOAD
+// ============================================
+
+/**
+ * GET /admin/level-content/bulk-upload
+ * Show bulk upload page
+ */
+async function showBulkUpload(req, res) {
+  try {
+    prepareAdminReq(req);
+
+    res.render('level-content-bulk-upload', {
+      title: 'Bulk Upload Level Content',
+      currentApp: req.session.currentApp
+    });
+  } catch (err) {
+    console.error('Error loading bulk upload page:', err);
+    res.redirect('/admin/level-content?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/level-content/bulk-upload-single
+ * Upload a single content item (called by bulk upload JS)
+ */
+async function bulkUploadSingle(req, res) {
+  try {
+    prepareAdminReq(req);
+    const {
+      level,
+      title,
+      content_type = 'pdf',
+      xp_price,
+      is_active,
+      is_featured
+    } = req.body;
+
+    // Validate level
+    const levelNum = parseInt(level);
+    if (isNaN(levelNum) || levelNum < 1 || levelNum > 100) {
+      return res.status(400).json({ success: false, error: 'Level must be between 1 and 100' });
+    }
+
+    // Handle file upload
+    let file_url = null;
+    let file_size_bytes = null;
+
+    if (req.files && req.files.files && req.files.files[0]) {
+      const file = req.files.files[0];
+      const fileResult = await uploadFile(file, 'level-content', req.tenant.slug);
+      file_url = fileResult.publicUrl;
+      file_size_bytes = file.size;
+    }
+
+    if (!file_url) {
+      return res.status(400).json({ success: false, error: 'File is required' });
+    }
+
+    await levelContentService.createContent(req, {
+      level: levelNum,
+      title: title || 'Untitled Content',
+      description: '',
+      content_type,
+      file_url,
+      thumbnail_url: null,
+      xp_price: parseInt(xp_price) || 0,
+      xp_original_price: null,
+      sale_ends_at: null,
+      file_size_bytes,
+      page_count: null,
+      duration_seconds: null,
+      display_order: 0,
+      is_active: is_active === 'on',
+      is_featured: is_featured === 'on'
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error in bulk upload single:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+// ============================================
 // ANALYTICS
 // ============================================
 
@@ -502,6 +586,9 @@ module.exports = {
   // Delete & Bulk
   deleteContent,
   bulkAction,
+  // Bulk Upload
+  showBulkUpload,
+  bulkUploadSingle,
   // Analytics
   showAnalytics,
   // Multer upload middleware

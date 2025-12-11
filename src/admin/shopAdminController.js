@@ -34,13 +34,20 @@ function prepareAdminReq(req) {
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit for PDFs
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit for PDFs and Videos
   fileFilter: (req, file, cb) => {
-    if (file.fieldname === 'pdf_file') {
-      if (file.mimetype === 'application/pdf') {
+    if (file.fieldname === 'pdf_file' || file.fieldname === 'files') {
+      // Allow PDF and video files for shop items
+      const allowedMimes = [
+        'application/pdf',
+        'video/mp4',
+        'video/webm',
+        'video/quicktime'
+      ];
+      if (allowedMimes.includes(file.mimetype)) {
         cb(null, true);
       } else {
-        cb(new Error('Only PDF files are allowed'));
+        cb(new Error('Only PDF and video files are allowed'));
       }
     } else if (file.fieldname === 'thumbnail' || file.fieldname === 'icon') {
       if (file.mimetype.startsWith('image/')) {
@@ -546,6 +553,89 @@ async function deleteItem(req, res) {
 }
 
 /**
+ * GET /admin/shop/items/bulk-upload
+ * Show bulk upload page
+ */
+async function showBulkUpload(req, res) {
+  try {
+    prepareAdminReq(req);
+    const chapters = await shopService.getAllChapters(req, false);
+
+    res.render('shop-bulk-upload', {
+      title: 'Bulk Upload Shop Items',
+      chapters,
+      currentApp: req.tenant,
+      allApps: req.allApps
+    });
+  } catch (err) {
+    console.error('Error loading bulk upload page:', err);
+    res.redirect('/admin/shop/items?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/shop/items/bulk-upload-single
+ * Upload a single item (called by bulk upload JS)
+ */
+async function bulkUploadSingle(req, res) {
+  try {
+    prepareAdminReq(req);
+    const {
+      chapter_id,
+      title,
+      item_type = 'pdf',
+      xp_price,
+      is_active,
+      is_featured
+    } = req.body;
+
+    // Handle file upload
+    let pdf_url = null;
+    let file_size_bytes = null;
+
+    if (req.files && req.files.files && req.files.files[0]) {
+      const file = req.files.files[0];
+      const uploadResult = await uploadFile(file, 'shop/pdfs', req.tenant.slug);
+      pdf_url = uploadResult.publicUrl;
+      file_size_bytes = file.size;
+    }
+
+    if (!pdf_url) {
+      return res.status(400).json({ success: false, error: 'File is required' });
+    }
+
+    // Parse chapter_id (can be null for independent items)
+    const chapterIdValue = chapter_id && chapter_id !== '' && chapter_id !== 'null'
+      ? parseInt(chapter_id)
+      : null;
+
+    await shopService.createItem(req, {
+      chapter_id: chapterIdValue,
+      title: title || 'Untitled',
+      description: '',
+      pdf_url,
+      thumbnail_url: null,
+      item_type,
+      xp_price: parseInt(xp_price) || 0,
+      xp_original_price: null,
+      sale_ends_at: null,
+      is_stock_enabled: false,
+      stock_total: null,
+      display_order: 0,
+      is_active: is_active === 'on',
+      is_featured: is_featured === 'on',
+      file_size_bytes,
+      page_count: null
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error in bulk upload single:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+/**
  * POST /admin/shop/items/bulk-action
  * Bulk action on items
  */
@@ -791,6 +881,9 @@ module.exports = {
   updateItem,
   deleteItem,
   bulkItemAction,
+  // Bulk Upload
+  showBulkUpload,
+  bulkUploadSingle,
   // Purchases & Analytics
   showPurchases,
   showShopAnalytics,
