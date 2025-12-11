@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Gifts - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .page-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .page-nav a {
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #333;
+        }
+        .page-nav a.active {
+            background: #007bff;
+            color: white;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin: 0;
+            font-size: 24px;
+            color: #333;
+        }
+        .stat-card p {
+            margin: 5px 0 0;
+            color: #666;
+            font-size: 12px;
+        }
+        .stat-card.today {
+            background: #fff3cd;
+        }
+        .stat-card.upcoming {
+            background: #d4edda;
+        }
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filters select, .filters input[type="text"], .filters input[type="date"] {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .gift-thumbnail {
+            width: 60px;
+            height: 60px;
+            object-fit: cover;
+            border-radius: 4px;
+            background: #f0f0f0;
+        }
+        .gift-title {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .date-cell {
+            white-space: nowrap;
+        }
+        .price-cell {
+            white-space: nowrap;
+        }
+        .type-badge {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .type-badge.pdf { background: #e74c3c; color: white; }
+        .type-badge.video { background: #9b59b6; color: white; }
+        .type-badge.notes { background: #3498db; color: white; }
+        .type-badge.surprise { background: #f39c12; color: white; }
+        .type-badge.other { background: #95a5a6; color: white; }
+        .status-active { color: #28a745; }
+        .status-inactive { color: #dc3545; }
+        .availability-badge {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .availability-badge.available { background: #d4edda; color: #155724; }
+        .availability-badge.upcoming { background: #cce5ff; color: #004085; }
+        .availability-badge.past { background: #f8f9fa; color: #6c757d; }
+        .actions-cell {
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="page-nav">
+            <a href="/admin/daily-gifts" class="active">List View</a>
+            <a href="/admin/daily-gifts/calendar">Calendar View</a>
+        </div>
+
+        <% if (success) { %>
+            <div class="alert alert-success"><%= success %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="alert alert-danger"><%= error %></div>
+        <% } %>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card today">
+                <h3><%= stats.today_gifts || 0 %></h3>
+                <p>Today's Gifts</p>
+            </div>
+            <div class="stat-card upcoming">
+                <h3><%= stats.upcoming_gifts || 0 %></h3>
+                <p>Upcoming</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= stats.past_gifts || 0 %></h3>
+                <p>Past Gifts</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= stats.total_purchases || 0 %></h3>
+                <p>Total Purchases</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= stats.total_xp_collected || 0 %> XP</h3>
+                <p>XP Collected</p>
+            </div>
+        </div>
+
+        <div class="header-row">
+            <h1>Daily Gifts</h1>
+            <a href="/admin/daily-gifts/create" class="btn btn-primary">+ Add Gift</a>
+        </div>
+
+        <!-- Filters -->
+        <form class="filters" method="GET" action="/admin/daily-gifts">
+            <input type="date" name="date_from" placeholder="From Date"
+                   value="<%= filters.date_from || '' %>">
+            <input type="date" name="date_to" placeholder="To Date"
+                   value="<%= filters.date_to || '' %>">
+
+            <select name="content_type">
+                <option value="">All Types</option>
+                <option value="pdf" <%= filters.content_type === 'pdf' ? 'selected' : '' %>>PDF</option>
+                <option value="video" <%= filters.content_type === 'video' ? 'selected' : '' %>>Video</option>
+                <option value="notes" <%= filters.content_type === 'notes' ? 'selected' : '' %>>Notes</option>
+                <option value="surprise" <%= filters.content_type === 'surprise' ? 'selected' : '' %>>Surprise</option>
+                <option value="other" <%= filters.content_type === 'other' ? 'selected' : '' %>>Other</option>
+            </select>
+
+            <select name="status">
+                <option value="">All Status</option>
+                <option value="active" <%= filters.status === 'active' ? 'selected' : '' %>>Active</option>
+                <option value="inactive" <%= filters.status === 'inactive' ? 'selected' : '' %>>Inactive</option>
+            </select>
+
+            <input type="text" name="search" placeholder="Search title..." value="<%= filters.search || '' %>">
+
+            <select name="sort">
+                <option value="date_desc" <%= filters.sort === 'date_desc' ? 'selected' : '' %>>Date (Newest)</option>
+                <option value="date_asc" <%= filters.sort === 'date_asc' ? 'selected' : '' %>>Date (Oldest)</option>
+                <option value="popular" <%= filters.sort === 'popular' ? 'selected' : '' %>>Most Popular</option>
+            </select>
+
+            <button type="submit" class="btn btn-secondary">Filter</button>
+            <a href="/admin/daily-gifts" class="btn btn-light">Clear</a>
+        </form>
+
+        <!-- Gifts Table -->
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Thumbnail</th>
+                    <th>Date</th>
+                    <th>Time</th>
+                    <th>Title</th>
+                    <th>Type</th>
+                    <th>Price</th>
+                    <th>Purchases</th>
+                    <th>Availability</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (gifts && gifts.length > 0) { %>
+                    <% gifts.forEach(gift => { %>
+                    <%
+                        const giftDate = new Date(gift.available_date);
+                        const today = new Date();
+                        today.setHours(0,0,0,0);
+                        giftDate.setHours(0,0,0,0);
+                        const isPast = giftDate < today;
+                        const isToday = giftDate.getTime() === today.getTime();
+                        const isFuture = giftDate > today;
+                    %>
+                    <tr>
+                        <td>
+                            <% if (gift.thumbnail_url) { %>
+                                <img src="<%= gift.thumbnail_url %>" class="gift-thumbnail" alt="">
+                            <% } else { %>
+                                <div class="gift-thumbnail" style="display: flex; align-items: center; justify-content: center; color: #aaa; font-size: 10px;">
+                                    <% if (gift.content_type === 'surprise') { %>?<% } else { %><%= gift.content_type.toUpperCase() %><% } %>
+                                </div>
+                            <% } %>
+                        </td>
+                        <td class="date-cell">
+                            <%= new Date(gift.available_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) %>
+                        </td>
+                        <td><%= gift.available_time || '00:00' %></td>
+                        <td>
+                            <div class="gift-title"><%= gift.title %></div>
+                        </td>
+                        <td>
+                            <span class="type-badge <%= gift.content_type %>">
+                                <%= gift.content_type %>
+                            </span>
+                        </td>
+                        <td class="price-cell">
+                            <% if (gift.xp_price === 0) { %>
+                                <strong style="color: #28a745;">FREE</strong>
+                            <% } else { %>
+                                <strong><%= gift.xp_price %> XP</strong>
+                            <% } %>
+                        </td>
+                        <td><%= gift.total_purchases || 0 %></td>
+                        <td>
+                            <% if (isPast) { %>
+                                <span class="availability-badge past">Past</span>
+                            <% } else if (isToday && gift.is_available_now) { %>
+                                <span class="availability-badge available">Available Now</span>
+                            <% } else if (isToday) { %>
+                                <span class="availability-badge upcoming">Today @ <%= gift.available_time %></span>
+                            <% } else { %>
+                                <span class="availability-badge upcoming">Upcoming</span>
+                            <% } %>
+                        </td>
+                        <td>
+                            <% if (gift.is_active) { %>
+                                <span class="status-active">Active</span>
+                            <% } else { %>
+                                <span class="status-inactive">Inactive</span>
+                            <% } %>
+                        </td>
+                        <td class="actions-cell">
+                            <a href="<%= gift.file_url %>" target="_blank" class="btn btn-sm btn-secondary">View</a>
+                            <a href="/admin/daily-gifts/<%= gift.id %>/edit" class="btn btn-sm btn-primary">Edit</a>
+                            <form action="/admin/daily-gifts/<%= gift.id %>/toggle" method="POST" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-warning">
+                                    <%= gift.is_active ? 'Hide' : 'Show' %>
+                                </button>
+                            </form>
+                            <form action="/admin/daily-gifts/<%= gift.id %>/delete" method="POST" style="display: inline;">
+                                <button type="submit" class="btn btn-sm btn-danger"
+                                        onclick="return confirm('Delete this gift?')">Del</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <% }); %>
+                <% } else { %>
+                    <tr>
+                        <td colspan="10" style="text-align: center; padding: 40px;">
+                            No daily gifts found. <a href="/admin/daily-gifts/create">Create your first gift</a>
+                        </td>
+                    </tr>
+                <% } %>
+            </tbody>
+        </table>
+
+        <!-- Pagination -->
+        <% if (pagination.totalPages > 1) { %>
+        <div class="pagination">
+            <% for (let i = 1; i <= pagination.totalPages; i++) { %>
+                <% if (i === pagination.page) { %>
+                    <span class="page-current"><%= i %></span>
+                <% } else { %>
+                    <a href="?page=<%= i %>&date_from=<%= filters.date_from || '' %>&date_to=<%= filters.date_to || '' %>&content_type=<%= filters.content_type || '' %>&status=<%= filters.status || '' %>&search=<%= filters.search || '' %>&sort=<%= filters.sort || 'date_desc' %>" class="page-link"><%= i %></a>
+                <% } %>
+            <% } %>
+        </div>
+        <% } %>
+
+        <p style="color: #666; font-size: 12px; margin-top: 10px;">
+            Showing <%= gifts.length %> of <%= pagination.total %> gifts
+        </p>
+    </div>
+</body>
+</html>

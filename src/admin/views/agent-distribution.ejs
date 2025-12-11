@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Distribution - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .page-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .page-nav a {
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #333;
+        }
+        .page-nav a.active {
+            background: #007bff;
+            color: white;
+        }
+        .scheme-options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .scheme-card {
+            background: white;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .scheme-card:hover {
+            border-color: #007bff;
+        }
+        .scheme-card.selected {
+            border-color: #007bff;
+            background: #e3f2fd;
+        }
+        .scheme-card h3 {
+            margin: 0 0 10px;
+            font-size: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .scheme-card p {
+            margin: 0;
+            color: #666;
+            font-size: 14px;
+        }
+        .scheme-radio {
+            display: none;
+        }
+        .scheme-indicator {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ddd;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .scheme-card.selected .scheme-indicator {
+            border-color: #007bff;
+            background: #007bff;
+        }
+        .scheme-card.selected .scheme-indicator::after {
+            content: '';
+            width: 8px;
+            height: 8px;
+            background: white;
+            border-radius: 50%;
+        }
+        .agent-stats {
+            margin-top: 30px;
+        }
+        .agent-stats h2 {
+            margin-bottom: 20px;
+        }
+        .agent-stat-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .agent-stat-row.inactive {
+            opacity: 0.5;
+        }
+        .agent-name {
+            font-weight: 500;
+        }
+        .agent-code {
+            background: #6c5ce7;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-left: 8px;
+        }
+        .priority-display {
+            background: #ffd93d;
+            color: #333;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 13px;
+        }
+        .redirect-count {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="page-nav">
+            <a href="/admin/agents">Agents</a>
+            <a href="/admin/agent-messages">Messages</a>
+            <a href="/admin/agent-distribution" class="active">Distribution</a>
+            <a href="/admin/agent-analytics">Analytics</a>
+        </div>
+
+        <% if (success) { %>
+            <div class="alert alert-success"><%= success %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="alert alert-danger"><%= error %></div>
+        <% } %>
+
+        <h1>Agent Distribution Settings</h1>
+        <p style="color: #666; margin-bottom: 30px;">
+            Choose how redirects are distributed among your sales agents.
+        </p>
+
+        <form method="POST" action="/admin/agent-distribution/update">
+            <div class="scheme-options">
+                <label class="scheme-card <%= config.scheme === 'round_robin' ? 'selected' : '' %>">
+                    <input type="radio" name="scheme" value="round_robin" class="scheme-radio"
+                           <%= config.scheme === 'round_robin' ? 'checked' : '' %>>
+                    <h3>
+                        <span class="scheme-indicator"></span>
+                        Round Robin
+                    </h3>
+                    <p>Agents receive redirects in sequential order. Each agent gets an equal share over time.</p>
+                </label>
+
+                <label class="scheme-card <%= config.scheme === 'least_recent' ? 'selected' : '' %>">
+                    <input type="radio" name="scheme" value="least_recent" class="scheme-radio"
+                           <%= config.scheme === 'least_recent' ? 'checked' : '' %>>
+                    <h3>
+                        <span class="scheme-indicator"></span>
+                        Least Recent
+                    </h3>
+                    <p>The agent who was assigned longest ago gets the next redirect. Good for balancing workload.</p>
+                </label>
+
+                <label class="scheme-card <%= config.scheme === 'random' ? 'selected' : '' %>">
+                    <input type="radio" name="scheme" value="random" class="scheme-radio"
+                           <%= config.scheme === 'random' ? 'checked' : '' %>>
+                    <h3>
+                        <span class="scheme-indicator"></span>
+                        Random
+                    </h3>
+                    <p>Agents are selected randomly. Simple but less predictable distribution.</p>
+                </label>
+
+                <label class="scheme-card <%= config.scheme === 'weighted' ? 'selected' : '' %>">
+                    <input type="radio" name="scheme" value="weighted" class="scheme-radio"
+                           <%= config.scheme === 'weighted' ? 'checked' : '' %>>
+                    <h3>
+                        <span class="scheme-indicator"></span>
+                        Weighted Priority
+                    </h3>
+                    <p>Agents with higher priority scores receive more redirects. Set priority in agent settings.</p>
+                </label>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Save Distribution Scheme</button>
+        </form>
+
+        <div class="agent-stats">
+            <h2>Active Agents</h2>
+            <% if (agents && agents.length > 0) { %>
+                <% agents.forEach(agent => { %>
+                <div class="agent-stat-row">
+                    <div>
+                        <span class="agent-name"><%= agent.name %></span>
+                        <span class="agent-code"><%= agent.agent_code %></span>
+                    </div>
+                    <% if (config.scheme === 'weighted') { %>
+                    <div class="priority-display">
+                        Priority: <%= agent.priority %>
+                    </div>
+                    <% } %>
+                    <div class="redirect-count">
+                        <%= agent.total_redirects || 0 %> redirects
+                    </div>
+                </div>
+                <% }); %>
+            <% } else { %>
+                <div style="text-align: center; padding: 40px; background: #f8f9fa; border-radius: 8px;">
+                    <p>No active agents. <a href="/admin/agents/create">Add an agent</a> to start distributing redirects.</p>
+                </div>
+            <% } %>
+        </div>
+    </div>
+
+    <script>
+        // Update card selection visually when radio changes
+        document.querySelectorAll('.scheme-radio').forEach(radio => {
+            radio.addEventListener('change', function() {
+                document.querySelectorAll('.scheme-card').forEach(card => {
+                    card.classList.remove('selected');
+                });
+                if (this.checked) {
+                    this.closest('.scheme-card').classList.add('selected');
+                }
+            });
+        });
+    </script>
+</body>
+</html>

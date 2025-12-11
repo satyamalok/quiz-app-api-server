@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Message Templates - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .page-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .page-nav a {
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #333;
+        }
+        .page-nav a.active {
+            background: #007bff;
+            color: white;
+        }
+        .placeholder-guide {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .placeholder-guide h4 {
+            margin: 0 0 10px;
+            color: #856404;
+        }
+        .placeholder-guide code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .messages-grid {
+            display: grid;
+            gap: 20px;
+        }
+        .message-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .message-card.inactive {
+            opacity: 0.6;
+        }
+        .message-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        .message-header h3 {
+            margin: 0;
+            font-size: 18px;
+        }
+        .message-slug {
+            background: #6c5ce7;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: monospace;
+        }
+        .message-category {
+            background: #74b9ff;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            margin-left: 5px;
+        }
+        .message-template {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            margin-bottom: 15px;
+        }
+        .message-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .form-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .form-section h3 {
+            margin: 0 0 15px;
+            font-size: 16px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .form-group textarea {
+            min-height: 100px;
+            font-family: inherit;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: normal;
+        }
+        .status-active { color: #28a745; }
+        .status-inactive { color: #dc3545; }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="page-nav">
+            <a href="/admin/agents">Agents</a>
+            <a href="/admin/agent-messages" class="active">Messages</a>
+            <a href="/admin/agent-distribution">Distribution</a>
+            <a href="/admin/agent-analytics">Analytics</a>
+        </div>
+
+        <% if (success) { %>
+            <div class="alert alert-success"><%= success %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="alert alert-danger"><%= error %></div>
+        <% } %>
+
+        <h1>Message Templates</h1>
+
+        <div class="placeholder-guide">
+            <h4>Available Placeholders</h4>
+            <p>
+                <code>{user_name}</code> - User's name &nbsp;&middot;&nbsp;
+                <code>{user_phone}</code> - User's phone &nbsp;&middot;&nbsp;
+                <code>{item_title}</code> - Purchased item title &nbsp;&middot;&nbsp;
+                <code>{xp_paid}</code> - XP amount paid &nbsp;&middot;&nbsp;
+                <code>{agent_name}</code> - Selected agent's name &nbsp;&middot;&nbsp;
+                <code>{agent_code}</code> - Agent's code
+            </p>
+        </div>
+
+        <!-- Add New Message Form -->
+        <div class="form-section">
+            <h3>Add New Message Template</h3>
+            <form method="POST" action="/admin/agent-messages/create">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="name">Template Name *</label>
+                        <input type="text" id="name" name="name" required placeholder="e.g., Post Purchase">
+                    </div>
+                    <div class="form-group">
+                        <label for="slug">Slug (API identifier) *</label>
+                        <input type="text" id="slug" name="slug" required placeholder="e.g., post_purchase"
+                               pattern="[a-z0-9_]+">
+                    </div>
+                    <div class="form-group">
+                        <label for="category">Category</label>
+                        <select id="category" name="category">
+                            <option value="general">General</option>
+                            <option value="purchase">Purchase</option>
+                            <option value="support">Support</option>
+                            <option value="sales">Sales</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="message_template">Message Template *</label>
+                    <textarea id="message_template" name="message_template" required
+                              placeholder="Hi! I am {user_name}. I just purchased {item_title}..."></textarea>
+                </div>
+                <div class="checkbox-group" style="margin-bottom: 15px;">
+                    <label>
+                        <input type="checkbox" name="is_active" checked>
+                        Active
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Template</button>
+            </form>
+        </div>
+
+        <!-- Existing Messages -->
+        <h2>Existing Templates</h2>
+        <div class="messages-grid">
+            <% if (messages && messages.length > 0) { %>
+                <% messages.forEach(msg => { %>
+                <div class="message-card <%= !msg.is_active ? 'inactive' : '' %>">
+                    <div class="message-header">
+                        <div>
+                            <h3>
+                                <%= msg.name %>
+                                <% if (msg.is_active) { %>
+                                    <span class="status-active">(Active)</span>
+                                <% } else { %>
+                                    <span class="status-inactive">(Inactive)</span>
+                                <% } %>
+                            </h3>
+                            <div style="margin-top: 5px;">
+                                <span class="message-slug"><%= msg.slug %></span>
+                                <span class="message-category"><%= msg.category %></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="message-template"><%= msg.message_template %></div>
+
+                    <form method="POST" action="/admin/agent-messages/<%= msg.id %>/update" style="margin-bottom: 15px;">
+                        <div class="form-row" style="margin-bottom: 10px;">
+                            <input type="text" name="name" value="<%= msg.name %>" placeholder="Name">
+                            <input type="text" name="slug" value="<%= msg.slug %>" placeholder="Slug">
+                            <select name="category">
+                                <option value="general" <%= msg.category === 'general' ? 'selected' : '' %>>General</option>
+                                <option value="purchase" <%= msg.category === 'purchase' ? 'selected' : '' %>>Purchase</option>
+                                <option value="support" <%= msg.category === 'support' ? 'selected' : '' %>>Support</option>
+                                <option value="sales" <%= msg.category === 'sales' ? 'selected' : '' %>>Sales</option>
+                            </select>
+                        </div>
+                        <textarea name="message_template" style="margin-bottom: 10px;"><%= msg.message_template %></textarea>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label style="display: flex; align-items: center; gap: 5px;">
+                                <input type="checkbox" name="is_active" <%= msg.is_active ? 'checked' : '' %>>
+                                Active
+                            </label>
+                            <div class="message-actions">
+                                <button type="submit" class="btn btn-sm btn-primary">Update</button>
+                            </div>
+                        </div>
+                    </form>
+                    <form action="/admin/agent-messages/<%= msg.id %>/delete" method="POST" style="display: inline;">
+                        <button type="submit" class="btn btn-sm btn-danger"
+                                onclick="return confirm('Delete this message template?')">Delete</button>
+                    </form>
+                </div>
+                <% }); %>
+            <% } else { %>
+                <div style="text-align: center; padding: 40px; background: #f8f9fa; border-radius: 8px;">
+                    <p>No message templates yet. Create your first template above.</p>
+                </div>
+            <% } %>
+        </div>
+    </div>
+</body>
+</html>

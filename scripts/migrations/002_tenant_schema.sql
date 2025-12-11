@@ -51,6 +51,13 @@ CREATE TABLE IF NOT EXISTS app_config (
     reel_watch_threshold_seconds INTEGER NOT NULL DEFAULT 5,
     reels_prefetch_count INTEGER NOT NULL DEFAULT 3,
 
+    -- Level progression mode (Feature 3)
+    progression_mode VARCHAR(20) DEFAULT 'linear' CHECK (progression_mode IN ('linear', 'freeflow')),
+
+    -- Purchase webhook (Feature 5)
+    purchase_webhook_enabled BOOLEAN DEFAULT false,
+    purchase_webhook_url_encrypted TEXT,
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -491,11 +498,14 @@ CREATE INDEX IF NOT EXISTS idx_shop_chapters_active ON shop_chapters(is_active, 
 -- ============================================
 CREATE TABLE IF NOT EXISTS shop_items (
     id SERIAL PRIMARY KEY,
-    chapter_id INTEGER NOT NULL REFERENCES shop_chapters(id) ON DELETE CASCADE,
+    chapter_id INTEGER REFERENCES shop_chapters(id) ON DELETE CASCADE,  -- Nullable for independent items
     title VARCHAR(255) NOT NULL,
     description TEXT,
     pdf_url VARCHAR(500) NOT NULL,           -- Direct MinIO URL (no signing)
     thumbnail_url VARCHAR(500),              -- Preview image
+
+    -- Item type
+    item_type VARCHAR(20) DEFAULT 'pdf' CHECK (item_type IN ('pdf', 'video', 'notes', 'other')),
 
     -- Pricing
     xp_price INTEGER NOT NULL DEFAULT 0 CHECK (xp_price >= 0),  -- Current price (0 = free)
@@ -523,6 +533,8 @@ CREATE INDEX IF NOT EXISTS idx_shop_items_chapter ON shop_items(chapter_id);
 CREATE INDEX IF NOT EXISTS idx_shop_items_active ON shop_items(is_active, display_order);
 CREATE INDEX IF NOT EXISTS idx_shop_items_featured ON shop_items(is_featured) WHERE is_featured = true;
 CREATE INDEX IF NOT EXISTS idx_shop_items_price ON shop_items(xp_price);
+CREATE INDEX IF NOT EXISTS idx_shop_items_independent ON shop_items(is_active, display_order) WHERE chapter_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_shop_items_type ON shop_items(item_type);
 
 -- ============================================
 -- Table 22: user_purchases (Transaction Log)
@@ -530,35 +542,54 @@ CREATE INDEX IF NOT EXISTS idx_shop_items_price ON shop_items(xp_price);
 CREATE TABLE IF NOT EXISTS user_purchases (
     id SERIAL PRIMARY KEY,
     phone VARCHAR(15) NOT NULL REFERENCES users_profile(phone) ON DELETE CASCADE,
-    item_id INTEGER NOT NULL REFERENCES shop_items(id) ON DELETE CASCADE,
-    chapter_id INTEGER NOT NULL,             -- Denormalized for queries
+
+    -- Purchase type and references (one must be set based on content_type)
+    content_type VARCHAR(20) DEFAULT 'shop_item' CHECK (content_type IN ('shop_item', 'level_content', 'daily_gift')),
+    item_id INTEGER REFERENCES shop_items(id) ON DELETE CASCADE,
+    level_content_id INTEGER,                -- References level_content(id) - added later due to table order
+    daily_gift_id INTEGER,                   -- References daily_gifts(id) - added later due to table order
+
+    chapter_id INTEGER,                      -- Denormalized for shop_item queries (nullable for other types)
     xp_paid INTEGER NOT NULL,                -- Price AT TIME of purchase (immutable)
     item_title VARCHAR(255) NOT NULL,        -- Snapshot of title (in case item renamed)
     purchased_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
 
-    UNIQUE(phone, item_id)                   -- Prevent duplicate purchases
+    UNIQUE(phone, item_id),                  -- Prevent duplicate shop purchases
+
+    -- Constraint: Must have appropriate ID based on content_type
+    CONSTRAINT chk_purchase_target CHECK (
+        (content_type = 'shop_item' AND item_id IS NOT NULL) OR
+        (content_type = 'level_content' AND level_content_id IS NOT NULL) OR
+        (content_type = 'daily_gift' AND daily_gift_id IS NOT NULL)
+    )
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_purchases_phone ON user_purchases(phone);
 CREATE INDEX IF NOT EXISTS idx_user_purchases_item ON user_purchases(item_id);
 CREATE INDEX IF NOT EXISTS idx_user_purchases_date ON user_purchases(purchased_at DESC);
 CREATE INDEX IF NOT EXISTS idx_user_purchases_chapter ON user_purchases(chapter_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_purchases_level_content ON user_purchases(phone, level_content_id) WHERE level_content_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_purchases_daily_gift ON user_purchases(phone, daily_gift_id) WHERE daily_gift_id IS NOT NULL;
 
 -- ============================================
--- Function: Update chapter item count
+-- Function: Update chapter item count (handles null chapter_id)
 -- ============================================
 CREATE OR REPLACE FUNCTION update_chapter_item_count()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF TG_OP = 'INSERT' THEN
+    IF TG_OP = 'INSERT' AND NEW.chapter_id IS NOT NULL THEN
         UPDATE shop_chapters SET total_items = total_items + 1 WHERE id = NEW.chapter_id;
         RETURN NEW;
-    ELSIF TG_OP = 'DELETE' THEN
+    ELSIF TG_OP = 'DELETE' AND OLD.chapter_id IS NOT NULL THEN
         UPDATE shop_chapters SET total_items = total_items - 1 WHERE id = OLD.chapter_id;
         RETURN OLD;
-    ELSIF TG_OP = 'UPDATE' AND OLD.chapter_id != NEW.chapter_id THEN
-        UPDATE shop_chapters SET total_items = total_items - 1 WHERE id = OLD.chapter_id;
-        UPDATE shop_chapters SET total_items = total_items + 1 WHERE id = NEW.chapter_id;
+    ELSIF TG_OP = 'UPDATE' THEN
+        IF OLD.chapter_id IS NOT NULL AND (NEW.chapter_id IS NULL OR OLD.chapter_id != NEW.chapter_id) THEN
+            UPDATE shop_chapters SET total_items = total_items - 1 WHERE id = OLD.chapter_id;
+        END IF;
+        IF NEW.chapter_id IS NOT NULL AND (OLD.chapter_id IS NULL OR OLD.chapter_id != NEW.chapter_id) THEN
+            UPDATE shop_chapters SET total_items = total_items + 1 WHERE id = NEW.chapter_id;
+        END IF;
         RETURN NEW;
     END IF;
     RETURN COALESCE(NEW, OLD);
@@ -581,6 +612,174 @@ CREATE TRIGGER trg_shop_items_count_delete
 CREATE TRIGGER trg_shop_items_count_update
     AFTER UPDATE OF chapter_id ON shop_items
     FOR EACH ROW EXECUTE FUNCTION update_chapter_item_count();
+
+-- ============================================
+-- Table 23: video_categories (Feature 1)
+-- ============================================
+CREATE TABLE IF NOT EXISTS video_categories (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    slug VARCHAR(50) NOT NULL UNIQUE,
+    description TEXT,
+    is_system BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    display_order INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
+    updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
+);
+
+INSERT INTO video_categories (name, slug, is_system, display_order) VALUES
+    ('Promotional', 'promotional', true, 1),
+    ('Lifeline', 'lifeline', true, 2),
+    ('Shorts', 'shorts', true, 3),
+    ('Tutorial', 'tutorial', true, 4),
+    ('Other', 'other', true, 5)
+ON CONFLICT (slug) DO NOTHING;
+
+CREATE INDEX IF NOT EXISTS idx_video_categories_active ON video_categories(is_active, display_order);
+
+-- ============================================
+-- Table 24: level_content (Feature 2)
+-- ============================================
+CREATE TABLE IF NOT EXISTS level_content (
+    id SERIAL PRIMARY KEY,
+    level INTEGER NOT NULL CHECK (level >= 1 AND level <= 100),
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    content_type VARCHAR(20) NOT NULL CHECK (content_type IN ('pdf', 'video', 'notes', 'other')),
+    file_url VARCHAR(500) NOT NULL,
+    thumbnail_url VARCHAR(500),
+    xp_price INTEGER NOT NULL DEFAULT 0 CHECK (xp_price >= 0),
+    xp_original_price INTEGER CHECK (xp_original_price >= 0),
+    sale_ends_at TIMESTAMP,
+    file_size_bytes BIGINT,
+    page_count INTEGER,
+    duration_seconds INTEGER,
+    is_active BOOLEAN DEFAULT true,
+    is_featured BOOLEAN DEFAULT false,
+    display_order INTEGER DEFAULT 0,
+    total_purchases INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
+    updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
+);
+
+CREATE INDEX IF NOT EXISTS idx_level_content_level ON level_content(level);
+CREATE INDEX IF NOT EXISTS idx_level_content_type ON level_content(content_type);
+CREATE INDEX IF NOT EXISTS idx_level_content_active ON level_content(is_active, level, display_order);
+CREATE INDEX IF NOT EXISTS idx_level_content_featured ON level_content(is_featured) WHERE is_featured = true;
+
+-- Add foreign key from user_purchases to level_content
+ALTER TABLE user_purchases ADD CONSTRAINT fk_user_purchases_level_content
+    FOREIGN KEY (level_content_id) REFERENCES level_content(id) ON DELETE SET NULL;
+
+-- ============================================
+-- Table 25: daily_gifts (Feature 6)
+-- ============================================
+CREATE TABLE IF NOT EXISTS daily_gifts (
+    id SERIAL PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    content_type VARCHAR(20) NOT NULL CHECK (content_type IN ('pdf', 'video', 'notes', 'surprise', 'other')),
+    file_url VARCHAR(500) NOT NULL,
+    thumbnail_url VARCHAR(500),
+    xp_price INTEGER NOT NULL DEFAULT 0 CHECK (xp_price >= 0),
+    available_date DATE NOT NULL,
+    available_time TIME NOT NULL DEFAULT '00:00:00',
+    file_size_bytes BIGINT,
+    page_count INTEGER,
+    duration_seconds INTEGER,
+    is_active BOOLEAN DEFAULT true,
+    total_purchases INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
+    updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
+);
+
+CREATE INDEX IF NOT EXISTS idx_daily_gifts_date ON daily_gifts(available_date);
+CREATE INDEX IF NOT EXISTS idx_daily_gifts_active_date ON daily_gifts(is_active, available_date, available_time);
+
+-- Add foreign key from user_purchases to daily_gifts
+ALTER TABLE user_purchases ADD CONSTRAINT fk_user_purchases_daily_gift
+    FOREIGN KEY (daily_gift_id) REFERENCES daily_gifts(id) ON DELETE SET NULL;
+
+-- ============================================
+-- Table 26: sales_agents (Feature 7)
+-- ============================================
+CREATE TABLE IF NOT EXISTS sales_agents (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    agent_code VARCHAR(20) NOT NULL UNIQUE,
+    whatsapp_number VARCHAR(15) NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    priority INTEGER DEFAULT 1,
+    total_redirects INTEGER DEFAULT 0,
+    last_redirect_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
+    updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
+);
+
+CREATE INDEX IF NOT EXISTS idx_sales_agents_active ON sales_agents(is_active);
+CREATE INDEX IF NOT EXISTS idx_sales_agents_code ON sales_agents(agent_code);
+
+-- ============================================
+-- Table 27: agent_messages (Feature 7)
+-- ============================================
+CREATE TABLE IF NOT EXISTS agent_messages (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    slug VARCHAR(50) NOT NULL UNIQUE,
+    category VARCHAR(50) DEFAULT 'general',
+    message_template TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
+    updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
+);
+
+INSERT INTO agent_messages (name, slug, category, message_template) VALUES
+    ('Post Purchase', 'post_purchase', 'purchase',
+     'Hi! I am {user_name}. I just purchased {item_title} from the App. Please help me claim my bonus! My phone: {user_phone}'),
+    ('General Support', 'general_support', 'support',
+     'Hi! I am {user_name} ({user_phone}). I need help with the App.'),
+    ('Premium Inquiry', 'premium_inquiry', 'sales',
+     'Hi! I am {user_name}. I want to know about premium features. My phone: {user_phone}')
+ON CONFLICT (slug) DO NOTHING;
+
+CREATE INDEX IF NOT EXISTS idx_agent_messages_slug ON agent_messages(slug);
+CREATE INDEX IF NOT EXISTS idx_agent_messages_category ON agent_messages(category);
+
+-- ============================================
+-- Table 28: agent_distribution_config (Feature 7)
+-- ============================================
+CREATE TABLE IF NOT EXISTS agent_distribution_config (
+    id SERIAL PRIMARY KEY CHECK (id = 1),
+    scheme VARCHAR(20) DEFAULT 'round_robin'
+        CHECK (scheme IN ('round_robin', 'least_recent', 'random', 'weighted')),
+    last_assigned_agent_id INTEGER REFERENCES sales_agents(id) ON DELETE SET NULL,
+    updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
+);
+
+INSERT INTO agent_distribution_config (id, scheme) VALUES (1, 'round_robin')
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================
+-- Table 29: agent_redirect_logs (Feature 7)
+-- ============================================
+CREATE TABLE IF NOT EXISTS agent_redirect_logs (
+    id SERIAL PRIMARY KEY,
+    user_phone VARCHAR(15) NOT NULL,
+    agent_id INTEGER NOT NULL REFERENCES sales_agents(id) ON DELETE CASCADE,
+    message_id INTEGER REFERENCES agent_messages(id) ON DELETE SET NULL,
+    trigger_type VARCHAR(50) NOT NULL,
+    trigger_item_id INTEGER,
+    trigger_item_type VARCHAR(20),
+    whatsapp_url TEXT NOT NULL,
+    message_sent TEXT,
+    redirected_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_redirects_user ON agent_redirect_logs(user_phone);
+CREATE INDEX IF NOT EXISTS idx_agent_redirects_agent ON agent_redirect_logs(agent_id);
+CREATE INDEX IF NOT EXISTS idx_agent_redirects_date ON agent_redirect_logs(redirected_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_redirects_trigger ON agent_redirect_logs(trigger_type);
 
 -- ============================================
 -- Mark this migration as applied

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= isEdit ? 'Edit' : 'Create' %> Daily Gift - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .form-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .form-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .form-section h3 {
+            margin: 0 0 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+            font-size: 16px;
+            color: #333;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group input[type="date"],
+        .form-group input[type="time"],
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: #666;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .form-row-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+        }
+        .checkbox-group {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: normal;
+        }
+        .file-preview {
+            margin-top: 10px;
+            padding: 10px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .file-preview img {
+            max-width: 150px;
+            max-height: 150px;
+            border-radius: 4px;
+        }
+        .current-file {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .current-file a {
+            color: #007bff;
+        }
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .scheduling-info {
+            background: #cce5ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .scheduling-info h4 {
+            margin: 0 0 10px;
+            color: #004085;
+            font-size: 14px;
+        }
+        .scheduling-info p {
+            margin: 0;
+            color: #004085;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="form-container">
+            <h1><%= isEdit ? 'Edit' : 'Create' %> Daily Gift</h1>
+
+            <% if (typeof error !== 'undefined' && error) { %>
+                <div class="alert alert-danger"><%= error %></div>
+            <% } %>
+
+            <form method="POST"
+                  action="<%= isEdit ? `/admin/daily-gifts/${gift.id}/update` : '/admin/daily-gifts/create' %>"
+                  enctype="multipart/form-data">
+
+                <!-- Scheduling -->
+                <div class="form-section">
+                    <h3>Scheduling</h3>
+
+                    <div class="scheduling-info">
+                        <h4>How Daily Gifts Work</h4>
+                        <p>
+                            Students can see and purchase this gift only on or after the scheduled date and time (IST).
+                            Upcoming gifts are visible as previews but cannot be purchased until available.
+                        </p>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="available_date">Available Date *</label>
+                            <input type="date" id="available_date" name="available_date" required
+                                   value="<%= gift?.available_date ? new Date(gift.available_date).toISOString().split('T')[0] : '' %>">
+                            <small>Date when gift becomes available (IST)</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="available_time">Available Time</label>
+                            <input type="time" id="available_time" name="available_time"
+                                   value="<%= gift?.available_time || '00:00' %>">
+                            <small>Time when gift unlocks (defaults to midnight IST)</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Basic Info -->
+                <div class="form-section">
+                    <h3>Gift Information</h3>
+
+                    <div class="form-group">
+                        <label for="title">Title *</label>
+                        <input type="text" id="title" name="title" required
+                               value="<%= gift?.title || '' %>"
+                               placeholder="e.g., December 11 Special Notes">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <textarea id="description" name="description"
+                                  placeholder="Describe what's included in this gift..."><%= gift?.description || '' %></textarea>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="content_type">Content Type *</label>
+                            <select id="content_type" name="content_type" required>
+                                <option value="pdf" <%= gift?.content_type === 'pdf' ? 'selected' : '' %>>PDF Document</option>
+                                <option value="video" <%= gift?.content_type === 'video' ? 'selected' : '' %>>Video</option>
+                                <option value="notes" <%= gift?.content_type === 'notes' ? 'selected' : '' %>>Notes</option>
+                                <option value="surprise" <%= gift?.content_type === 'surprise' ? 'selected' : '' %>>Surprise</option>
+                                <option value="other" <%= gift?.content_type === 'other' ? 'selected' : '' %>>Other</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="xp_price">XP Price *</label>
+                            <input type="number" id="xp_price" name="xp_price" min="0" required
+                                   value="<%= gift?.xp_price ?? 0 %>">
+                            <small>Set to 0 for free gift</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- File Upload -->
+                <div class="form-section">
+                    <h3>Gift File</h3>
+
+                    <div class="form-group">
+                        <label for="gift_file">
+                            <%= isEdit ? 'Replace File (optional)' : 'Upload File *' %>
+                        </label>
+                        <input type="file" id="gift_file" name="gift_file"
+                               accept=".pdf,video/*" <%= !isEdit ? 'required' : '' %>>
+                        <small>Supported: PDF files, MP4/WebM videos (max 100MB)</small>
+
+                        <% if (isEdit && gift?.file_url) { %>
+                        <div class="file-preview">
+                            <div class="current-file">
+                                <span>Current file:</span>
+                                <a href="<%= gift.file_url %>" target="_blank">View File</a>
+                                <% if (gift.file_size_bytes) { %>
+                                    <span style="color: #666;">
+                                        (<%= Math.round(gift.file_size_bytes / 1024 / 1024 * 10) / 10 %> MB)
+                                    </span>
+                                <% } %>
+                            </div>
+                        </div>
+                        <% } %>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="thumbnail">Thumbnail Image</label>
+                        <input type="file" id="thumbnail" name="thumbnail" accept="image/*">
+                        <small>Preview image for the gift</small>
+
+                        <% if (isEdit && gift?.thumbnail_url) { %>
+                        <div class="file-preview">
+                            <img src="<%= gift.thumbnail_url %>" alt="Current thumbnail">
+                            <div style="margin-top: 10px;">
+                                <label>
+                                    <input type="checkbox" name="remove_thumbnail"> Remove current thumbnail
+                                </label>
+                            </div>
+                        </div>
+                        <% } %>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="page_count">Page Count</label>
+                            <input type="number" id="page_count" name="page_count" min="0"
+                                   value="<%= gift?.page_count || '' %>"
+                                   placeholder="For PDFs">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="duration_seconds">Duration (seconds)</label>
+                            <input type="number" id="duration_seconds" name="duration_seconds" min="0"
+                                   value="<%= gift?.duration_seconds || '' %>"
+                                   placeholder="For videos">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Status -->
+                <div class="form-section">
+                    <h3>Status</h3>
+
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" name="is_active"
+                                   <%= !isEdit || gift?.is_active ? 'checked' : '' %>>
+                            Active (visible to users)
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Buttons -->
+                <div class="button-row">
+                    <button type="submit" class="btn btn-primary">
+                        <%= isEdit ? 'Update Gift' : 'Create Gift' %>
+                    </button>
+                    <a href="/admin/daily-gifts" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

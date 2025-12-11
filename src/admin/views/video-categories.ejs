@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Categories - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .categories-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .category-card {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            position: relative;
+        }
+        .category-card.system {
+            border-left: 4px solid #007bff;
+        }
+        .category-card.inactive {
+            opacity: 0.6;
+            background: #f8f9fa;
+        }
+        .category-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        .category-name {
+            font-size: 18px;
+            font-weight: 600;
+            margin: 0;
+        }
+        .category-slug {
+            font-size: 12px;
+            color: #666;
+            font-family: monospace;
+            background: #f1f1f1;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .category-badges {
+            display: flex;
+            gap: 5px;
+        }
+        .badge {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .badge-system {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        .badge-inactive {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .category-description {
+            color: #666;
+            font-size: 14px;
+            margin: 10px 0;
+        }
+        .category-actions {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+        }
+        .category-actions button, .category-actions a {
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+        .add-category-card {
+            background: #f8f9fa;
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .add-category-card h3 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+        .edit-form {
+            display: none;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        .edit-form.active {
+            display: block;
+        }
+        .form-row {
+            margin-bottom: 10px;
+        }
+        .form-row label {
+            display: block;
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 3px;
+        }
+        .form-row input, .form-row textarea {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>Video Categories</h1>
+            <a href="/admin/videos" class="btn" style="background: #6c757d;">Back to Videos</a>
+        </div>
+
+        <% if (message) { %>
+            <div class="success"><%= message %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="error"><%= error %></div>
+        <% } %>
+
+        <p style="color: #666; margin-bottom: 20px;">
+            Manage video categories for organizing promotional videos, lifeline videos, tutorials, and more.
+            System categories (marked with blue border) cannot be deleted.
+        </p>
+
+        <div class="categories-grid">
+            <!-- Add New Category Card -->
+            <div class="add-category-card">
+                <h3>Add New Category</h3>
+                <form method="POST" action="/admin/video-categories">
+                    <div class="form-row">
+                        <label for="new-name">Category Name *</label>
+                        <input type="text" id="new-name" name="name" placeholder="e.g., Motivation" required>
+                    </div>
+                    <div class="form-row">
+                        <label for="new-description">Description</label>
+                        <textarea id="new-description" name="description" rows="2" placeholder="Optional description"></textarea>
+                    </div>
+                    <button type="submit" style="width: 100%; margin-top: 10px;">Create Category</button>
+                </form>
+            </div>
+
+            <!-- Existing Categories -->
+            <% categories.forEach(cat => { %>
+                <div class="category-card <%= cat.is_system ? 'system' : '' %> <%= !cat.is_active ? 'inactive' : '' %>">
+                    <div class="category-header">
+                        <div>
+                            <h3 class="category-name"><%= cat.name %></h3>
+                            <span class="category-slug"><%= cat.slug %></span>
+                        </div>
+                        <div class="category-badges">
+                            <% if (cat.is_system) { %>
+                                <span class="badge badge-system">System</span>
+                            <% } %>
+                            <% if (!cat.is_active) { %>
+                                <span class="badge badge-inactive">Inactive</span>
+                            <% } %>
+                        </div>
+                    </div>
+
+                    <% if (cat.description) { %>
+                        <p class="category-description"><%= cat.description %></p>
+                    <% } %>
+
+                    <div class="category-actions">
+                        <button type="button" onclick="toggleEdit(<%= cat.id %>)" style="background: #17a2b8;">Edit</button>
+                        <% if (!cat.is_system) { %>
+                            <form method="POST" action="/admin/video-categories/<%= cat.id %>/delete" style="margin: 0;" onsubmit="return confirm('Delete this category? Videos using this category will need to be reassigned.');">
+                                <button type="submit" style="background: #dc3545;">Delete</button>
+                            </form>
+                        <% } %>
+                    </div>
+
+                    <!-- Edit Form (hidden by default) -->
+                    <div class="edit-form" id="edit-form-<%= cat.id %>">
+                        <form method="POST" action="/admin/video-categories/<%= cat.id %>/update">
+                            <div class="form-row">
+                                <label>Category Name *</label>
+                                <input type="text" name="name" value="<%= cat.name %>" required>
+                            </div>
+                            <div class="form-row">
+                                <label>Description</label>
+                                <textarea name="description" rows="2"><%= cat.description || '' %></textarea>
+                            </div>
+                            <div class="form-row">
+                                <label>
+                                    <input type="checkbox" name="is_active" <%= cat.is_active ? 'checked' : '' %>>
+                                    Active
+                                </label>
+                            </div>
+                            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                                <button type="submit" style="flex: 1;">Save Changes</button>
+                                <button type="button" onclick="toggleEdit(<%= cat.id %>)" style="flex: 1; background: #6c757d;">Cancel</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            <% }) %>
+        </div>
+    </div>
+
+    <script>
+        function toggleEdit(id) {
+            const form = document.getElementById('edit-form-' + id);
+            form.classList.toggle('active');
+        }
+    </script>
+</body>
+</html>

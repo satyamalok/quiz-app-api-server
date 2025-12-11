@@ -9,6 +9,7 @@ const {
   showConfig,
   updateConfig,
   testEventWebhook,
+  testPurchaseWebhook, // Feature 5
   showWhatsAppConfig,
   updateWhatsAppConfig,
   showUsers,
@@ -36,6 +37,12 @@ const {
   duplicateVideo,
   showVideoBulkUpload,
   uploadSingleVideo,
+  // Video Categories (Feature 1)
+  showVideoCategories,
+  createVideoCategory,
+  updateVideoCategory,
+  deleteVideoCategory,
+  getVideoCategoriesAPI,
   // Analytics
   showAnalytics,
   // DB Stats
@@ -109,6 +116,48 @@ const {
   showUserPurchases,
   upload: shopUpload
 } = require('./shopAdminController');
+// Feature 2: Level Content Admin
+const {
+  showLevelContent,
+  showLevelContentByLevel,
+  showCreateContent: showCreateLevelContent,
+  createContent: createLevelContent,
+  showEditContent: showEditLevelContent,
+  updateContent: updateLevelContent,
+  deleteContent: deleteLevelContent,
+  bulkAction: levelContentBulkAction,
+  showAnalytics: showLevelContentAnalytics,
+  upload: levelContentUpload
+} = require('./levelContentAdminController');
+// Feature 6: Daily Gifts Admin
+const {
+  showDailyGifts,
+  showCalendar: showDailyGiftsCalendar,
+  showCreateGift,
+  createGift,
+  showEditGift,
+  updateGift,
+  deleteGift,
+  toggleGiftStatus,
+  upload: dailyGiftUpload
+} = require('./dailyGiftAdminController');
+// Feature 7: Sales Agents Admin
+const {
+  showAgents,
+  showCreateAgent,
+  createAgent,
+  showEditAgent,
+  updateAgent,
+  deleteAgent,
+  toggleAgentStatus,
+  showMessages: showAgentMessages,
+  createMessage: createAgentMessage,
+  updateMessage: updateAgentMessage,
+  deleteMessage: deleteAgentMessage,
+  showDistribution,
+  updateDistribution,
+  showAnalytics: showAgentAnalytics
+} = require('./agentAdminController');
 const { requireAdminAuth, redirectIfAuthenticated } = require('../middleware/adminAuth');
 const { requireAppSelection } = require('../middleware/requireAppSelection');
 
@@ -154,6 +203,7 @@ router.get('/otp-viewer', showOTPViewer);
 router.get('/config', showConfig);
 router.post('/config/update', updateConfig);
 router.post('/config/test-webhook', testEventWebhook);
+router.post('/config/test-purchase-webhook', testPurchaseWebhook); // Feature 5
 
 // Cache Management
 const cacheService = require('../services/cacheService');
@@ -276,6 +326,13 @@ router.post('/questions/:id/update', upload.fields([
 ]), updateQuestion);
 router.delete('/questions/:id', deleteQuestion);
 
+// Video Categories (Feature 1)
+router.get('/video-categories', showVideoCategories);
+router.post('/video-categories', createVideoCategory);
+router.post('/video-categories/:id/update', updateVideoCategory);
+router.post('/video-categories/:id/delete', deleteVideoCategory);
+router.get('/api/video-categories', getVideoCategoriesAPI);
+
 // Video Management
 router.get('/videos', showVideos);
 router.get('/videos/bulk-upload', showVideoBulkUpload);
@@ -346,5 +403,60 @@ router.get('/shop/purchases', showPurchases);
 router.get('/shop/analytics', showShopAnalytics);
 router.get('/shop/leaderboard', showBalanceLeaderboard);
 router.get('/shop/user/:phone/purchases', showUserPurchases);
+
+// Feature 2: Level Content Management
+router.get('/level-content', showLevelContent);
+router.get('/level-content/create', showCreateLevelContent);
+router.post('/level-content/create', levelContentUpload.fields([
+  { name: 'content_file', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), createLevelContent);
+router.get('/level-content/analytics', showLevelContentAnalytics);
+router.get('/level-content/level/:level', showLevelContentByLevel);
+router.get('/level-content/:id/edit', showEditLevelContent);
+router.post('/level-content/:id/update', levelContentUpload.fields([
+  { name: 'content_file', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), updateLevelContent);
+router.post('/level-content/:id/delete', deleteLevelContent);
+router.post('/level-content/bulk-action', levelContentBulkAction);
+
+// Feature 6: Daily Gifts Management
+router.get('/daily-gifts', showDailyGifts);
+router.get('/daily-gifts/calendar', showDailyGiftsCalendar);
+router.get('/daily-gifts/create', showCreateGift);
+router.post('/daily-gifts/create', dailyGiftUpload.fields([
+  { name: 'gift_file', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), createGift);
+router.get('/daily-gifts/:id/edit', showEditGift);
+router.post('/daily-gifts/:id/update', dailyGiftUpload.fields([
+  { name: 'gift_file', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), updateGift);
+router.post('/daily-gifts/:id/delete', deleteGift);
+router.post('/daily-gifts/:id/toggle', toggleGiftStatus);
+
+// Feature 7: Sales Agents Management
+router.get('/agents', showAgents);
+router.get('/agents/create', showCreateAgent);
+router.post('/agents/create', createAgent);
+router.get('/agents/:id/edit', showEditAgent);
+router.post('/agents/:id/update', updateAgent);
+router.post('/agents/:id/delete', deleteAgent);
+router.post('/agents/:id/toggle', toggleAgentStatus);
+
+// Agent Messages
+router.get('/agent-messages', showAgentMessages);
+router.post('/agent-messages/create', createAgentMessage);
+router.post('/agent-messages/:id/update', updateAgentMessage);
+router.post('/agent-messages/:id/delete', deleteAgentMessage);
+
+// Agent Distribution
+router.get('/agent-distribution', showDistribution);
+router.post('/agent-distribution/update', updateDistribution);
+
+// Agent Analytics
+router.get('/agent-analytics', showAgentAnalytics);
 
 module.exports = router;

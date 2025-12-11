@@ -249,6 +249,40 @@
         const uploadForm = document.getElementById('uploadForm');
 
         let selectedFiles = [];
+        let videoCategories = [];
+
+        // Fetch video categories on page load
+        async function fetchCategories() {
+            try {
+                const response = await fetch('/admin/api/video-categories');
+                const data = await response.json();
+                if (data.success) {
+                    videoCategories = data.categories;
+                }
+            } catch (err) {
+                console.error('Failed to load categories:', err);
+                // Fallback to default categories
+                videoCategories = [
+                    { slug: 'promotional', name: 'Promotional' },
+                    { slug: 'lifeline', name: 'Lifeline' },
+                    { slug: 'shorts', name: 'Shorts' },
+                    { slug: 'tutorial', name: 'Tutorial' },
+                    { slug: 'other', name: 'Other' }
+                ];
+            }
+        }
+
+        function getCategoryOptions() {
+            let options = videoCategories.map(cat =>
+                `<option value="${cat.slug}">${cat.name}</option>`
+            ).join('');
+            // Add "Both" option for promotional + lifeline
+            options += '<option value="both">Both (Promotional + Lifeline)</option>';
+            return options;
+        }
+
+        // Initialize
+        fetchCategories();
 
         // Click to browse
         dropZone.addEventListener('click', () => fileInput.click());
@@ -310,9 +344,7 @@
                             </div>
                             <input type="number" class="file-level" placeholder="Level" min="1" max="100" value="1">
                             <select class="file-category" onchange="toggleBothNote(${index}, this.value)">
-                                <option value="promotional">Promotional</option>
-                                <option value="lifeline">Lifeline</option>
-                                <option value="both">Both</option>
+                                ${getCategoryOptions()}
                             </select>
                             <button type="button" class="remove-file" onclick="removeFile(${index})">Remove</button>
                         </div>

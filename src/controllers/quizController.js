@@ -58,7 +58,14 @@ async function startLevel(req, res, next) {
     const currentLevel = userResult.rows[0].current_level;
     const userMedium = userResult.rows[0].medium || 'english';
 
-    if (level > currentLevel) {
+    // Check progression mode from app_config
+    const configResult = await tenantQuery(req,
+      'SELECT progression_mode FROM app_config WHERE id = 1'
+    );
+    const progressionMode = configResult.rows[0]?.progression_mode || 'linear';
+
+    // Only check level lock in linear mode
+    if (progressionMode === 'linear' && level > currentLevel) {
       throw {
         code: 'LEVEL_LOCKED',
         message: `Complete level ${currentLevel} first to unlock level ${level}`,

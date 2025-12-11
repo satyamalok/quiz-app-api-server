@@ -10,6 +10,9 @@ const statsRoutes = require('./statsRoutes');
 const reelsRoutes = require('./reelsRoutes');
 const levelsRoutes = require('./levelsRoutes');
 const shopRoutes = require('./shopRoutes');
+const levelContentRoutes = require('./levelContentRoutes'); // Feature 2: Level-Associated Paid Content
+const dailyGiftRoutes = require('./dailyGiftRoutes'); // Feature 6: Daily Gifts System
+const agentRoutes = require('./agentRoutes'); // Feature 7: Sales Agent Distribution
 
 // Import tenant middleware
 const { tenantMiddleware, attachTenantHelpers } = require('../middleware/tenantMiddleware');
@@ -36,5 +39,8 @@ router.use('/:appId/video', videoRoutes);
 router.use('/:appId', statsRoutes); // Includes /leaderboard/*, /app/*, /user/balance*
 router.use('/:appId/reels', reelsRoutes); // Video reels feature
 router.use('/:appId/shop', shopRoutes); // Shop for PDF notes
+router.use('/:appId', levelContentRoutes); // Feature 2: Level-Associated Paid Content (/level/:level/content, /level-content/*)
+router.use('/:appId', dailyGiftRoutes); // Feature 6: Daily Gifts System (/gifts/*)
+router.use('/:appId', agentRoutes); // Feature 7: Sales Agent Distribution (/agent/*)
 
 module.exports = router;

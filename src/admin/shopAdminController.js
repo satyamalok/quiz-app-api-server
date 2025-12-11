@@ -234,17 +234,31 @@ async function reorderChapters(req, res) {
 /**
  * GET /admin/shop/items
  * List all items
+ * Feature 4: Added independent_only, item_type, search filters
  */
 async function showItems(req, res) {
   try {
     prepareAdminReq(req);
-    const { chapter_id, status, on_sale, stock_enabled, sort = 'newest', page = 1 } = req.query;
+    const {
+      chapter_id,
+      independent,   // Feature 4: Filter for items without chapter
+      item_type,     // Feature 4: Filter by type (pdf, video, notes, other)
+      search,        // Feature 4: Search by title
+      status,
+      on_sale,
+      stock_enabled,
+      sort = 'newest',
+      page = 1
+    } = req.query;
 
     const limit = 20;
     const offset = (parseInt(page) - 1) * limit;
 
     const result = await shopService.getItemsForAdmin(req, {
       chapter_id: chapter_id ? parseInt(chapter_id) : null,
+      independent_only: independent === 'true', // Feature 4
+      item_type: item_type || null,             // Feature 4
+      search: search || null,                   // Feature 4
       status,
       on_sale,
       stock_enabled,
@@ -263,7 +277,7 @@ async function showItems(req, res) {
       items: result.items,
       chapters,
       stats,
-      filters: { chapter_id, status, on_sale, stock_enabled, sort },
+      filters: { chapter_id, independent, item_type, search, status, on_sale, stock_enabled, sort },
       pagination: {
         ...result.pagination,
         page: parseInt(page),
@@ -316,6 +330,7 @@ async function showCreateItem(req, res) {
 /**
  * POST /admin/shop/items/create
  * Create a new item
+ * Feature 4: Added item_type and optional chapter_id (null for independent items)
  */
 async function createItem(req, res) {
   try {
@@ -324,6 +339,7 @@ async function createItem(req, res) {
       chapter_id,
       title,
       description,
+      item_type = 'pdf', // Feature 4: pdf, video, notes, other
       xp_price,
       xp_original_price,
       sale_ends_at,
@@ -357,12 +373,18 @@ async function createItem(req, res) {
     // Get file size
     const file_size_bytes = req.files.pdf_file[0].size;
 
+    // Feature 4: chapter_id can be null for independent items
+    const chapterIdValue = chapter_id && chapter_id !== '' && chapter_id !== 'null'
+      ? parseInt(chapter_id)
+      : null;
+
     await shopService.createItem(req, {
-      chapter_id: parseInt(chapter_id),
+      chapter_id: chapterIdValue,
       title,
       description,
       pdf_url,
       thumbnail_url,
+      item_type, // Feature 4
       xp_price: parseInt(xp_price) || 0,
       xp_original_price: xp_original_price ? parseInt(xp_original_price) : null,
       sale_ends_at: sale_ends_at || null,
@@ -414,6 +436,7 @@ async function showEditItem(req, res) {
 /**
  * POST /admin/shop/items/:id/update
  * Update an item
+ * Feature 4: Added item_type and optional chapter_id (null for independent items)
  */
 async function updateItem(req, res) {
   try {
@@ -423,6 +446,7 @@ async function updateItem(req, res) {
       chapter_id,
       title,
       description,
+      item_type, // Feature 4
       xp_price,
       xp_original_price,
       sale_ends_at,
@@ -464,10 +488,16 @@ async function updateItem(req, res) {
       finalSaleEndsAt = null;
     }
 
+    // Feature 4: chapter_id can be null for independent items
+    const chapterIdValue = chapter_id && chapter_id !== '' && chapter_id !== 'null'
+      ? parseInt(chapter_id)
+      : null;
+
     const updateData = {
-      chapter_id: parseInt(chapter_id),
+      chapter_id: chapterIdValue,
       title,
       description,
+      item_type, // Feature 4
       xp_price: parseInt(xp_price) || 0,
       xp_original_price: finalOriginalPrice,
       sale_ends_at: finalSaleEndsAt,

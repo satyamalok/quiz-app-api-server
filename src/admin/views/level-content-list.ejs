@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Level Content - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .level-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .level-nav a {
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #333;
+        }
+        .level-nav a.active {
+            background: #007bff;
+            color: white;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-card h3 {
+            margin: 0;
+            font-size: 24px;
+            color: #333;
+        }
+        .stat-card p {
+            margin: 5px 0 0;
+            color: #666;
+            font-size: 12px;
+        }
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filters select, .filters input[type="text"], .filters input[type="number"] {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .bulk-actions {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        .content-thumbnail {
+            width: 60px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 4px;
+            background: #f0f0f0;
+        }
+        .content-title {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .price-cell {
+            white-space: nowrap;
+        }
+        .original-price {
+            text-decoration: line-through;
+            color: #999;
+            font-size: 12px;
+        }
+        .sale-badge {
+            background: #ff6b6b;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            margin-left: 5px;
+        }
+        .level-badge {
+            background: #6c5ce7;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .type-badge {
+            background: #74b9ff;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+        }
+        .type-badge.pdf { background: #e74c3c; }
+        .type-badge.video { background: #9b59b6; }
+        .type-badge.notes { background: #3498db; }
+        .type-badge.other { background: #95a5a6; }
+        .featured-badge {
+            background: #ffd93d;
+            color: #333;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+        }
+        .status-active { color: #28a745; }
+        .status-inactive { color: #dc3545; }
+        .actions-cell {
+            white-space: nowrap;
+        }
+        .levels-summary {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .levels-summary h4 {
+            margin: 0 0 10px;
+            font-size: 14px;
+            color: #666;
+        }
+        .levels-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .level-chip {
+            background: #e9ecef;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            color: #333;
+            text-decoration: none;
+        }
+        .level-chip:hover {
+            background: #007bff;
+            color: white;
+        }
+        .level-chip .count {
+            background: rgba(0,0,0,0.1);
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 4px;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="level-nav">
+            <a href="/admin/level-content" class="active">Level Content</a>
+            <a href="/admin/level-content/analytics">Analytics</a>
+        </div>
+
+        <% if (success) { %>
+            <div class="alert alert-success"><%= success %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="alert alert-danger"><%= error %></div>
+        <% } %>
+
+        <!-- Stats -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3><%= stats.total_active || 0 %></h3>
+                <p>Active Content</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= stats.levels_with_content || 0 %></h3>
+                <p>Levels with Content</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= stats.total_purchases || 0 %></h3>
+                <p>Total Purchases</p>
+            </div>
+            <div class="stat-card">
+                <h3><%= stats.total_xp_collected || 0 %> XP</h3>
+                <p>XP Collected</p>
+            </div>
+        </div>
+
+        <!-- Levels with content summary -->
+        <% if (levelsWithContent && levelsWithContent.length > 0) { %>
+        <div class="levels-summary">
+            <h4>Levels with Content:</h4>
+            <div class="levels-chips">
+                <% levelsWithContent.forEach(l => { %>
+                <a href="/admin/level-content?level=<%= l.level %>" class="level-chip">
+                    Level <%= l.level %>
+                    <span class="count"><%= l.active_count %></span>
+                </a>
+                <% }); %>
+            </div>
+        </div>
+        <% } %>
+
+        <div class="header-row">
+            <h1>Level Content</h1>
+            <a href="/admin/level-content/create" class="btn btn-primary">+ Add Content</a>
+        </div>
+
+        <!-- Filters -->
+        <form class="filters" method="GET" action="/admin/level-content">
+            <input type="number" name="level" placeholder="Level (1-100)" min="1" max="100"
+                   value="<%= filters.level || '' %>" style="width: 120px;">
+
+            <select name="content_type">
+                <option value="">All Types</option>
+                <option value="pdf" <%= filters.content_type === 'pdf' ? 'selected' : '' %>>PDF</option>
+                <option value="video" <%= filters.content_type === 'video' ? 'selected' : '' %>>Video</option>
+                <option value="notes" <%= filters.content_type === 'notes' ? 'selected' : '' %>>Notes</option>
+                <option value="other" <%= filters.content_type === 'other' ? 'selected' : '' %>>Other</option>
+            </select>
+
+            <select name="status">
+                <option value="">All Status</option>
+                <option value="active" <%= filters.status === 'active' ? 'selected' : '' %>>Active</option>
+                <option value="inactive" <%= filters.status === 'inactive' ? 'selected' : '' %>>Inactive</option>
+            </select>
+
+            <select name="featured">
+                <option value="">All</option>
+                <option value="true" <%= filters.featured === 'true' ? 'selected' : '' %>>Featured Only</option>
+            </select>
+
+            <input type="text" name="search" placeholder="Search title..." value="<%= filters.search || '' %>">
+
+            <select name="sort">
+                <option value="newest" <%= filters.sort === 'newest' ? 'selected' : '' %>>Newest</option>
+                <option value="oldest" <%= filters.sort === 'oldest' ? 'selected' : '' %>>Oldest</option>
+                <option value="level_asc" <%= filters.sort === 'level_asc' ? 'selected' : '' %>>Level (Low to High)</option>
+                <option value="level_desc" <%= filters.sort === 'level_desc' ? 'selected' : '' %>>Level (High to Low)</option>
+                <option value="price_asc" <%= filters.sort === 'price_asc' ? 'selected' : '' %>>Price (Low to High)</option>
+                <option value="price_desc" <%= filters.sort === 'price_desc' ? 'selected' : '' %>>Price (High to Low)</option>
+                <option value="popular" <%= filters.sort === 'popular' ? 'selected' : '' %>>Most Popular</option>
+            </select>
+
+            <button type="submit" class="btn btn-secondary">Filter</button>
+            <a href="/admin/level-content" class="btn btn-light">Clear</a>
+        </form>
+
+        <!-- Bulk Actions -->
+        <form id="bulkForm" method="POST" action="/admin/level-content/bulk-action">
+            <div class="bulk-actions">
+                <button type="button" onclick="toggleSelectAll()" class="btn btn-light btn-sm">Select All</button>
+                <select name="action" id="bulkAction">
+                    <option value="">Bulk Actions</option>
+                    <option value="activate">Activate</option>
+                    <option value="deactivate">Deactivate</option>
+                    <option value="delete">Delete</option>
+                </select>
+                <button type="submit" class="btn btn-warning btn-sm" onclick="return confirmBulkAction()">Apply</button>
+            </div>
+
+            <!-- Content Table -->
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()"></th>
+                        <th>Thumbnail</th>
+                        <th>Level</th>
+                        <th>Title</th>
+                        <th>Type</th>
+                        <th>Price</th>
+                        <th>Purchases</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <% if (content && content.length > 0) { %>
+                        <% content.forEach(item => { %>
+                        <tr>
+                            <td><input type="checkbox" name="content_ids[]" value="<%= item.id %>"></td>
+                            <td>
+                                <% if (item.thumbnail_url) { %>
+                                    <img src="<%= item.thumbnail_url %>" class="content-thumbnail" alt="">
+                                <% } else { %>
+                                    <div class="content-thumbnail" style="display: flex; align-items: center; justify-content: center; color: #aaa;">
+                                        <% if (item.content_type === 'pdf') { %>PDF
+                                        <% } else if (item.content_type === 'video') { %>VID
+                                        <% } else { %>FILE<% } %>
+                                    </div>
+                                <% } %>
+                            </td>
+                            <td><span class="level-badge">L<%= item.level %></span></td>
+                            <td>
+                                <div class="content-title"><%= item.title %></div>
+                                <% if (item.is_featured) { %><span class="featured-badge">Featured</span><% } %>
+                            </td>
+                            <td>
+                                <span class="type-badge <%= item.content_type %>">
+                                    <%= item.content_type.toUpperCase() %>
+                                </span>
+                            </td>
+                            <td class="price-cell">
+                                <% if (item.xp_price === 0) { %>
+                                    <strong style="color: #28a745;">FREE</strong>
+                                <% } else { %>
+                                    <strong><%= item.xp_price %> XP</strong>
+                                    <% if (item.is_on_sale && item.xp_original_price) { %>
+                                        <br><span class="original-price"><%= item.xp_original_price %> XP</span>
+                                        <span class="sale-badge">SALE</span>
+                                    <% } %>
+                                <% } %>
+                            </td>
+                            <td><%= item.total_purchases || 0 %></td>
+                            <td>
+                                <% if (item.is_active) { %>
+                                    <span class="status-active">Active</span>
+                                <% } else { %>
+                                    <span class="status-inactive">Inactive</span>
+                                <% } %>
+                            </td>
+                            <td class="actions-cell">
+                                <a href="/admin/level-content/<%= item.id %>/edit" class="btn btn-sm btn-primary">Edit</a>
+                                <form action="/admin/level-content/<%= item.id %>/delete" method="POST" style="display: inline;">
+                                    <button type="submit" class="btn btn-sm btn-danger"
+                                            onclick="return confirm('Delete this content?')">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        <% }); %>
+                    <% } else { %>
+                        <tr>
+                            <td colspan="9" style="text-align: center; padding: 40px;">
+                                No level content found. <a href="/admin/level-content/create">Create your first content</a>
+                            </td>
+                        </tr>
+                    <% } %>
+                </tbody>
+            </table>
+        </form>
+
+        <!-- Pagination -->
+        <% if (pagination.totalPages > 1) { %>
+        <div class="pagination">
+            <% for (let i = 1; i <= pagination.totalPages; i++) { %>
+                <% if (i === pagination.page) { %>
+                    <span class="page-current"><%= i %></span>
+                <% } else { %>
+                    <a href="?page=<%= i %>&level=<%= filters.level || '' %>&content_type=<%= filters.content_type || '' %>&status=<%= filters.status || '' %>&featured=<%= filters.featured || '' %>&search=<%= filters.search || '' %>&sort=<%= filters.sort || 'newest' %>" class="page-link"><%= i %></a>
+                <% } %>
+            <% } %>
+        </div>
+        <% } %>
+
+        <p style="color: #666; font-size: 12px; margin-top: 10px;">
+            Showing <%= content.length %> of <%= pagination.total %> items
+        </p>
+    </div>
+
+    <script>
+        function toggleSelectAll() {
+            const selectAll = document.getElementById('selectAllCheckbox');
+            const checkboxes = document.querySelectorAll('input[name="content_ids[]"]');
+            checkboxes.forEach(cb => cb.checked = selectAll.checked);
+        }
+
+        function confirmBulkAction() {
+            const action = document.getElementById('bulkAction').value;
+            if (!action) {
+                alert('Please select an action');
+                return false;
+            }
+            const checked = document.querySelectorAll('input[name="content_ids[]"]:checked');
+            if (checked.length === 0) {
+                alert('Please select at least one item');
+                return false;
+            }
+            if (action === 'delete') {
+                return confirm(`Delete ${checked.length} items? This cannot be undone.`);
+            }
+            return confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} ${checked.length} items?`);
+        }
+    </script>
+</body>
+</html>

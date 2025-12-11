@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Agents - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .page-nav {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        .page-nav a {
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            text-decoration: none;
+            color: #333;
+        }
+        .page-nav a.active {
+            background: #007bff;
+            color: white;
+        }
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        .config-card {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .config-card h4 {
+            margin: 0 0 5px;
+            color: #1565c0;
+        }
+        .config-card p {
+            margin: 0;
+            color: #333;
+        }
+        .agent-card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .agent-card.inactive {
+            opacity: 0.6;
+            background: #f8f9fa;
+        }
+        .agent-info h3 {
+            margin: 0 0 5px;
+            font-size: 18px;
+        }
+        .agent-info p {
+            margin: 0;
+            color: #666;
+            font-size: 14px;
+        }
+        .agent-code {
+            background: #6c5ce7;
+            color: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .whatsapp-number {
+            font-family: monospace;
+            color: #25D366;
+        }
+        .agent-stats {
+            display: flex;
+            gap: 20px;
+            text-align: center;
+        }
+        .stat-item h4 {
+            margin: 0;
+            font-size: 20px;
+            color: #333;
+        }
+        .stat-item p {
+            margin: 3px 0 0;
+            font-size: 11px;
+            color: #666;
+        }
+        .agent-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .priority-badge {
+            background: #ffd93d;
+            color: #333;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-left: 10px;
+        }
+        .status-active { color: #28a745; }
+        .status-inactive { color: #dc3545; }
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="page-nav">
+            <a href="/admin/agents" class="active">Agents</a>
+            <a href="/admin/agent-messages">Messages</a>
+            <a href="/admin/agent-distribution">Distribution</a>
+            <a href="/admin/agent-analytics">Analytics</a>
+        </div>
+
+        <% if (success) { %>
+            <div class="alert alert-success"><%= success %></div>
+        <% } %>
+        <% if (error) { %>
+            <div class="alert alert-danger"><%= error %></div>
+        <% } %>
+
+        <div class="config-card">
+            <h4>Distribution Scheme: <%= config.scheme.replace('_', ' ').toUpperCase() %></h4>
+            <p>
+                <% if (config.scheme === 'round_robin') { %>
+                    Agents are assigned in sequential order.
+                <% } else if (config.scheme === 'least_recent') { %>
+                    Agent who was assigned longest ago gets next redirect.
+                <% } else if (config.scheme === 'random') { %>
+                    Agents are assigned randomly.
+                <% } else if (config.scheme === 'weighted') { %>
+                    Agents with higher priority get more redirects.
+                <% } %>
+                <a href="/admin/agent-distribution" style="margin-left: 10px;">Change</a>
+            </p>
+        </div>
+
+        <div class="header-row">
+            <h1>Sales Agents</h1>
+            <a href="/admin/agents/create" class="btn btn-primary">+ Add Agent</a>
+        </div>
+
+        <% if (agents && agents.length > 0) { %>
+            <% agents.forEach(agent => { %>
+            <div class="agent-card <%= !agent.is_active ? 'inactive' : '' %>">
+                <div class="agent-info">
+                    <h3>
+                        <%= agent.name %>
+                        <span class="agent-code"><%= agent.agent_code %></span>
+                        <% if (config.scheme === 'weighted') { %>
+                            <span class="priority-badge">Priority: <%= agent.priority %></span>
+                        <% } %>
+                    </h3>
+                    <p>
+                        WhatsApp: <span class="whatsapp-number">+<%= agent.whatsapp_number %></span>
+                        &nbsp;&middot;&nbsp;
+                        <% if (agent.is_active) { %>
+                            <span class="status-active">Active</span>
+                        <% } else { %>
+                            <span class="status-inactive">Inactive</span>
+                        <% } %>
+                    </p>
+                </div>
+
+                <div class="agent-stats">
+                    <div class="stat-item">
+                        <h4><%= agent.total_redirects || 0 %></h4>
+                        <p>Redirects</p>
+                    </div>
+                    <div class="stat-item">
+                        <h4>
+                            <% if (agent.last_redirect_at) { %>
+                                <%= new Date(agent.last_redirect_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) %>
+                            <% } else { %>
+                                Never
+                            <% } %>
+                        </h4>
+                        <p>Last Active</p>
+                    </div>
+                </div>
+
+                <div class="agent-actions">
+                    <a href="https://wa.me/<%= agent.whatsapp_number %>" target="_blank" class="btn btn-sm btn-success">Test</a>
+                    <a href="/admin/agents/<%= agent.id %>/edit" class="btn btn-sm btn-primary">Edit</a>
+                    <form action="/admin/agents/<%= agent.id %>/toggle" method="POST" style="display: inline;">
+                        <button type="submit" class="btn btn-sm btn-warning">
+                            <%= agent.is_active ? 'Deactivate' : 'Activate' %>
+                        </button>
+                    </form>
+                    <form action="/admin/agents/<%= agent.id %>/delete" method="POST" style="display: inline;">
+                        <button type="submit" class="btn btn-sm btn-danger"
+                                onclick="return confirm('Delete this agent?')">Delete</button>
+                    </form>
+                </div>
+            </div>
+            <% }); %>
+        <% } else { %>
+            <div class="empty-state">
+                <h3>No Sales Agents</h3>
+                <p>Add your first sales agent to start distributing WhatsApp redirects.</p>
+                <a href="/admin/agents/create" class="btn btn-primary">Add First Agent</a>
+            </div>
+        <% } %>
+    </div>
+</body>
+</html>

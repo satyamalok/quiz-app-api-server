@@ -183,6 +183,36 @@
             </div>
 
             <div class="card">
+                <h2>Level Progression</h2>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+                    Control how students progress through levels in the quiz.
+                </p>
+
+                <div class="form-group">
+                    <label for="progression_mode">Progression Mode</label>
+                    <select id="progression_mode" name="progression_mode">
+                        <option value="linear" <%= (appConfig.progression_mode || 'linear') === 'linear' ? 'selected' : '' %>>Linear (Must complete previous level)</option>
+                        <option value="freeflow" <%= appConfig.progression_mode === 'freeflow' ? 'selected' : '' %>>Freeflow (All levels accessible)</option>
+                    </select>
+                </div>
+
+                <div style="margin-top: 15px; padding: 12px; background: #e7f3ff; border-left: 4px solid #2196f3; border-radius: 4px;">
+                    <strong style="color: #1976d2;">Mode Descriptions</strong>
+                    <ul style="margin: 8px 0 0 0; padding-left: 20px; font-size: 13px; color: #555;">
+                        <li><strong>Linear:</strong> Students must complete level N before accessing level N+1. Default behavior.</li>
+                        <li><strong>Freeflow:</strong> All 100 levels are accessible from the start. Students can attempt any level.</li>
+                    </ul>
+                </div>
+
+                <p style="color: #666; font-size: 14px; margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 5px;">
+                    <strong>Current Mode:</strong>
+                    <span style="color: <%= (appConfig.progression_mode || 'linear') === 'freeflow' ? '#27ae60' : '#3498db' %>; font-weight: 600;">
+                        <%= (appConfig.progression_mode || 'linear') === 'freeflow' ? 'Freeflow (All levels unlocked)' : 'Linear (Sequential progression)' %>
+                    </span>
+                </p>
+            </div>
+
+            <div class="card">
                 <h2>Event Webhooks (n8n)</h2>
                 <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
                     Send app events to an external webhook (e.g., n8n) for automation like sending WhatsApp messages, gifts, etc.
@@ -251,6 +281,74 @@
                 </div>
             </div>
 
+            <!-- Feature 5: Purchase Webhook -->
+            <div class="card">
+                <h2>Purchase Webhook</h2>
+                <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+                    Fire a webhook whenever a user makes a purchase in the shop. Use this to trigger CRM updates, notifications, or other integrations.
+                </p>
+
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" name="purchase_webhook_enabled" id="purchase_webhook_enabled" <%= appConfig.purchase_webhook_enabled ? 'checked' : '' %> onchange="togglePurchaseWebhookSettings()">
+                        <strong>Enable Purchase Webhooks</strong>
+                    </label>
+                </div>
+
+                <div id="purchase-webhook-settings" style="<%= !appConfig.purchase_webhook_enabled ? 'display: none;' : '' %>">
+                    <div class="form-group">
+                        <label for="purchase_webhook_url">Webhook URL</label>
+                        <input type="url" id="purchase_webhook_url" name="purchase_webhook_url" value="<%= purchaseWebhookUrl || '' %>" placeholder="https://your-webhook.com/purchases" style="width: 100%;">
+                        <small style="color: #666; display: block; margin-top: 5px;">
+                            Enter your webhook URL. Purchase events will be sent as POST requests with JSON payload.
+                        </small>
+                    </div>
+
+                    <div style="margin-top: 15px;">
+                        <button type="button" onclick="testPurchaseWebhook()" style="background: #17a2b8;">
+                            Test Webhook
+                        </button>
+                        <span id="purchase-webhook-test-result" style="margin-left: 10px;"></span>
+                    </div>
+
+                    <div style="margin-top: 15px; padding: 12px; background: #e7f3ff; border-left: 4px solid #2196f3; border-radius: 4px;">
+                        <strong style="color: #1976d2;">Payload Format</strong>
+                        <pre style="margin: 8px 0; font-size: 12px; background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto;">{
+  "event": "purchase_completed",
+  "app_slug": "jnvquiz",
+  "app_name": "JNV Quiz App",
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "purchase": {
+    "id": 123,
+    "phone": "9876543210",
+    "user_name": "Student Name",
+    "item_id": 45,
+    "item_title": "Mathematics Notes",
+    "item_type": "pdf",
+    "xp_paid": 100,
+    "chapter_id": 5,
+    "chapter_name": "Mathematics"
+  },
+  "user": {
+    "phone": "9876543210",
+    "name": "Student Name",
+    "xp_total": 5000,
+    "xp_remaining": 4900
+  }
+}</pre>
+                    </div>
+
+                    <% if (purchaseWebhookUrl) { %>
+                    <div style="margin-top: 15px; padding: 10px; background: #d4edda; border-radius: 4px;">
+                        <strong style="color: #155724;">✓ Webhook Configured</strong>
+                        <div style="font-size: 12px; color: #155724; margin-top: 5px; word-break: break-all;">
+                            <%= purchaseWebhookUrl %>
+                        </div>
+                    </div>
+                    <% } %>
+                </div>
+            </div>
+
             <script>
                 function toggleOnlineModeSettings() {
                     const mode = document.getElementById('online_users_mode').value;
@@ -261,6 +359,40 @@
                 function toggleEventWebhookSettings() {
                     const enabled = document.getElementById('event_webhook_enabled').checked;
                     document.getElementById('event-webhook-settings').style.display = enabled ? '' : 'none';
+                }
+
+                function togglePurchaseWebhookSettings() {
+                    const enabled = document.getElementById('purchase_webhook_enabled').checked;
+                    document.getElementById('purchase-webhook-settings').style.display = enabled ? '' : 'none';
+                }
+
+                async function testPurchaseWebhook() {
+                    const resultSpan = document.getElementById('purchase-webhook-test-result');
+                    const url = document.getElementById('purchase_webhook_url').value;
+
+                    if (!url) {
+                        resultSpan.innerHTML = '<span style="color: #dc3545;">Please enter a webhook URL first</span>';
+                        return;
+                    }
+
+                    resultSpan.innerHTML = '<span style="color: #007bff;">Testing...</span>';
+
+                    try {
+                        const response = await fetch('/admin/config/test-purchase-webhook', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ url })
+                        });
+                        const data = await response.json();
+
+                        if (data.success) {
+                            resultSpan.innerHTML = '<span style="color: #28a745;">✓ Webhook is working!</span>';
+                        } else {
+                            resultSpan.innerHTML = '<span style="color: #dc3545;">✗ ' + (data.error || 'Test failed') + '</span>';
+                        }
+                    } catch (err) {
+                        resultSpan.innerHTML = '<span style="color: #dc3545;">✗ Network error</span>';
+                    }
                 }
 
                 async function testEventWebhook() {

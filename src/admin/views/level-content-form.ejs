@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= isEdit ? 'Edit' : 'Create' %> Level Content - Admin</title>
+    <%- include('partials/head') %>
+    <style>
+        .form-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .form-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .form-section h3 {
+            margin: 0 0 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+            font-size: 16px;
+            color: #333;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: #333;
+        }
+        .form-group input[type="text"],
+        .form-group input[type="number"],
+        .form-group input[type="datetime-local"],
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .form-group textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: #666;
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .form-row-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+        }
+        .checkbox-group {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        .checkbox-group label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: normal;
+        }
+        .file-preview {
+            margin-top: 10px;
+            padding: 10px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .file-preview img {
+            max-width: 150px;
+            max-height: 150px;
+            border-radius: 4px;
+        }
+        .current-file {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .current-file a {
+            color: #007bff;
+        }
+        .sale-section {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 10px;
+        }
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/nav') %>
+
+    <div class="container">
+        <div class="form-container">
+            <h1><%= isEdit ? 'Edit' : 'Create' %> Level Content</h1>
+
+            <% if (typeof error !== 'undefined' && error) { %>
+                <div class="alert alert-danger"><%= error %></div>
+            <% } %>
+
+            <form method="POST"
+                  action="<%= isEdit ? `/admin/level-content/${content.id}/update` : '/admin/level-content/create' %>"
+                  enctype="multipart/form-data">
+
+                <!-- Basic Info -->
+                <div class="form-section">
+                    <h3>Basic Information</h3>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="level">Level Number *</label>
+                            <input type="number" id="level" name="level" min="1" max="100" required
+                                   value="<%= content?.level || '' %>"
+                                   placeholder="1-100">
+                            <small>Which quiz level is this content for?</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="content_type">Content Type *</label>
+                            <select id="content_type" name="content_type" required>
+                                <option value="pdf" <%= content?.content_type === 'pdf' ? 'selected' : '' %>>PDF Document</option>
+                                <option value="video" <%= content?.content_type === 'video' ? 'selected' : '' %>>Video</option>
+                                <option value="notes" <%= content?.content_type === 'notes' ? 'selected' : '' %>>Notes</option>
+                                <option value="other" <%= content?.content_type === 'other' ? 'selected' : '' %>>Other</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="title">Title *</label>
+                        <input type="text" id="title" name="title" required
+                               value="<%= content?.title || '' %>"
+                               placeholder="e.g., Level 5 - Complete Study Notes">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description</label>
+                        <textarea id="description" name="description"
+                                  placeholder="Describe what's included in this content..."><%= content?.description || '' %></textarea>
+                    </div>
+                </div>
+
+                <!-- File Upload -->
+                <div class="form-section">
+                    <h3>Content File</h3>
+
+                    <div class="form-group">
+                        <label for="content_file">
+                            <%= isEdit ? 'Replace File (optional)' : 'Upload File *' %>
+                        </label>
+                        <input type="file" id="content_file" name="content_file"
+                               accept=".pdf,video/*" <%= !isEdit ? 'required' : '' %>>
+                        <small>Supported: PDF files, MP4/WebM videos (max 100MB)</small>
+
+                        <% if (isEdit && content?.file_url) { %>
+                        <div class="file-preview">
+                            <div class="current-file">
+                                <span>Current file:</span>
+                                <a href="<%= content.file_url %>" target="_blank">View File</a>
+                                <% if (content.file_size_bytes) { %>
+                                    <span style="color: #666;">
+                                        (<%= Math.round(content.file_size_bytes / 1024 / 1024 * 10) / 10 %> MB)
+                                    </span>
+                                <% } %>
+                            </div>
+                        </div>
+                        <% } %>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="thumbnail">Thumbnail Image</label>
+                        <input type="file" id="thumbnail" name="thumbnail" accept="image/*">
+                        <small>Preview image for the content</small>
+
+                        <% if (isEdit && content?.thumbnail_url) { %>
+                        <div class="file-preview">
+                            <img src="<%= content.thumbnail_url %>" alt="Current thumbnail">
+                            <div style="margin-top: 10px;">
+                                <label>
+                                    <input type="checkbox" name="remove_thumbnail"> Remove current thumbnail
+                                </label>
+                            </div>
+                        </div>
+                        <% } %>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="page_count">Page Count</label>
+                            <input type="number" id="page_count" name="page_count" min="0"
+                                   value="<%= content?.page_count || '' %>"
+                                   placeholder="For PDFs">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="duration_seconds">Duration (seconds)</label>
+                            <input type="number" id="duration_seconds" name="duration_seconds" min="0"
+                                   value="<%= content?.duration_seconds || '' %>"
+                                   placeholder="For videos">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pricing -->
+                <div class="form-section">
+                    <h3>Pricing</h3>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="xp_price">XP Price *</label>
+                            <input type="number" id="xp_price" name="xp_price" min="0" required
+                                   value="<%= content?.xp_price ?? 0 %>">
+                            <small>Set to 0 for free content</small>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="display_order">Display Order</label>
+                            <input type="number" id="display_order" name="display_order" min="0"
+                                   value="<%= content?.display_order || 0 %>">
+                            <small>Lower numbers appear first</small>
+                        </div>
+                    </div>
+
+                    <div class="sale-section">
+                        <strong>Sale Settings (Optional)</strong>
+                        <div class="form-row" style="margin-top: 10px;">
+                            <div class="form-group">
+                                <label for="xp_original_price">Original Price (for sale display)</label>
+                                <input type="number" id="xp_original_price" name="xp_original_price" min="0"
+                                       value="<%= content?.xp_original_price || '' %>"
+                                       placeholder="Leave empty if not on sale">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="sale_ends_at">Sale Ends At</label>
+                                <input type="datetime-local" id="sale_ends_at" name="sale_ends_at"
+                                       value="<%= content?.sale_ends_at ? new Date(content.sale_ends_at).toISOString().slice(0, 16) : '' %>">
+                            </div>
+                        </div>
+                        <% if (isEdit && (content?.xp_original_price || content?.sale_ends_at)) { %>
+                        <div style="margin-top: 10px;">
+                            <label>
+                                <input type="checkbox" name="clear_sale"> Clear sale (remove original price and end date)
+                            </label>
+                        </div>
+                        <% } %>
+                    </div>
+                </div>
+
+                <!-- Status -->
+                <div class="form-section">
+                    <h3>Status</h3>
+
+                    <div class="checkbox-group">
+                        <label>
+                            <input type="checkbox" name="is_active"
+                                   <%= !isEdit || content?.is_active ? 'checked' : '' %>>
+                            Active (visible to users)
+                        </label>
+
+                        <label>
+                            <input type="checkbox" name="is_featured"
+                                   <%= content?.is_featured ? 'checked' : '' %>>
+                            Featured (shown on homepage)
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Buttons -->
+                <div class="button-row">
+                    <button type="submit" class="btn btn-primary">
+                        <%= isEdit ? 'Update Content' : 'Create Content' %>
+                    </button>
+                    <a href="/admin/level-content" class="btn btn-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

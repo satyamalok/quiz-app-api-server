@@ -41,6 +41,12 @@ async function getProfile(req, res, next) {
 
     const xpToday = todayXPResult.rows.length > 0 ? todayXPResult.rows[0].total_xp_today : 0;
 
+    // Get progression mode from app_config
+    const configResult = await tenantQuery(req,
+      'SELECT progression_mode FROM app_config WHERE id = 1'
+    );
+    const progressionMode = configResult.rows[0]?.progression_mode || 'linear';
+
     res.json({
       success: true,
       user: {
@@ -60,7 +66,9 @@ async function getProfile(req, res, next) {
           current: streak.current,
           longest: streak.longest,
           last_active: streak.last_active
-        }
+        },
+        progression_mode: progressionMode,
+        all_levels_unlocked: progressionMode === 'freeflow'
       }
     });
 

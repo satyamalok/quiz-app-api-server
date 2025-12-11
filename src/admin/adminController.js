@@ -412,6 +412,7 @@ async function showConfig(req, res) {
     const appConfigResult = await adminQuery(schema, 'SELECT * FROM app_config WHERE id = 1');
     const onlineConfigResult = await adminQuery(schema, 'SELECT * FROM online_users_config WHERE id = 1');
 
+    const appConfig = appConfigResult.rows[0];
     const onlineConfig = onlineConfigResult.rows[0];
 
     // For actual mode, calculate real count instead of showing cached fake count
@@ -429,11 +430,22 @@ async function showConfig(req, res) {
     // Get WhatsApp OTP service status
     const whatsappStatus = whatsappOtpService.getStatus();
 
+    // Feature 5: Decrypt purchase webhook URL for display
+    let purchaseWebhookUrl = null;
+    if (appConfig && appConfig.purchase_webhook_url_encrypted) {
+      try {
+        purchaseWebhookUrl = decrypt(appConfig.purchase_webhook_url_encrypted);
+      } catch (decryptErr) {
+        console.error('Failed to decrypt purchase webhook URL:', decryptErr);
+      }
+    }
+
     res.render('config', {
       admin: req.session.adminUser,
-      appConfig: appConfigResult.rows[0],
+      appConfig: appConfig,
       onlineConfig: onlineConfig,
       whatsappStatus: whatsappStatus,
+      purchaseWebhookUrl: purchaseWebhookUrl,
       message: null
     });
 
@@ -463,13 +475,23 @@ async function updateConfig(req, res) {
       active_minutes_threshold,
       event_webhook_enabled,
       event_webhook_url,
-      event_webhook_events
+      event_webhook_events,
+      progression_mode,
+      // Feature 5: Purchase webhook
+      purchase_webhook_enabled,
+      purchase_webhook_url
     } = req.body;
 
     // Normalize event_webhook_events to array
     let eventsArray = [];
     if (event_webhook_events) {
       eventsArray = Array.isArray(event_webhook_events) ? event_webhook_events : [event_webhook_events];
+    }
+
+    // Feature 5: Encrypt purchase webhook URL
+    let purchaseWebhookUrlEncrypted = null;
+    if (purchase_webhook_url && purchase_webhook_url.trim()) {
+      purchaseWebhookUrlEncrypted = encrypt(purchase_webhook_url.trim());
     }
 
     // Update app_config
@@ -485,6 +507,9 @@ async function updateConfig(req, res) {
         event_webhook_enabled = $7,
         event_webhook_url = $8,
         event_webhook_events = $9,
+        progression_mode = $10,
+        purchase_webhook_enabled = $11,
+        purchase_webhook_url_encrypted = $12,
         updated_at = NOW()
       WHERE id = 1
     `, [
@@ -496,12 +521,19 @@ async function updateConfig(req, res) {
       whatsapp_n8n_enabled === 'on',
       event_webhook_enabled === 'on',
       event_webhook_url || null,
-      eventsArray
+      eventsArray,
+      progression_mode || 'linear',
+      purchase_webhook_enabled === 'on',
+      purchaseWebhookUrlEncrypted
     ]);
 
     // Clear event webhook config cache
     const eventWebhookService = require('../services/eventWebhookService');
     eventWebhookService.clearConfigCache();
+
+    // Feature 5: Clear purchase webhook config cache
+    const purchaseWebhookService = require('../services/purchaseWebhookService');
+    purchaseWebhookService.clearConfigCache(schema);
 
     // Update online_users_config
     await updateOnlineConfig({
@@ -517,6 +549,7 @@ async function updateConfig(req, res) {
     const appConfigResult = await adminQuery(schema, 'SELECT * FROM app_config WHERE id = 1');
     const onlineConfigResult = await adminQuery(schema, 'SELECT * FROM online_users_config WHERE id = 1');
 
+    const appConfig = appConfigResult.rows[0];
     const onlineConfig = onlineConfigResult.rows[0];
 
     // For actual mode, calculate real count instead of showing cached fake count
@@ -534,11 +567,22 @@ async function updateConfig(req, res) {
     // Get WhatsApp OTP service status
     const whatsappStatus = whatsappOtpService.getStatus();
 
+    // Feature 5: Decrypt purchase webhook URL for display
+    let purchaseWebhookUrlDecrypted = null;
+    if (appConfig && appConfig.purchase_webhook_url_encrypted) {
+      try {
+        purchaseWebhookUrlDecrypted = decrypt(appConfig.purchase_webhook_url_encrypted);
+      } catch (decryptErr) {
+        console.error('Failed to decrypt purchase webhook URL:', decryptErr);
+      }
+    }
+
     res.render('config', {
       admin: req.session.adminUser,
-      appConfig: appConfigResult.rows[0],
+      appConfig: appConfig,
       onlineConfig: onlineConfig,
       whatsappStatus: whatsappStatus,
+      purchaseWebhookUrl: purchaseWebhookUrlDecrypted,
       message: 'Configuration updated successfully!'
     });
 
@@ -567,6 +611,40 @@ async function testEventWebhook(req, res) {
 
   } catch (err) {
     console.error('Test webhook error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+/**
+ * POST /admin/config/test-purchase-webhook
+ * Test purchase webhook connectivity
+ * Feature 5
+ */
+async function testPurchaseWebhook(req, res) {
+  try {
+    const { url } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ success: false, error: 'URL is required' });
+    }
+
+    const purchaseWebhookService = require('../services/purchaseWebhookService');
+
+    // Prepare a mock req with tenant context
+    const schema = getAdminSchema(req);
+    const mockReq = {
+      tenant: {
+        slug: schema,
+        name: req.session.currentApp?.name || schema
+      }
+    };
+
+    const result = await purchaseWebhookService.testWebhook(mockReq, url);
+
+    res.json(result);
+
+  } catch (err) {
+    console.error('Test purchase webhook error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 }
@@ -1747,6 +1825,181 @@ async function showAnalytics(req, res) {
   }
 }
 
+// ========================================
+// VIDEO CATEGORIES MANAGEMENT (Feature 1)
+// ========================================
+
+/**
+ * GET /admin/video-categories
+ * List all video categories
+ */
+async function showVideoCategories(req, res) {
+  try {
+    const schema = getAdminSchema(req);
+    const result = await adminQuery(schema, `
+      SELECT * FROM video_categories
+      ORDER BY display_order ASC, id ASC
+    `);
+
+    res.render('video-categories', {
+      admin: req.session.adminUser,
+      categories: result.rows,
+      message: req.query.message || null,
+      error: req.query.error || null
+    });
+
+  } catch (err) {
+    console.error('Show video categories error:', err);
+    res.status(500).send('Error loading video categories');
+  }
+}
+
+/**
+ * POST /admin/video-categories
+ * Create new video category
+ */
+async function createVideoCategory(req, res) {
+  try {
+    const schema = getAdminSchema(req);
+    const { name, description } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.redirect('/admin/video-categories?error=Category name is required');
+    }
+
+    // Generate slug from name
+    const slug = name.toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '');
+
+    // Check if slug already exists
+    const existingResult = await adminQuery(schema,
+      'SELECT id FROM video_categories WHERE slug = $1',
+      [slug]
+    );
+
+    if (existingResult.rows.length > 0) {
+      return res.redirect('/admin/video-categories?error=A category with similar name already exists');
+    }
+
+    // Get max display order
+    const maxOrderResult = await adminQuery(schema,
+      'SELECT COALESCE(MAX(display_order), 0) + 1 as next_order FROM video_categories'
+    );
+    const nextOrder = maxOrderResult.rows[0].next_order;
+
+    await adminQuery(schema, `
+      INSERT INTO video_categories (name, slug, description, is_system, display_order)
+      VALUES ($1, $2, $3, false, $4)
+    `, [name.trim(), slug, description || null, nextOrder]);
+
+    res.redirect('/admin/video-categories?message=Category created successfully');
+
+  } catch (err) {
+    console.error('Create video category error:', err);
+    res.redirect('/admin/video-categories?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/video-categories/:id/update
+ * Update video category
+ */
+async function updateVideoCategory(req, res) {
+  try {
+    const schema = getAdminSchema(req);
+    const { id } = req.params;
+    const { name, description, is_active } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.redirect('/admin/video-categories?error=Category name is required');
+    }
+
+    await adminQuery(schema, `
+      UPDATE video_categories SET
+        name = $1,
+        description = $2,
+        is_active = $3,
+        updated_at = NOW() AT TIME ZONE 'Asia/Kolkata'
+      WHERE id = $4
+    `, [name.trim(), description || null, is_active === 'on', id]);
+
+    res.redirect('/admin/video-categories?message=Category updated successfully');
+
+  } catch (err) {
+    console.error('Update video category error:', err);
+    res.redirect('/admin/video-categories?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * POST /admin/video-categories/:id/delete
+ * Delete video category (non-system only)
+ */
+async function deleteVideoCategory(req, res) {
+  try {
+    const schema = getAdminSchema(req);
+    const { id } = req.params;
+
+    // Check if it's a system category
+    const categoryResult = await adminQuery(schema,
+      'SELECT is_system, slug FROM video_categories WHERE id = $1',
+      [id]
+    );
+
+    if (categoryResult.rows.length === 0) {
+      return res.redirect('/admin/video-categories?error=Category not found');
+    }
+
+    if (categoryResult.rows[0].is_system) {
+      return res.redirect('/admin/video-categories?error=System categories cannot be deleted');
+    }
+
+    // Check if category is being used by videos
+    const videosResult = await adminQuery(schema,
+      'SELECT COUNT(*) as count FROM promotional_videos WHERE category = $1',
+      [categoryResult.rows[0].slug]
+    );
+
+    if (parseInt(videosResult.rows[0].count) > 0) {
+      return res.redirect('/admin/video-categories?error=Cannot delete category with existing videos. Move or delete videos first.');
+    }
+
+    await adminQuery(schema, 'DELETE FROM video_categories WHERE id = $1', [id]);
+
+    res.redirect('/admin/video-categories?message=Category deleted successfully');
+
+  } catch (err) {
+    console.error('Delete video category error:', err);
+    res.redirect('/admin/video-categories?error=' + encodeURIComponent(err.message));
+  }
+}
+
+/**
+ * GET /admin/api/video-categories
+ * API to get video categories for dropdowns (returns JSON)
+ */
+async function getVideoCategoriesAPI(req, res) {
+  try {
+    const schema = getAdminSchema(req);
+    const result = await adminQuery(schema, `
+      SELECT id, name, slug, description, is_system
+      FROM video_categories
+      WHERE is_active = true
+      ORDER BY display_order ASC, id ASC
+    `);
+
+    res.json({
+      success: true,
+      categories: result.rows
+    });
+
+  } catch (err) {
+    console.error('Get video categories API error:', err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
 module.exports = {
   showLogin,
   processLogin,
@@ -1756,6 +2009,7 @@ module.exports = {
   showConfig,
   updateConfig,
   testEventWebhook,
+  testPurchaseWebhook, // Feature 5
   showWhatsAppConfig,
   updateWhatsAppConfig,
   showUsers,
@@ -1783,6 +2037,12 @@ module.exports = {
   duplicateVideo,
   showVideoBulkUpload,
   uploadSingleVideo,
+  // Video Categories (Feature 1)
+  showVideoCategories,
+  createVideoCategory,
+  updateVideoCategory,
+  deleteVideoCategory,
+  getVideoCategoriesAPI,
   // Analytics
   showAnalytics,
   // DB Stats

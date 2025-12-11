@@ -127,6 +127,7 @@ async function getChapterById(req, res, next) {
 /**
  * GET /api/v1/{appId}/shop/items
  * List all items with optional filters
+ * Feature 4: Added independent_only, item_type, search filters
  */
 async function getItems(req, res, next) {
   try {
@@ -134,6 +135,9 @@ async function getItems(req, res, next) {
     const {
       chapter_id,
       featured,
+      independent, // Feature 4: Filter for items without chapter
+      item_type,   // Feature 4: Filter by type (pdf, video, notes, other)
+      search,      // Feature 4: Search by title
       sort = 'display_order',
       limit = 50,
       offset = 0
@@ -142,6 +146,9 @@ async function getItems(req, res, next) {
     const options = {
       chapter_id: chapter_id ? parseInt(chapter_id) : null,
       featured_only: featured === 'true',
+      independent_only: independent === 'true', // Feature 4
+      item_type: item_type || null,             // Feature 4
+      search: search || null,                   // Feature 4
       active_only: true,
       sort,
       limit: Math.min(parseInt(limit) || 50, 100),
@@ -390,6 +397,7 @@ function formatItemResponse(item, userPhone) {
     title: item.title,
     description: item.description,
     thumbnail_url: item.thumbnail_url,
+    item_type: item.item_type || 'pdf', // Feature 4: Item type (pdf, video, notes, other)
     xp_price: item.xp_price,
     xp_original_price: item.xp_original_price,
     is_on_sale: item.is_on_sale,
@@ -399,6 +407,7 @@ function formatItemResponse(item, userPhone) {
     stock_remaining: item.is_stock_enabled ? item.stock_remaining : null,
     is_sold_out: item.is_sold_out,
     is_featured: item.is_featured,
+    is_independent: item.chapter_id === null, // Feature 4: Indicates item has no chapter
     file_size: formatFileSize(item.file_size_bytes),
     page_count: item.page_count,
     total_purchases: item.total_purchases

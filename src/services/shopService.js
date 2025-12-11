@@ -214,6 +214,9 @@ async function getAllItems(req, options = {}, userPhone = null) {
     chapter_id,
     featured_only = false,
     active_only = true,
+    independent_only = false, // Feature 4: Filter for items without chapter
+    item_type,                // Feature 4: Filter by item type (pdf, video, notes, other)
+    search,                   // Feature 4: Search by title
     sort = 'display_order',
     limit = 50,
     offset = 0
@@ -227,13 +230,28 @@ async function getAllItems(req, options = {}, userPhone = null) {
     whereConditions.push('i.is_active = true');
   }
 
-  if (chapter_id) {
+  // Feature 4: Independent items filter
+  if (independent_only) {
+    whereConditions.push('i.chapter_id IS NULL');
+  } else if (chapter_id) {
     whereConditions.push(`i.chapter_id = $${paramIndex++}`);
     params.push(chapter_id);
   }
 
   if (featured_only) {
     whereConditions.push('i.is_featured = true');
+  }
+
+  // Feature 4: Item type filter
+  if (item_type) {
+    whereConditions.push(`i.item_type = $${paramIndex++}`);
+    params.push(item_type);
+  }
+
+  // Feature 4: Search by title
+  if (search) {
+    whereConditions.push(`i.title ILIKE $${paramIndex++}`);
+    params.push(`%${search}%`);
   }
 
   const whereClause = whereConditions.length > 0
@@ -293,7 +311,7 @@ async function getAllItems(req, options = {}, userPhone = null) {
           THEN true ELSE false
         END as is_sold_out
       FROM shop_items i
-      JOIN shop_chapters c ON c.id = i.chapter_id
+      LEFT JOIN shop_chapters c ON c.id = i.chapter_id
       LEFT JOIN user_purchases p ON p.item_id = i.id AND p.phone = ${userPhoneParam}
       ${whereClause}
       ORDER BY ${orderBy}
@@ -325,7 +343,7 @@ async function getAllItems(req, options = {}, userPhone = null) {
           THEN true ELSE false
         END as is_sold_out
       FROM shop_items i
-      JOIN shop_chapters c ON c.id = i.chapter_id
+      LEFT JOIN shop_chapters c ON c.id = i.chapter_id
       ${whereClause}
       ORDER BY ${orderBy}
       LIMIT $${paramIndex++} OFFSET $${paramIndex}
@@ -389,7 +407,7 @@ async function getItemById(req, itemId, userPhone = null) {
           THEN true ELSE false
         END as is_sold_out
       FROM shop_items i
-      JOIN shop_chapters c ON c.id = i.chapter_id
+      LEFT JOIN shop_chapters c ON c.id = i.chapter_id
       LEFT JOIN user_purchases p ON p.item_id = i.id AND p.phone = $2
       WHERE i.id = $1
     `;
@@ -417,7 +435,7 @@ async function getItemById(req, itemId, userPhone = null) {
           THEN true ELSE false
         END as is_sold_out
       FROM shop_items i
-      JOIN shop_chapters c ON c.id = i.chapter_id
+      LEFT JOIN shop_chapters c ON c.id = i.chapter_id
       WHERE i.id = $1
     `;
     params = [itemId];
@@ -444,7 +462,7 @@ async function getFeaturedItems(req, limit = 6, userPhone = null) {
  */
 async function createItem(req, data) {
   const {
-    chapter_id,
+    chapter_id = null, // Feature 4: Can be null for independent items
     title,
     description,
     pdf_url,
@@ -458,7 +476,8 @@ async function createItem(req, data) {
     is_active = true,
     is_featured = false,
     file_size_bytes,
-    page_count
+    page_count,
+    item_type = 'pdf' // Feature 4: pdf, video, notes, other
   } = data;
 
   // If stock is enabled, set stock_remaining = stock_total
@@ -470,16 +489,16 @@ async function createItem(req, data) {
        xp_price, xp_original_price, sale_ends_at,
        is_stock_enabled, stock_total, stock_remaining,
        display_order, is_active, is_featured,
-       file_size_bytes, page_count
+       file_size_bytes, page_count, item_type
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      RETURNING *`,
     [
       chapter_id, title, description, pdf_url, thumbnail_url,
       xp_price, xp_original_price, sale_ends_at,
       is_stock_enabled, stock_total, stock_remaining,
       display_order, is_active, is_featured,
-      file_size_bytes, page_count
+      file_size_bytes, page_count, item_type
     ]
   );
 
@@ -509,12 +528,17 @@ async function updateItem(req, itemId, data) {
     is_active,
     is_featured,
     file_size_bytes,
-    page_count
+    page_count,
+    item_type
   } = data;
+
+  // Note: chapter_id can be explicitly set to null for independent items
+  // We use a special marker to differentiate between "not provided" and "set to null"
+  const chapterIdValue = data.hasOwnProperty('chapter_id') ? chapter_id : undefined;
 
   const result = await tenantQuery(req,
     `UPDATE shop_items
-     SET chapter_id = COALESCE($1, chapter_id),
+     SET chapter_id = ${data.hasOwnProperty('chapter_id') ? '$1' : 'chapter_id'},
          title = COALESCE($2, title),
          description = COALESCE($3, description),
          pdf_url = COALESCE($4, pdf_url),
@@ -530,15 +554,16 @@ async function updateItem(req, itemId, data) {
          is_featured = COALESCE($14, is_featured),
          file_size_bytes = COALESCE($15, file_size_bytes),
          page_count = COALESCE($16, page_count),
+         item_type = COALESCE($17, item_type),
          updated_at = ${SQL_IST_NOW}
-     WHERE id = $17
+     WHERE id = $18
      RETURNING *`,
     [
-      chapter_id, title, description, pdf_url, thumbnail_url,
+      chapterIdValue, title, description, pdf_url, thumbnail_url,
       xp_price, xp_original_price, sale_ends_at,
       is_stock_enabled, stock_total, stock_remaining,
       display_order, is_active, is_featured,
-      file_size_bytes, page_count, itemId
+      file_size_bytes, page_count, item_type, itemId
     ]
   );
 
@@ -618,6 +643,9 @@ async function getShopStats(req) {
 async function getItemsForAdmin(req, options = {}) {
   const {
     chapter_id,
+    independent_only = false, // Feature 4: Only show items without chapter
+    item_type,                // Feature 4: Filter by type (pdf, video, notes, other)
+    search,                   // Feature 4: Search by title
     status, // 'active', 'inactive', 'all'
     on_sale,
     stock_enabled,
@@ -630,9 +658,24 @@ async function getItemsForAdmin(req, options = {}) {
   let params = [];
   let paramIndex = 1;
 
-  if (chapter_id) {
+  // Feature 4: Independent items filter
+  if (independent_only) {
+    whereConditions.push('i.chapter_id IS NULL');
+  } else if (chapter_id) {
     whereConditions.push(`i.chapter_id = $${paramIndex++}`);
     params.push(chapter_id);
+  }
+
+  // Feature 4: Item type filter
+  if (item_type) {
+    whereConditions.push(`i.item_type = $${paramIndex++}`);
+    params.push(item_type);
+  }
+
+  // Feature 4: Search filter
+  if (search) {
+    whereConditions.push(`i.title ILIKE $${paramIndex++}`);
+    params.push(`%${search}%`);
   }
 
   if (status === 'active') {
@@ -696,7 +739,7 @@ async function getItemsForAdmin(req, options = {}) {
         THEN true ELSE false
       END as is_sold_out
     FROM shop_items i
-    JOIN shop_chapters c ON c.id = i.chapter_id
+    LEFT JOIN shop_chapters c ON c.id = i.chapter_id
     ${whereClause}
     ORDER BY ${orderBy}
     LIMIT $${paramIndex++} OFFSET $${paramIndex}
@@ -764,6 +807,16 @@ async function getChapterSalesStats(req) {
   return result.rows;
 }
 
+/**
+ * Get independent items (items without chapter) - Feature 4
+ * @param {Object} req - Express request with tenant context
+ * @param {Object} options - Filter options
+ * @param {string|null} userPhone - User phone for purchase status (optional)
+ */
+async function getIndependentItems(req, options = {}, userPhone = null) {
+  return getAllItems(req, { ...options, independent_only: true }, userPhone);
+}
+
 module.exports = {
   // Chapter operations
   getAllChapters,
@@ -776,6 +829,7 @@ module.exports = {
   getAllItems,
   getItemById,
   getFeaturedItems,
+  getIndependentItems, // Feature 4
   createItem,
   updateItem,
   deleteItem,

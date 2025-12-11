@@ -6,6 +6,7 @@
 const pool = require('../config/database');
 const { tenantQuery, getTenantClient } = require('../config/database');
 const { SQL_IST_NOW } = require('../utils/timezone');
+const { firePurchaseWebhook } = require('./purchaseWebhookService');
 
 /**
  * Purchase an item with XP
@@ -58,9 +59,9 @@ async function purchaseItem(req, phone, itemId) {
       };
     }
 
-    // 5. Lock and get user balance
+    // 5. Lock and get user balance and name
     const userResult = await client.query(
-      `SELECT xp_total, xp_spent FROM users_profile WHERE phone = $1 FOR UPDATE`,
+      `SELECT xp_total, xp_spent, name FROM users_profile WHERE phone = $1 FOR UPDATE`,
       [phone]
     );
 
@@ -69,6 +70,7 @@ async function purchaseItem(req, phone, itemId) {
     }
 
     const user = userResult.rows[0];
+    const userName = user.name || phone; // Fallback to phone if name not set
     const balance = user.xp_total - user.xp_spent;
     const price = item.xp_price;
 
@@ -127,6 +129,25 @@ async function purchaseItem(req, phone, itemId) {
 
     // Calculate new balance
     const newBalance = balance - price;
+
+    // Feature 5: Fire purchase webhook (async, non-blocking)
+    firePurchaseWebhook(req, {
+      purchaseId: purchaseResult.rows[0].id,
+      phone,
+      userName,
+      itemId: item.id,
+      itemTitle: item.title,
+      itemType: item.item_type || 'pdf',
+      xpPaid: price,
+      contentType: 'shop_item',
+      chapterId: item.chapter_id,
+      chapterName,
+      userXpTotal: user.xp_total,
+      userXpRemaining: newBalance
+    }).catch(err => {
+      // Log but don't fail the purchase
+      console.error('Purchase webhook error (non-blocking):', err.message);
+    });
 
     return {
       success: true,
@@ -493,11 +514,172 @@ async function getUserInfo(req, phone) {
   return result.rows[0] || null;
 }
 
+/**
+ * Purchase level content with XP
+ * Feature 2: Level-Associated Paid Content
+ * @param {Object} req - Express request with tenant context
+ * @param {string} phone - User phone
+ * @param {number} contentId - Level content ID to purchase
+ * @returns {Object} Purchase result
+ */
+async function purchaseLevelContent(req, phone, contentId) {
+  const tenantClient = await getTenantClient(req);
+  const client = tenantClient.client;
+
+  try {
+    await client.query('BEGIN');
+
+    // 1. Lock and get content details
+    const contentResult = await client.query(
+      `SELECT * FROM level_content WHERE id = $1 FOR UPDATE`,
+      [contentId]
+    );
+
+    if (contentResult.rows.length === 0) {
+      throw { code: 'CONTENT_NOT_FOUND', message: 'Content not found' };
+    }
+
+    const content = contentResult.rows[0];
+
+    // 2. Check content is active
+    if (!content.is_active) {
+      throw { code: 'CONTENT_NOT_AVAILABLE', message: 'This content is no longer available' };
+    }
+
+    // 3. Check if already purchased
+    const existingResult = await client.query(
+      `SELECT id, purchased_at FROM user_purchases WHERE phone = $1 AND level_content_id = $2`,
+      [phone, contentId]
+    );
+
+    if (existingResult.rows.length > 0) {
+      throw {
+        code: 'ALREADY_PURCHASED',
+        message: 'You already own this content',
+        purchased_at: existingResult.rows[0].purchased_at
+      };
+    }
+
+    // 4. Lock and get user balance and name
+    const userResult = await client.query(
+      `SELECT xp_total, xp_spent, name FROM users_profile WHERE phone = $1 FOR UPDATE`,
+      [phone]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw { code: 'USER_NOT_FOUND', message: 'User not found' };
+    }
+
+    const user = userResult.rows[0];
+    const userName = user.name || phone;
+    const balance = user.xp_total - user.xp_spent;
+    const price = content.xp_price;
+
+    // 5. Check sufficient balance (free content allowed)
+    if (balance < price) {
+      throw {
+        code: 'INSUFFICIENT_BALANCE',
+        message: `You need ${price} XP but only have ${balance} XP`,
+        required: price,
+        available: balance
+      };
+    }
+
+    // 6. Create purchase record
+    const purchaseResult = await client.query(
+      `INSERT INTO user_purchases (phone, content_type, level_content_id, xp_paid, item_title)
+       VALUES ($1, 'level_content', $2, $3, $4)
+       RETURNING id, purchased_at`,
+      [phone, contentId, price, content.title]
+    );
+
+    // 7. Update user xp_spent
+    await client.query(
+      `UPDATE users_profile SET xp_spent = xp_spent + $1, updated_at = ${SQL_IST_NOW} WHERE phone = $2`,
+      [price, phone]
+    );
+
+    // 8. Update content stats
+    await client.query(
+      `UPDATE level_content
+       SET total_purchases = total_purchases + 1,
+           updated_at = ${SQL_IST_NOW}
+       WHERE id = $1`,
+      [contentId]
+    );
+
+    await client.query('COMMIT');
+
+    // Calculate new balance
+    const newBalance = balance - price;
+
+    // Feature 5: Fire purchase webhook (async, non-blocking)
+    firePurchaseWebhook(req, {
+      purchaseId: purchaseResult.rows[0].id,
+      phone,
+      userName,
+      itemId: content.id,
+      itemTitle: content.title,
+      itemType: content.content_type,
+      xpPaid: price,
+      contentType: 'level_content',
+      level: content.level,
+      userXpTotal: user.xp_total,
+      userXpRemaining: newBalance
+    }).catch(err => {
+      console.error('Purchase webhook error (non-blocking):', err.message);
+    });
+
+    return {
+      success: true,
+      purchase_id: purchaseResult.rows[0].id,
+      purchased_at: purchaseResult.rows[0].purchased_at,
+      content: {
+        id: content.id,
+        level: content.level,
+        title: content.title,
+        content_type: content.content_type,
+        file_url: content.file_url,
+        thumbnail_url: content.thumbnail_url
+      },
+      xp_paid: price,
+      balance: {
+        xp_earned: user.xp_total,
+        xp_spent: user.xp_spent + price,
+        xp_remaining: newBalance
+      }
+    };
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Check if user has purchased level content
+ * @param {Object} req - Express request with tenant context
+ * @param {string} phone - User phone
+ * @param {number} contentId - Level content ID
+ */
+async function hasLevelContentPurchased(req, phone, contentId) {
+  const result = await tenantQuery(req,
+    `SELECT id, purchased_at FROM user_purchases WHERE phone = $1 AND level_content_id = $2`,
+    [phone, contentId]
+  );
+
+  return result.rows.length > 0 ? result.rows[0] : null;
+}
+
 module.exports = {
   purchaseItem,
+  purchaseLevelContent,
   getUserBalance,
   getUserPurchases,
   hasPurchased,
+  hasLevelContentPurchased,
   getAllPurchases,
   getPurchaseAnalytics,
   getUserChapterProgress,
