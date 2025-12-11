@@ -45,18 +45,19 @@ function generateWhatsAppUrl(phoneNumber, message) {
  */
 async function selectAgent(req) {
   const tenantClient = await getTenantClient(req);
+  const client = tenantClient.client;
 
   try {
-    await tenantClient.query('BEGIN');
+    await client.query('BEGIN');
 
     // Get distribution config
-    const configResult = await tenantClient.query(
+    const configResult = await client.query(
       `SELECT scheme, last_assigned_agent_id FROM agent_distribution_config WHERE id = 1 FOR UPDATE`
     );
 
     if (configResult.rows.length === 0) {
       // Create default config if not exists
-      await tenantClient.query(
+      await client.query(
         `INSERT INTO agent_distribution_config (id, scheme) VALUES (1, 'round_robin')
          ON CONFLICT (id) DO NOTHING`
       );
@@ -66,13 +67,13 @@ async function selectAgent(req) {
     const config = configResult.rows[0];
 
     // Get active agents
-    const agentsResult = await tenantClient.query(
+    const agentsResult = await client.query(
       `SELECT * FROM sales_agents WHERE is_active = true ORDER BY id`
     );
     const agents = agentsResult.rows;
 
     if (agents.length === 0) {
-      await tenantClient.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return null;
     }
 
@@ -118,7 +119,7 @@ async function selectAgent(req) {
     }
 
     // Update agent stats
-    await tenantClient.query(
+    await client.query(
       `UPDATE sales_agents
        SET total_redirects = total_redirects + 1,
            last_redirect_at = ${SQL_IST_NOW}
@@ -127,7 +128,7 @@ async function selectAgent(req) {
     );
 
     // Update last assigned in config
-    await tenantClient.query(
+    await client.query(
       `UPDATE agent_distribution_config
        SET last_assigned_agent_id = $1,
            updated_at = ${SQL_IST_NOW}
@@ -135,11 +136,11 @@ async function selectAgent(req) {
       [selectedAgent.id]
     );
 
-    await tenantClient.query('COMMIT');
+    await client.query('COMMIT');
     return selectedAgent;
 
   } catch (err) {
-    await tenantClient.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw err;
   } finally {
     tenantClient.release();
