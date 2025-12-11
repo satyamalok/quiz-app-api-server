@@ -33,7 +33,7 @@ const upload = multer({
   storage,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
   fileFilter: (req, file, cb) => {
-    if (file.fieldname === 'gift_file') {
+    if (file.fieldname === 'gift_file' || file.fieldname === 'files') {
       // Allow PDF, video, and image files (for mindmaps)
       const allowedMimes = [
         'application/pdf',
@@ -246,12 +246,17 @@ async function createGift(req, res) {
     // For digital items, validate WhatsApp fields
     if (content_type === 'digital') {
       if (!whatsapp_agent_id) {
-        return res.redirect('/admin/daily-gifts/create?error=WhatsApp agent is required for digital items');
+        return res.redirect('/admin/daily-gifts/create?error=WhatsApp agent selection is required for digital items');
       }
       if (!whatsapp_message) {
         return res.redirect('/admin/daily-gifts/create?error=WhatsApp message is required for digital items');
       }
     }
+
+    // Handle agent selection: "auto" means null (auto-select at request time)
+    const agentIdValue = whatsapp_agent_id && whatsapp_agent_id !== 'auto'
+      ? parseInt(whatsapp_agent_id)
+      : null;
 
     await dailyGiftService.createGift(req, {
       title,
@@ -266,7 +271,7 @@ async function createGift(req, res) {
       page_count: page_count ? parseInt(page_count) : null,
       duration_seconds: duration_seconds ? parseInt(duration_seconds) : null,
       is_active: is_active === 'on',
-      whatsapp_agent_id: whatsapp_agent_id ? parseInt(whatsapp_agent_id) : null,
+      whatsapp_agent_id: agentIdValue,
       whatsapp_message: whatsapp_message || null
     });
 
@@ -366,12 +371,17 @@ async function updateGift(req, res) {
     // For digital items, validate WhatsApp fields
     if (content_type === 'digital') {
       if (!whatsapp_agent_id) {
-        return res.redirect(`/admin/daily-gifts/${id}/edit?error=WhatsApp agent is required for digital items`);
+        return res.redirect(`/admin/daily-gifts/${id}/edit?error=WhatsApp agent selection is required for digital items`);
       }
       if (!whatsapp_message) {
         return res.redirect(`/admin/daily-gifts/${id}/edit?error=WhatsApp message is required for digital items`);
       }
     }
+
+    // Handle agent selection: "auto" means null (auto-select at request time)
+    const agentIdValue = whatsapp_agent_id && whatsapp_agent_id !== 'auto'
+      ? parseInt(whatsapp_agent_id)
+      : null;
 
     const updateData = {
       title,
@@ -383,7 +393,7 @@ async function updateGift(req, res) {
       page_count: page_count ? parseInt(page_count) : null,
       duration_seconds: duration_seconds ? parseInt(duration_seconds) : null,
       is_active: is_active === 'on',
-      whatsapp_agent_id: whatsapp_agent_id ? parseInt(whatsapp_agent_id) : null,
+      whatsapp_agent_id: agentIdValue,
       whatsapp_message: whatsapp_message || null
     };
 

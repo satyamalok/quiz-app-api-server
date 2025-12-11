@@ -392,7 +392,7 @@ async function createItem(req, res) {
     // For digital items, validate WhatsApp fields
     if (item_type === 'digital') {
       if (!whatsapp_agent_id) {
-        return res.redirect('/admin/shop/items/create?error=WhatsApp agent is required for digital items');
+        return res.redirect('/admin/shop/items/create?error=WhatsApp agent selection is required for digital items');
       }
       if (!whatsapp_message) {
         return res.redirect('/admin/shop/items/create?error=WhatsApp message is required for digital items');
@@ -402,6 +402,11 @@ async function createItem(req, res) {
     // Feature 4: chapter_id can be null for independent items
     const chapterIdValue = chapter_id && chapter_id !== '' && chapter_id !== 'null'
       ? parseInt(chapter_id)
+      : null;
+
+    // Handle agent selection: "auto" means null (auto-select at request time)
+    const agentIdValue = whatsapp_agent_id && whatsapp_agent_id !== 'auto'
+      ? parseInt(whatsapp_agent_id)
       : null;
 
     await shopService.createItem(req, {
@@ -421,7 +426,7 @@ async function createItem(req, res) {
       is_featured: is_featured === 'on',
       file_size_bytes,
       page_count: page_count ? parseInt(page_count) : null,
-      whatsapp_agent_id: whatsapp_agent_id ? parseInt(whatsapp_agent_id) : null,
+      whatsapp_agent_id: agentIdValue,
       whatsapp_message: whatsapp_message || null
     });
 
@@ -523,7 +528,7 @@ async function updateItem(req, res) {
     // For digital items, validate WhatsApp fields
     if (item_type === 'digital') {
       if (!whatsapp_agent_id) {
-        return res.redirect(`/admin/shop/items/${id}/edit?error=WhatsApp agent is required for digital items`);
+        return res.redirect(`/admin/shop/items/${id}/edit?error=WhatsApp agent selection is required for digital items`);
       }
       if (!whatsapp_message) {
         return res.redirect(`/admin/shop/items/${id}/edit?error=WhatsApp message is required for digital items`);
@@ -533,6 +538,11 @@ async function updateItem(req, res) {
     // Feature 4: chapter_id can be null for independent items
     const chapterIdValue = chapter_id && chapter_id !== '' && chapter_id !== 'null'
       ? parseInt(chapter_id)
+      : null;
+
+    // Handle agent selection: "auto" means null (auto-select at request time)
+    const agentIdValue = whatsapp_agent_id && whatsapp_agent_id !== 'auto'
+      ? parseInt(whatsapp_agent_id)
       : null;
 
     const updateData = {
@@ -550,7 +560,7 @@ async function updateItem(req, res) {
       is_active: is_active === 'on',
       is_featured: is_featured === 'on',
       page_count: page_count ? parseInt(page_count) : null,
-      whatsapp_agent_id: whatsapp_agent_id ? parseInt(whatsapp_agent_id) : null,
+      whatsapp_agent_id: agentIdValue,
       whatsapp_message: whatsapp_message || null
     };
 

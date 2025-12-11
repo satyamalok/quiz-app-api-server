@@ -175,23 +175,32 @@ async function getMyPurchases(req, res, next) {
 
 /**
  * Add WhatsApp URL to digital gift
+ * Handles both specific agents and auto-select
  * @param {Object} req - Express request
  * @param {Object} gift - Gift object
  */
 async function addWhatsAppUrl(req, gift) {
-  if (!gift || gift.content_type !== 'digital' || !gift.whatsapp_agent_id) {
+  if (!gift || gift.content_type !== 'digital') {
     return gift;
   }
 
   try {
-    const agent = await agentService.getAgentById(req, gift.whatsapp_agent_id);
+    let agent = null;
+    if (gift.whatsapp_agent_id) {
+      // Specific agent assigned
+      agent = await agentService.getAgentById(req, gift.whatsapp_agent_id);
+    } else {
+      // Auto-select agent using distribution system
+      agent = await agentService.selectAgent(req);
+    }
+
     if (agent) {
       const message = gift.whatsapp_message || 'Hello!';
       gift.whatsapp_url = agentService.generateWhatsAppUrl(agent.whatsapp_number, message);
       gift.whatsapp_agent_name = agent.name;
     }
   } catch (err) {
-    console.error(`Failed to fetch agent ${gift.whatsapp_agent_id}:`, err.message);
+    console.error(`Failed to fetch/select agent:`, err.message);
   }
 
   return gift;

@@ -186,8 +186,8 @@
             <div class="drop-zone" id="dropZone">
                 <div class="drop-zone-icon">📁</div>
                 <div class="drop-zone-text">Drag & drop files here or click to select</div>
-                <div class="drop-zone-hint">PDF, MP4, WebM files. Max 100MB each, up to 20 files.</div>
-                <input type="file" id="fileInput" multiple accept=".pdf,.mp4,.webm,.mov" class="hidden">
+                <div class="drop-zone-hint">PDF, Images (JPG, PNG), MP4, WebM files. Max 100MB each, up to 20 files.</div>
+                <input type="file" id="fileInput" multiple accept=".pdf,.mp4,.webm,.mov,.jpg,.jpeg,.png,.gif,.webp" class="hidden">
             </div>
 
             <!-- Actions Bar (hidden until files are added) -->
@@ -252,7 +252,7 @@
         });
 
         function handleFiles(newFiles) {
-            const allowedTypes = ['application/pdf', 'video/mp4', 'video/webm', 'video/quicktime'];
+            const allowedTypes = ['application/pdf', 'video/mp4', 'video/webm', 'video/quicktime', 'image/jpeg', 'image/png', 'image/gif', 'image/webp'];
             const maxSize = 100 * 1024 * 1024; // 100MB
             const maxFiles = 20;
 
@@ -262,7 +262,7 @@
                     break;
                 }
                 if (!allowedTypes.includes(file.type)) {
-                    alert(`${file.name}: Only PDF and video files are allowed`);
+                    alert(`${file.name}: Only PDF, image, and video files are allowed`);
                     continue;
                 }
                 if (file.size > maxSize) {
@@ -273,6 +273,8 @@
                 let itemType = 'pdf';
                 if (file.type.startsWith('video/')) {
                     itemType = 'video';
+                } else if (file.type.startsWith('image/')) {
+                    itemType = 'image';
                 }
                 files.push({
                     file: file,
@@ -291,7 +293,9 @@
         function renderFilesList() {
             filesList.innerHTML = '';
             files.forEach((item, index) => {
-                const icon = item.file.type === 'application/pdf' ? '📄' : '🎬';
+                let icon = '📄';
+                if (item.file.type.startsWith('video/')) icon = '🎬';
+                else if (item.file.type.startsWith('image/')) icon = '🖼️';
                 const size = (item.file.size / 1024 / 1024).toFixed(2);
                 const title = item.file.name.replace(/\.[^/.]+$/, ''); // Remove extension
 
@@ -320,6 +324,7 @@
                             <select onchange="updateFile(${index}, 'item_type', this.value)" ${item.status !== 'pending' ? 'disabled' : ''}>
                                 <option value="pdf" ${item.item_type === 'pdf' ? 'selected' : ''}>PDF</option>
                                 <option value="video" ${item.item_type === 'video' ? 'selected' : ''}>Video</option>
+                                <option value="image" ${item.item_type === 'image' ? 'selected' : ''}>Image</option>
                                 <option value="notes" ${item.item_type === 'notes' ? 'selected' : ''}>Notes</option>
                                 <option value="other" ${item.item_type === 'other' ? 'selected' : ''}>Other</option>
                             </select>

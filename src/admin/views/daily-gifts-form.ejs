@@ -273,6 +273,9 @@
                         <label for="whatsapp_agent_id">Select Agent *</label>
                         <select id="whatsapp_agent_id" name="whatsapp_agent_id">
                             <option value="">-- Select Agent --</option>
+                            <option value="auto" <%= gift?.whatsapp_agent_id === null && gift?.content_type === 'digital' ? '' : '' %>>
+                                🔄 Auto-select (Distribution System)
+                            </option>
                             <% if (typeof agents !== 'undefined' && agents) { %>
                                 <% agents.forEach(agent => { %>
                                 <option value="<%= agent.id %>"
@@ -282,7 +285,7 @@
                                 <% }); %>
                             <% } %>
                         </select>
-                        <small>Agent who will receive the WhatsApp message</small>
+                        <small>Select a specific agent, or use "Auto-select" to let the system choose based on distribution rules</small>
                     </div>
 
                     <div class="form-group">

@@ -106,13 +106,19 @@ async function getContentById(req, res, next) {
       });
     }
 
-    // Get agent for digital items
+    // Get agent for digital items (either specific or auto-selected)
     let agent = null;
-    if (content.content_type === 'digital' && content.whatsapp_agent_id) {
+    if (content.content_type === 'digital') {
       try {
-        agent = await agentService.getAgentById(req, content.whatsapp_agent_id);
+        if (content.whatsapp_agent_id) {
+          // Specific agent assigned
+          agent = await agentService.getAgentById(req, content.whatsapp_agent_id);
+        } else {
+          // Auto-select agent using distribution system
+          agent = await agentService.selectAgent(req);
+        }
       } catch (err) {
-        console.error(`Failed to fetch agent ${content.whatsapp_agent_id}:`, err.message);
+        console.error(`Failed to fetch/select agent:`, err.message);
       }
     }
 
@@ -402,17 +408,21 @@ function formatContentResponse(content, userPhone, agent = null) {
 
 /**
  * Format content array with agent lookups for digital items
+ * Handles both specific agents and auto-select
  * @param {Object} req - Express request
  * @param {Array} contentArray - Content items from database
  * @param {string|null} userPhone - User's phone number
  */
 async function formatContentWithAgents(req, contentArray, userPhone) {
-  // Collect unique agent IDs from digital items
+  // Collect unique agent IDs from digital items with specific agents
   const agentIds = [...new Set(
     contentArray
       .filter(c => c.content_type === 'digital' && c.whatsapp_agent_id)
       .map(c => c.whatsapp_agent_id)
   )];
+
+  // Check if any digital items need auto-select
+  const needsAutoSelect = contentArray.some(c => c.content_type === 'digital' && !c.whatsapp_agent_id);
 
   // Fetch all needed agents in one batch
   const agentMap = {};
@@ -427,9 +437,26 @@ async function formatContentWithAgents(req, contentArray, userPhone) {
     }
   }
 
+  // Get auto-selected agent if needed (one per request for consistency)
+  let autoSelectedAgent = null;
+  if (needsAutoSelect) {
+    try {
+      autoSelectedAgent = await agentService.selectAgent(req);
+    } catch (err) {
+      console.error('Failed to auto-select agent:', err.message);
+    }
+  }
+
   // Format content with agent info
   return contentArray.map(content => {
-    const agent = content.whatsapp_agent_id ? agentMap[content.whatsapp_agent_id] : null;
+    let agent = null;
+    if (content.content_type === 'digital') {
+      if (content.whatsapp_agent_id) {
+        agent = agentMap[content.whatsapp_agent_id];
+      } else {
+        agent = autoSelectedAgent;
+      }
+    }
     return formatContentResponse(content, userPhone, agent);
   });
 }

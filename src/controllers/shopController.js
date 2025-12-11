@@ -212,13 +212,19 @@ async function getItemById(req, res, next) {
       });
     }
 
-    // Get agent for digital items
+    // Get agent for digital items (either specific or auto-selected)
     let agent = null;
-    if (item.item_type === 'digital' && item.whatsapp_agent_id) {
+    if (item.item_type === 'digital') {
       try {
-        agent = await agentService.getAgentById(req, item.whatsapp_agent_id);
+        if (item.whatsapp_agent_id) {
+          // Specific agent assigned
+          agent = await agentService.getAgentById(req, item.whatsapp_agent_id);
+        } else {
+          // Auto-select agent using distribution system
+          agent = await agentService.selectAgent(req);
+        }
       } catch (err) {
-        console.error(`Failed to fetch agent ${item.whatsapp_agent_id}:`, err.message);
+        console.error(`Failed to fetch/select agent:`, err.message);
       }
     }
 
@@ -451,17 +457,21 @@ function formatItemResponse(item, userPhone, agent = null) {
 
 /**
  * Format items array with agent lookups for digital items
+ * Handles both specific agents and auto-select
  * @param {Object} req - Express request
  * @param {Array} items - Items from database
  * @param {string|null} userPhone - User's phone number
  */
 async function formatItemsWithAgents(req, items, userPhone) {
-  // Collect unique agent IDs from digital items
+  // Collect unique agent IDs from digital items with specific agents
   const agentIds = [...new Set(
     items
       .filter(item => item.item_type === 'digital' && item.whatsapp_agent_id)
       .map(item => item.whatsapp_agent_id)
   )];
+
+  // Check if any digital items need auto-select
+  const needsAutoSelect = items.some(item => item.item_type === 'digital' && !item.whatsapp_agent_id);
 
   // Fetch all needed agents in one batch
   const agentMap = {};
@@ -476,9 +486,26 @@ async function formatItemsWithAgents(req, items, userPhone) {
     }
   }
 
+  // Get auto-selected agent if needed (one per request for consistency)
+  let autoSelectedAgent = null;
+  if (needsAutoSelect) {
+    try {
+      autoSelectedAgent = await agentService.selectAgent(req);
+    } catch (err) {
+      console.error('Failed to auto-select agent:', err.message);
+    }
+  }
+
   // Format items with agent info
   return items.map(item => {
-    const agent = item.whatsapp_agent_id ? agentMap[item.whatsapp_agent_id] : null;
+    let agent = null;
+    if (item.item_type === 'digital') {
+      if (item.whatsapp_agent_id) {
+        agent = agentMap[item.whatsapp_agent_id];
+      } else {
+        agent = autoSelectedAgent;
+      }
+    }
     return formatItemResponse(item, userPhone, agent);
   });
 }
