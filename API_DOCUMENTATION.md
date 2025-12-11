@@ -2931,10 +2931,12 @@ Level Content allows associating purchasable study materials (PDFs, videos, note
 
 **Key Concepts:**
 - **Level Association**: Each content item is tied to a specific level (1-100)
-- **Content Types**: pdf, video, notes, practice, other
+- **Content Types**: pdf, video, notes, image, digital, other
 - **XP Pricing**: Items can be free (xp_price=0) or paid
 - **Sale Pricing**: Items can have limited-time discounted prices
 - **Featured Items**: Highlighted content for homepage display
+- **Digital Items**: WhatsApp redirect items that connect users to sales agents
+- **Image Items**: For mindmaps and visual study materials (jpg, png)
 
 ### 11.1 Get Content by Level
 
@@ -2976,6 +2978,48 @@ Get all purchasable content for a specific quiz level.
         "total_purchases": 150,
         "is_purchased": false,
         "purchased_at": null
+      },
+      {
+        "id": 2,
+        "level": 5,
+        "title": "Premium Support Session",
+        "description": "Get 1-on-1 doubt clearing session with our expert",
+        "content_type": "digital",
+        "thumbnail_url": "https://minio.example.com/level-content/thumbnails/support.jpg",
+        "xp_price": 200,
+        "xp_original_price": null,
+        "is_on_sale": false,
+        "discount_percent": null,
+        "sale_ends_at": null,
+        "is_featured": true,
+        "file_size": null,
+        "page_count": null,
+        "duration": null,
+        "total_purchases": 50,
+        "whatsapp_url": "https://wa.me/919876543210?text=Hello%2C%20I%20purchased%20Premium%20Support%20Session",
+        "whatsapp_agent_name": "Rahul",
+        "is_purchased": false,
+        "purchased_at": null
+      },
+      {
+        "id": 3,
+        "level": 5,
+        "title": "Level 5 Mind Map",
+        "description": "Visual summary of all level 5 concepts",
+        "content_type": "image",
+        "thumbnail_url": "https://minio.example.com/level-content/thumbnails/mindmap-preview.jpg",
+        "xp_price": 50,
+        "xp_original_price": null,
+        "is_on_sale": false,
+        "discount_percent": null,
+        "sale_ends_at": null,
+        "is_featured": false,
+        "file_size": "1.2 MB",
+        "page_count": null,
+        "duration": null,
+        "total_purchases": 75,
+        "is_purchased": true,
+        "purchased_at": "2025-12-10T14:30:00.000Z"
       }
     ],
     "total_items": 3,
@@ -3016,7 +3060,7 @@ Get all level content with optional filters.
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | level | integer | No | - | Filter by specific level |
-| content_type | string | No | - | Filter by type (pdf, video, notes, practice, other) |
+| content_type | string | No | - | Filter by type (pdf, video, notes, image, digital, other) |
 | featured | boolean | No | - | Filter featured items only |
 | search | string | No | - | Search in title/description |
 | sort | string | No | level_asc | Sort: level_asc, level_desc, price_low, price_high, popular |
@@ -3370,8 +3414,10 @@ Daily Gifts provides time-based gift availability where specific content is avai
 - **Date-Based Availability**: Each gift has a specific available date
 - **Time Window**: Gifts become available at a specific time on their date
 - **XP Pricing**: Gifts can be free or require XP
-- **Content Types**: pdf, video, notes, other
+- **Content Types**: pdf, video, notes, image, digital, surprise, other
 - **One-Time Purchase**: Each user can only purchase a gift once
+- **Digital Gifts**: WhatsApp redirect items that connect users to sales agents
+- **Image Gifts**: Visual content like mindmaps (jpg, png)
 
 ### 12.1 Get Today's Gift
 
@@ -3410,6 +3456,31 @@ Get the gift available for today.
   "success": true,
   "gift": null,
   "message": "No gift available today"
+}
+```
+
+**Digital Gift Response Example:**
+```json
+{
+  "success": true,
+  "gift": {
+    "id": 2,
+    "title": "Free Expert Consultation",
+    "description": "Connect with our expert via WhatsApp",
+    "content_type": "digital",
+    "file_url": null,
+    "thumbnail_url": "https://minio.example.com/daily-gifts/thumbnails/consultation.jpg",
+    "xp_price": 0,
+    "available_date": "2025-12-11",
+    "available_time": "00:00:00",
+    "file_size_bytes": null,
+    "page_count": null,
+    "duration_seconds": null,
+    "whatsapp_url": "https://wa.me/919876543210?text=Hello%2C%20I%20claimed%20Free%20Expert%20Consultation",
+    "whatsapp_agent_name": "Rahul",
+    "is_purchased": false
+  },
+  "user_balance": 500
 }
 ```
 
@@ -4008,6 +4079,27 @@ medium  - Medium difficulty
 hard    - Hard questions
 ```
 
+### Content Types (Level Content, Daily Gifts, Shop Items) *(NEW)*
+
+```
+pdf      - PDF documents (study notes, guides)
+video    - Video content (tutorials, lectures)
+notes    - Text-based notes
+image    - Image files (mindmaps, diagrams) - jpg, png supported
+digital  - WhatsApp redirect items (connect users to sales agents)
+surprise - Surprise content (for daily gifts only)
+other    - Other content types
+```
+
+**Digital Items Special Fields:**
+When `content_type = "digital"`, the API response includes:
+- `whatsapp_url` - Pre-filled WhatsApp URL to contact the assigned agent
+- `whatsapp_agent_name` - Name of the assigned sales agent
+- No `file_url` is provided (digital items redirect to WhatsApp instead)
+
+**Agent Auto-Selection:**
+If no specific agent is assigned to a digital item, the system automatically selects one using the configured distribution scheme (round_robin, least_recent, random, or weighted).
+
 ### Referral Code Format
 
 ```
@@ -4115,6 +4207,24 @@ xp_remaining = xp_earned - xp_spent (available balance)
     - "Owned" or "View PDF" when `is_purchased = true`
 29. **Error Handling**: Handle ALREADY_PURCHASED gracefully (user may have purchased on another device)
 30. **Optimistic Updates**: Update local balance immediately on purchase, rollback on API error
+
+### Digital Items Implementation Notes *(NEW)*
+
+31. **Content Type Check**: Check `content_type === "digital"` to differentiate from regular items
+32. **WhatsApp Button**: For digital items, show "Chat on WhatsApp" button instead of "Download"
+33. **WhatsApp Intent**: Open `whatsapp_url` using ACTION_VIEW intent with WhatsApp package
+34. **Fallback**: If WhatsApp not installed, open URL in browser (wa.me works in browser too)
+35. **Agent Display**: Show `whatsapp_agent_name` as "Chat with {name}" for better UX
+36. **No Download**: Digital items don't have `file_url`, don't show download option
+37. **Visual Indicator**: Use a WhatsApp icon or chat icon for digital items in lists
+
+### Image Items Implementation Notes *(NEW)*
+
+38. **Image Viewer**: Use PhotoView library for zoomable image viewing
+39. **Download Option**: Allow saving image to gallery after purchase
+40. **Preview**: Show thumbnail in list, full image after purchase
+41. **Format Support**: Handle both jpg and png formats
+42. **Mindmap Display**: Consider landscape orientation for wide mindmap images
 
 ---
 

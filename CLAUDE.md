@@ -1478,3 +1478,106 @@ Located in `stress-tests/` folder:
 - `stable-point-test.js` - Conservative stability test
 
 Run with: `k6 run stress-tests/<script>.js`
+
+## Digital Items Feature (2025-12-11)
+
+**WhatsApp Redirect Items:** A new content type `digital` that connects users directly to sales agents via WhatsApp instead of providing downloadable content.
+
+### Content Types
+
+The following content types are now supported across Level Content, Daily Gifts, and Shop Items:
+
+| Type | Description |
+|------|-------------|
+| `pdf` | PDF documents (study notes, guides) |
+| `video` | Video content (tutorials, lectures) |
+| `notes` | Text-based notes |
+| `image` | Image files (mindmaps, diagrams) - jpg, png |
+| `digital` | WhatsApp redirect items (connect to sales agents) |
+| `surprise` | Surprise content (daily gifts only) |
+| `other` | Other content types |
+
+### Digital Items Response
+
+When `content_type = "digital"`, API responses include:
+```json
+{
+  "content_type": "digital",
+  "whatsapp_url": "https://wa.me/919876543210?text=Hello%20message",
+  "whatsapp_agent_name": "Rahul",
+  "file_url": null  // No file for digital items
+}
+```
+
+### Agent Auto-Selection
+
+Digital items can have a specific agent assigned OR use auto-selection:
+- If `whatsapp_agent_id` is set, that specific agent is used
+- If `whatsapp_agent_id` is NULL, system auto-selects using distribution scheme
+- Distribution schemes: `round_robin`, `least_recent`, `random`, `weighted`
+
+### Database Columns Added
+
+```sql
+-- Added to level_content, daily_gifts, shop_items tables:
+whatsapp_agent_id INTEGER REFERENCES sales_agents(id)
+whatsapp_message TEXT  -- Pre-filled WhatsApp message
+```
+
+### Key Files
+
+- `src/services/agentService.js` - Agent selection and WhatsApp URL generation
+- `src/controllers/levelContentController.js` - Handles digital items in level content
+- `src/controllers/dailyGiftController.js` - Handles digital items in daily gifts
+- `src/controllers/shopController.js` - Handles digital items in shop
+- `scripts/migrations/005_digital_items.sql` - Database migration
+
+### Common Digital Items Gotchas
+
+62. **Digital items have no file_url** - Don't show download button, show WhatsApp button instead
+63. **Agent auto-select modifies stats** - Each `selectAgent()` call increments redirect count
+64. **WhatsApp URL is pre-encoded** - Message is already URL-encoded in `whatsapp_url`
+65. **One agent per request for lists** - When listing items, same auto-selected agent is used for all digital items in that request (consistency)
+
+## Critical Bug Fix Pattern: getTenantClient (2025-12-11)
+
+**⚠️ CRITICAL:** The `getTenantClient(req)` function returns `{client, release}`, NOT a direct client object.
+
+### Wrong Pattern (causes SERVER_ERROR):
+```javascript
+async function myFunction(req) {
+  const tenantClient = await getTenantClient(req);
+
+  // WRONG - tenantClient is {client, release}, not a client!
+  await tenantClient.query('BEGIN');  // ❌ TypeError: tenantClient.query is not a function
+
+  tenantClient.release();  // ❌ This is not how to release
+}
+```
+
+### Correct Pattern:
+```javascript
+async function myFunction(req) {
+  const tenantClient = await getTenantClient(req);
+  const client = tenantClient.client;  // ✅ Extract the client
+
+  try {
+    await client.query('BEGIN');  // ✅ Use client.query()
+    // ... do work ...
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    tenantClient.release();  // ✅ Call release on tenantClient, not client
+  }
+}
+```
+
+### Files Fixed (2025-12-11):
+- `src/services/dailyGiftService.js` - `purchaseGift()` function
+- `src/services/agentService.js` - `selectAgent()` function
+
+66. **getTenantClient returns object** - Always extract `const client = tenantClient.client` before queries
+67. **release() is on tenantClient** - Call `tenantClient.release()` not `client.release()`
