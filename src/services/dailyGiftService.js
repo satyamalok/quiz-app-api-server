@@ -238,18 +238,19 @@ async function getUserPurchases(req, phone, options = {}) {
  */
 async function purchaseGift(req, phone, giftId) {
   const tenantClient = await getTenantClient(req);
+  const client = tenantClient.client;
 
   try {
-    await tenantClient.query('BEGIN');
+    await client.query('BEGIN');
 
     // Lock gift row
-    const giftResult = await tenantClient.query(
+    const giftResult = await client.query(
       `SELECT * FROM daily_gifts WHERE id = $1 FOR UPDATE`,
       [giftId]
     );
 
     if (giftResult.rows.length === 0) {
-      await tenantClient.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return { success: false, error: 'GIFT_NOT_FOUND', message: 'Gift not found' };
     }
 
@@ -257,13 +258,13 @@ async function purchaseGift(req, phone, giftId) {
 
     // Check if gift is active
     if (!gift.is_active) {
-      await tenantClient.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return { success: false, error: 'GIFT_NOT_AVAILABLE', message: 'Gift is not available' };
     }
 
     // Check if gift is available by date/time
     if (!isGiftAvailable(gift)) {
-      await tenantClient.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return {
         success: false,
         error: 'GIFT_NOT_YET_AVAILABLE',
@@ -272,24 +273,24 @@ async function purchaseGift(req, phone, giftId) {
     }
 
     // Check if already purchased
-    const existingPurchase = await tenantClient.query(
+    const existingPurchase = await client.query(
       `SELECT id FROM user_purchases WHERE phone = $1 AND daily_gift_id = $2`,
       [phone, giftId]
     );
 
     if (existingPurchase.rows.length > 0) {
-      await tenantClient.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return { success: false, error: 'ALREADY_PURCHASED', message: 'You have already purchased this gift' };
     }
 
     // Lock user row and check balance
-    const userResult = await tenantClient.query(
+    const userResult = await client.query(
       `SELECT xp_total, xp_spent FROM users_profile WHERE phone = $1 FOR UPDATE`,
       [phone]
     );
 
     if (userResult.rows.length === 0) {
-      await tenantClient.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return { success: false, error: 'USER_NOT_FOUND', message: 'User not found' };
     }
 
@@ -297,7 +298,7 @@ async function purchaseGift(req, phone, giftId) {
     const balance = user.xp_total - user.xp_spent;
 
     if (balance < gift.xp_price) {
-      await tenantClient.query('ROLLBACK');
+      await client.query('ROLLBACK');
       return {
         success: false,
         error: 'INSUFFICIENT_BALANCE',
@@ -308,25 +309,25 @@ async function purchaseGift(req, phone, giftId) {
     }
 
     // Create purchase record
-    await tenantClient.query(
+    await client.query(
       `INSERT INTO user_purchases (phone, daily_gift_id, xp_paid, item_title, content_type, purchased_at)
        VALUES ($1, $2, $3, $4, 'daily_gift', ${SQL_IST_NOW})`,
       [phone, giftId, gift.xp_price, gift.title]
     );
 
     // Update user's xp_spent
-    await tenantClient.query(
+    await client.query(
       `UPDATE users_profile SET xp_spent = xp_spent + $1 WHERE phone = $2`,
       [gift.xp_price, phone]
     );
 
     // Increment gift purchase count
-    await tenantClient.query(
+    await client.query(
       `UPDATE daily_gifts SET total_purchases = total_purchases + 1 WHERE id = $1`,
       [giftId]
     );
 
-    await tenantClient.query('COMMIT');
+    await client.query('COMMIT');
 
     // Get updated balance
     const updatedUser = await tenantQuery(req,
@@ -348,7 +349,7 @@ async function purchaseGift(req, phone, giftId) {
     };
 
   } catch (err) {
-    await tenantClient.query('ROLLBACK');
+    await client.query('ROLLBACK');
     throw err;
   } finally {
     tenantClient.release();
