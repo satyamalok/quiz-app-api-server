@@ -136,7 +136,7 @@ async function purchaseGift(req, res, next) {
 
     // Fire purchase webhook (async, non-blocking)
     const webhookService = require('../services/purchaseWebhookService');
-    webhookService.sendPurchaseWebhook(req, {
+    webhookService.firePurchaseWebhook(req, {
       phone,
       item_type: 'daily_gift',
       item_id: gift_id,

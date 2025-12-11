@@ -350,6 +350,7 @@ async function purchaseGift(req, phone, giftId) {
 
   } catch (err) {
     await client.query('ROLLBACK');
+    console.error('Daily gift purchase error:', err.message, err.code, err.detail);
     throw err;
   } finally {
     tenantClient.release();
