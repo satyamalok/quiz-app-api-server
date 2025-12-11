@@ -181,11 +181,13 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label for="content_type">Content Type *</label>
-                            <select id="content_type" name="content_type" required>
+                            <select id="content_type" name="content_type" required onchange="toggleDigitalFields()">
                                 <option value="pdf" <%= gift?.content_type === 'pdf' ? 'selected' : '' %>>PDF Document</option>
                                 <option value="video" <%= gift?.content_type === 'video' ? 'selected' : '' %>>Video</option>
                                 <option value="notes" <%= gift?.content_type === 'notes' ? 'selected' : '' %>>Notes</option>
+                                <option value="image" <%= gift?.content_type === 'image' ? 'selected' : '' %>>Image (Mindmap)</option>
                                 <option value="surprise" <%= gift?.content_type === 'surprise' ? 'selected' : '' %>>Surprise</option>
+                                <option value="digital" <%= gift?.content_type === 'digital' ? 'selected' : '' %>>Digital (WhatsApp)</option>
                                 <option value="other" <%= gift?.content_type === 'other' ? 'selected' : '' %>>Other</option>
                             </select>
                         </div>
@@ -203,13 +205,13 @@
                 <div class="form-section">
                     <h3>Gift File</h3>
 
-                    <div class="form-group">
+                    <div class="form-group" id="file_upload_section">
                         <label for="gift_file">
                             <%= isEdit ? 'Replace File (optional)' : 'Upload File *' %>
                         </label>
                         <input type="file" id="gift_file" name="gift_file"
-                               accept=".pdf,video/*" <%= !isEdit ? 'required' : '' %>>
-                        <small>Supported: PDF files, MP4/WebM videos (max 100MB)</small>
+                               accept=".pdf,video/*,image/*">
+                        <small>Supported: PDF files, MP4/WebM videos, Images (max 100MB)</small>
 
                         <% if (isEdit && gift?.file_url) { %>
                         <div class="file-preview">
@@ -260,6 +262,37 @@
                     </div>
                 </div>
 
+                <!-- Digital Item Section (WhatsApp Redirect) -->
+                <div class="form-section" id="digital_section" style="display: none;">
+                    <h3>WhatsApp Redirect Settings</h3>
+                    <p style="color: #666; margin-bottom: 15px;">
+                        Digital gifts redirect users to WhatsApp with a predefined message. No file upload needed.
+                    </p>
+
+                    <div class="form-group">
+                        <label for="whatsapp_agent_id">Select Agent *</label>
+                        <select id="whatsapp_agent_id" name="whatsapp_agent_id">
+                            <option value="">-- Select Agent --</option>
+                            <% if (typeof agents !== 'undefined' && agents) { %>
+                                <% agents.forEach(agent => { %>
+                                <option value="<%= agent.id %>"
+                                    <%= gift?.whatsapp_agent_id === agent.id ? 'selected' : '' %>>
+                                    <%= agent.name %> (<%= agent.whatsapp_number %>)
+                                </option>
+                                <% }); %>
+                            <% } %>
+                        </select>
+                        <small>Agent who will receive the WhatsApp message</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="whatsapp_message">WhatsApp Message *</label>
+                        <textarea id="whatsapp_message" name="whatsapp_message"
+                                  placeholder="Hi! I am interested in this gift. My phone: {user_phone}"><%= gift?.whatsapp_message || '' %></textarea>
+                        <small>Placeholders: {user_name}, {user_phone}, {item_title}</small>
+                    </div>
+                </div>
+
                 <!-- Status -->
                 <div class="form-section">
                     <h3>Status</h3>
@@ -283,5 +316,29 @@
             </form>
         </div>
     </div>
+
+    <script>
+        function toggleDigitalFields() {
+            const contentType = document.getElementById('content_type').value;
+            const digitalSection = document.getElementById('digital_section');
+            const fileSection = document.getElementById('file_upload_section');
+            const fileInput = document.getElementById('gift_file');
+
+            if (contentType === 'digital') {
+                digitalSection.style.display = 'block';
+                fileSection.style.display = 'none';
+                fileInput.removeAttribute('required');
+            } else {
+                digitalSection.style.display = 'none';
+                fileSection.style.display = 'block';
+                <% if (!isEdit) { %>
+                fileInput.setAttribute('required', 'required');
+                <% } %>
+            }
+        }
+
+        // Run on page load
+        document.addEventListener('DOMContentLoaded', toggleDigitalFields);
+    </script>
 </body>
 </html>

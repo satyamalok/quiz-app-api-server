@@ -219,7 +219,10 @@
 
         <div class="header-row">
             <h1>Level Content</h1>
-            <a href="/admin/level-content/create" class="btn btn-primary">+ Add Content</a>
+            <div>
+                <a href="/admin/level-content/bulk-upload" class="btn btn-secondary">Bulk Upload</a>
+                <a href="/admin/level-content/create" class="btn btn-primary">+ Add Content</a>
+            </div>
         </div>
 
         <!-- Filters -->
@@ -232,6 +235,8 @@
                 <option value="pdf" <%= filters.content_type === 'pdf' ? 'selected' : '' %>>PDF</option>
                 <option value="video" <%= filters.content_type === 'video' ? 'selected' : '' %>>Video</option>
                 <option value="notes" <%= filters.content_type === 'notes' ? 'selected' : '' %>>Notes</option>
+                <option value="image" <%= filters.content_type === 'image' ? 'selected' : '' %>>Image</option>
+                <option value="digital" <%= filters.content_type === 'digital' ? 'selected' : '' %>>Digital</option>
                 <option value="other" <%= filters.content_type === 'other' ? 'selected' : '' %>>Other</option>
             </select>
 

@@ -5,6 +5,7 @@
 
 const dailyGiftService = require('../services/dailyGiftService');
 const { uploadFile } = require('../services/uploadService');
+const agentService = require('../services/agentService');
 const multer = require('multer');
 
 /**
@@ -33,17 +34,21 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
   fileFilter: (req, file, cb) => {
     if (file.fieldname === 'gift_file') {
-      // Allow PDF and video files
+      // Allow PDF, video, and image files (for mindmaps)
       const allowedMimes = [
         'application/pdf',
         'video/mp4',
         'video/webm',
-        'video/quicktime'
+        'video/quicktime',
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp'
       ];
       if (allowedMimes.includes(file.mimetype)) {
         cb(null, true);
       } else {
-        cb(new Error('Only PDF and video files are allowed'));
+        cb(new Error('Only PDF, video, and image files are allowed'));
       }
     } else if (file.fieldname === 'thumbnail') {
       if (file.mimetype.startsWith('image/')) {
@@ -166,10 +171,14 @@ async function showCreateGift(req, res) {
     prepareAdminReq(req);
     const { date } = req.query; // Pre-fill date if provided
 
+    // Get agents for digital items dropdown
+    const agents = await agentService.getAllAgents(req);
+
     res.render('daily-gifts-form', {
       title: 'Create Daily Gift',
       gift: date ? { available_date: date } : null,
       isEdit: false,
+      agents,
       currentApp: req.session.currentApp
     });
   } catch (err) {
@@ -194,7 +203,9 @@ async function createGift(req, res) {
       available_time,
       page_count,
       duration_seconds,
-      is_active
+      is_active,
+      whatsapp_agent_id,
+      whatsapp_message
     } = req.body;
 
     // Validate date
@@ -202,7 +213,7 @@ async function createGift(req, res) {
       return res.redirect('/admin/daily-gifts/create?error=Available date is required');
     }
 
-    // Handle file uploads
+    // Handle file uploads (not required for digital items)
     let file_url = null;
     let thumbnail_url = null;
     let file_size_bytes = null;
@@ -227,8 +238,19 @@ async function createGift(req, res) {
       }
     }
 
-    if (!file_url) {
+    // For digital items, file is not required; for others, it is required
+    if (content_type !== 'digital' && !file_url) {
       return res.redirect('/admin/daily-gifts/create?error=Gift file is required');
+    }
+
+    // For digital items, validate WhatsApp fields
+    if (content_type === 'digital') {
+      if (!whatsapp_agent_id) {
+        return res.redirect('/admin/daily-gifts/create?error=WhatsApp agent is required for digital items');
+      }
+      if (!whatsapp_message) {
+        return res.redirect('/admin/daily-gifts/create?error=WhatsApp message is required for digital items');
+      }
     }
 
     await dailyGiftService.createGift(req, {
@@ -243,7 +265,9 @@ async function createGift(req, res) {
       file_size_bytes,
       page_count: page_count ? parseInt(page_count) : null,
       duration_seconds: duration_seconds ? parseInt(duration_seconds) : null,
-      is_active: is_active === 'on'
+      is_active: is_active === 'on',
+      whatsapp_agent_id: whatsapp_agent_id ? parseInt(whatsapp_agent_id) : null,
+      whatsapp_message: whatsapp_message || null
     });
 
     res.redirect('/admin/daily-gifts?success=Gift created successfully');
@@ -271,10 +295,14 @@ async function showEditGift(req, res) {
       return res.redirect('/admin/daily-gifts?error=Gift not found');
     }
 
+    // Get agents for digital items dropdown
+    const agents = await agentService.getAllAgents(req);
+
     res.render('daily-gifts-form', {
       title: 'Edit Daily Gift',
       gift,
       isEdit: true,
+      agents,
       currentApp: req.session.currentApp,
       error: req.query.error
     });
@@ -302,7 +330,9 @@ async function updateGift(req, res) {
       page_count,
       duration_seconds,
       is_active,
-      remove_thumbnail
+      remove_thumbnail,
+      whatsapp_agent_id,
+      whatsapp_message
     } = req.body;
 
     let file_url = undefined;
@@ -333,6 +363,16 @@ async function updateGift(req, res) {
       thumbnail_url = null;
     }
 
+    // For digital items, validate WhatsApp fields
+    if (content_type === 'digital') {
+      if (!whatsapp_agent_id) {
+        return res.redirect(`/admin/daily-gifts/${id}/edit?error=WhatsApp agent is required for digital items`);
+      }
+      if (!whatsapp_message) {
+        return res.redirect(`/admin/daily-gifts/${id}/edit?error=WhatsApp message is required for digital items`);
+      }
+    }
+
     const updateData = {
       title,
       description,
@@ -342,7 +382,9 @@ async function updateGift(req, res) {
       available_time: available_time || '00:00:00',
       page_count: page_count ? parseInt(page_count) : null,
       duration_seconds: duration_seconds ? parseInt(duration_seconds) : null,
-      is_active: is_active === 'on'
+      is_active: is_active === 'on',
+      whatsapp_agent_id: whatsapp_agent_id ? parseInt(whatsapp_agent_id) : null,
+      whatsapp_message: whatsapp_message || null
     };
 
     if (file_url !== undefined) {

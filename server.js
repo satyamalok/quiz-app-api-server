@@ -41,6 +41,11 @@ const server = app.listen(PORT, async () => {
   }
 
   console.log('==============================================\n');
+
+  // Signal PM2 that the app is ready (for wait_ready: true in ecosystem.config.js)
+  if (process.send) {
+    process.send('ready');
+  }
 });
 
 // Graceful shutdown

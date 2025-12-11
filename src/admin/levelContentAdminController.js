@@ -6,6 +6,7 @@
 
 const levelContentService = require('../services/levelContentService');
 const { uploadFile } = require('../services/uploadService');
+const agentService = require('../services/agentService');
 const multer = require('multer');
 
 /**
@@ -34,17 +35,21 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit for videos
   fileFilter: (req, file, cb) => {
     if (file.fieldname === 'content_file') {
-      // Allow PDF and video files
+      // Allow PDF, video, and image files (for mindmaps)
       const allowedMimes = [
         'application/pdf',
         'video/mp4',
         'video/webm',
-        'video/quicktime'
+        'video/quicktime',
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp'
       ];
       if (allowedMimes.includes(file.mimetype)) {
         cb(null, true);
       } else {
-        cb(new Error('Only PDF and video files are allowed'));
+        cb(new Error('Only PDF, video, and image files are allowed'));
       }
     } else if (file.fieldname === 'thumbnail') {
       if (file.mimetype.startsWith('image/')) {
@@ -174,10 +179,14 @@ async function showCreateContent(req, res) {
     prepareAdminReq(req);
     const { level } = req.query; // Pre-fill level if provided
 
+    // Get agents for digital items dropdown
+    const agents = await agentService.getAllAgents(req);
+
     res.render('level-content-form', {
       title: 'Create Level Content',
       content: level ? { level: parseInt(level) } : null,
       isEdit: false,
+      agents,
       currentApp: req.session.currentApp
     });
   } catch (err) {
@@ -205,7 +214,9 @@ async function createContent(req, res) {
       duration_seconds,
       display_order,
       is_active,
-      is_featured
+      is_featured,
+      whatsapp_agent_id,
+      whatsapp_message
     } = req.body;
 
     // Validate level
@@ -214,7 +225,7 @@ async function createContent(req, res) {
       return res.redirect('/admin/level-content/create?error=Level must be between 1 and 100');
     }
 
-    // Handle file uploads
+    // Handle file uploads (not required for digital items)
     let file_url = null;
     let thumbnail_url = null;
     let file_size_bytes = null;
@@ -239,8 +250,19 @@ async function createContent(req, res) {
       }
     }
 
-    if (!file_url) {
+    // For digital items, file is not required; for others, it is required
+    if (content_type !== 'digital' && !file_url) {
       return res.redirect('/admin/level-content/create?error=Content file is required');
+    }
+
+    // For digital items, validate WhatsApp fields
+    if (content_type === 'digital') {
+      if (!whatsapp_agent_id) {
+        return res.redirect('/admin/level-content/create?error=WhatsApp agent is required for digital items');
+      }
+      if (!whatsapp_message) {
+        return res.redirect('/admin/level-content/create?error=WhatsApp message is required for digital items');
+      }
     }
 
     await levelContentService.createContent(req, {
@@ -258,7 +280,9 @@ async function createContent(req, res) {
       duration_seconds: duration_seconds ? parseInt(duration_seconds) : null,
       display_order: parseInt(display_order) || 0,
       is_active: is_active === 'on',
-      is_featured: is_featured === 'on'
+      is_featured: is_featured === 'on',
+      whatsapp_agent_id: whatsapp_agent_id ? parseInt(whatsapp_agent_id) : null,
+      whatsapp_message: whatsapp_message || null
     });
 
     res.redirect('/admin/level-content?success=Content created successfully');
@@ -286,10 +310,14 @@ async function showEditContent(req, res) {
       return res.redirect('/admin/level-content?error=Content not found');
     }
 
+    // Get agents for digital items dropdown
+    const agents = await agentService.getAllAgents(req);
+
     res.render('level-content-form', {
       title: 'Edit Level Content',
       content,
       isEdit: true,
+      agents,
       currentApp: req.session.currentApp
     });
   } catch (err) {
@@ -320,7 +348,9 @@ async function updateContent(req, res) {
       is_active,
       is_featured,
       remove_thumbnail,
-      clear_sale
+      clear_sale,
+      whatsapp_agent_id,
+      whatsapp_message
     } = req.body;
 
     // Validate level
@@ -366,6 +396,16 @@ async function updateContent(req, res) {
       finalSaleEndsAt = null;
     }
 
+    // For digital items, validate WhatsApp fields
+    if (content_type === 'digital') {
+      if (!whatsapp_agent_id) {
+        return res.redirect(`/admin/level-content/${id}/edit?error=WhatsApp agent is required for digital items`);
+      }
+      if (!whatsapp_message) {
+        return res.redirect(`/admin/level-content/${id}/edit?error=WhatsApp message is required for digital items`);
+      }
+    }
+
     const updateData = {
       level: levelNum,
       title,
@@ -378,7 +418,9 @@ async function updateContent(req, res) {
       duration_seconds: duration_seconds ? parseInt(duration_seconds) : null,
       display_order: parseInt(display_order) || 0,
       is_active: is_active === 'on',
-      is_featured: is_featured === 'on'
+      is_featured: is_featured === 'on',
+      whatsapp_agent_id: whatsapp_agent_id ? parseInt(whatsapp_agent_id) : null,
+      whatsapp_message: whatsapp_message || null
     };
 
     if (file_url !== undefined) {

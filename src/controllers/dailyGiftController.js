@@ -4,6 +4,7 @@
  */
 
 const dailyGiftService = require('../services/dailyGiftService');
+const agentService = require('../services/agentService');
 
 /**
  * GET /gifts/today
@@ -12,7 +13,7 @@ const dailyGiftService = require('../services/dailyGiftService');
 async function getTodaysGift(req, res, next) {
   try {
     const userPhone = req.user?.phone || null;
-    const gift = await dailyGiftService.getTodaysGift(req, userPhone);
+    let gift = await dailyGiftService.getTodaysGift(req, userPhone);
 
     if (!gift) {
       return res.json({
@@ -21,6 +22,9 @@ async function getTodaysGift(req, res, next) {
         message: 'No gift available today'
       });
     }
+
+    // Add WhatsApp URL for digital items
+    gift = await addWhatsAppUrl(req, gift);
 
     // Get user balance if authenticated
     let balance = null;
@@ -75,7 +79,7 @@ async function getGiftById(req, res, next) {
     const { id } = req.params;
     const userPhone = req.user?.phone || null;
 
-    const gift = await dailyGiftService.getGiftById(req, parseInt(id), userPhone);
+    let gift = await dailyGiftService.getGiftById(req, parseInt(id), userPhone);
 
     if (!gift) {
       return res.status(404).json({
@@ -84,6 +88,9 @@ async function getGiftById(req, res, next) {
         message: 'Gift not found'
       });
     }
+
+    // Add WhatsApp URL for digital items
+    gift = await addWhatsAppUrl(req, gift);
 
     res.json({
       success: true,
@@ -164,6 +171,30 @@ async function getMyPurchases(req, res, next) {
   } catch (err) {
     next(err);
   }
+}
+
+/**
+ * Add WhatsApp URL to digital gift
+ * @param {Object} req - Express request
+ * @param {Object} gift - Gift object
+ */
+async function addWhatsAppUrl(req, gift) {
+  if (!gift || gift.content_type !== 'digital' || !gift.whatsapp_agent_id) {
+    return gift;
+  }
+
+  try {
+    const agent = await agentService.getAgentById(req, gift.whatsapp_agent_id);
+    if (agent) {
+      const message = gift.whatsapp_message || 'Hello!';
+      gift.whatsapp_url = agentService.generateWhatsAppUrl(agent.whatsapp_number, message);
+      gift.whatsapp_agent_name = agent.name;
+    }
+  } catch (err) {
+    console.error(`Failed to fetch agent ${gift.whatsapp_agent_id}:`, err.message);
+  }
+
+  return gift;
 }
 
 module.exports = {

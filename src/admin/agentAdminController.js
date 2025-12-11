@@ -242,7 +242,12 @@ async function createMessage(req, res) {
     res.redirect('/admin/agent-messages?success=Message template created');
   } catch (err) {
     console.error('Error creating message:', err);
-    res.redirect('/admin/agent-messages?error=' + encodeURIComponent(err.message));
+    let errorMsg = err.message;
+    // Handle duplicate slug error with user-friendly message
+    if (err.code === '23505' || err.message.includes('duplicate key') || err.message.includes('agent_messages_slug_key')) {
+      errorMsg = 'Slug already exists. Please use a unique slug.';
+    }
+    res.redirect('/admin/agent-messages?error=' + encodeURIComponent(errorMsg));
   }
 }
 
@@ -267,7 +272,12 @@ async function updateMessage(req, res) {
     res.redirect('/admin/agent-messages?success=Message template updated');
   } catch (err) {
     console.error('Error updating message:', err);
-    res.redirect('/admin/agent-messages?error=' + encodeURIComponent(err.message));
+    let errorMsg = err.message;
+    // Handle duplicate slug error with user-friendly message
+    if (err.code === '23505' || err.message.includes('duplicate key') || err.message.includes('agent_messages_slug_key')) {
+      errorMsg = 'Slug already exists. Please use a unique slug.';
+    }
+    res.redirect('/admin/agent-messages?error=' + encodeURIComponent(errorMsg));
   }
 }
 

@@ -477,7 +477,9 @@ async function createItem(req, data) {
     is_featured = false,
     file_size_bytes,
     page_count,
-    item_type = 'pdf' // Feature 4: pdf, video, notes, other
+    item_type = 'pdf', // Feature 4: pdf, video, notes, image, digital, other
+    whatsapp_agent_id,
+    whatsapp_message
   } = data;
 
   // If stock is enabled, set stock_remaining = stock_total
@@ -489,16 +491,18 @@ async function createItem(req, data) {
        xp_price, xp_original_price, sale_ends_at,
        is_stock_enabled, stock_total, stock_remaining,
        display_order, is_active, is_featured,
-       file_size_bytes, page_count, item_type
+       file_size_bytes, page_count, item_type,
+       whatsapp_agent_id, whatsapp_message
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
      RETURNING *`,
     [
       chapter_id, title, description, pdf_url, thumbnail_url,
       xp_price, xp_original_price, sale_ends_at,
       is_stock_enabled, stock_total, stock_remaining,
       display_order, is_active, is_featured,
-      file_size_bytes, page_count, item_type
+      file_size_bytes, page_count, item_type,
+      whatsapp_agent_id, whatsapp_message
     ]
   );
 
@@ -529,7 +533,9 @@ async function updateItem(req, itemId, data) {
     is_featured,
     file_size_bytes,
     page_count,
-    item_type
+    item_type,
+    whatsapp_agent_id,
+    whatsapp_message
   } = data;
 
   // Note: chapter_id can be explicitly set to null for independent items
@@ -555,15 +561,18 @@ async function updateItem(req, itemId, data) {
          file_size_bytes = COALESCE($15, file_size_bytes),
          page_count = COALESCE($16, page_count),
          item_type = COALESCE($17, item_type),
+         whatsapp_agent_id = $18,
+         whatsapp_message = $19,
          updated_at = ${SQL_IST_NOW}
-     WHERE id = $18
+     WHERE id = $20
      RETURNING *`,
     [
       chapterIdValue, title, description, pdf_url, thumbnail_url,
       xp_price, xp_original_price, sale_ends_at,
       is_stock_enabled, stock_total, stock_remaining,
       display_order, is_active, is_featured,
-      file_size_bytes, page_count, item_type, itemId
+      file_size_bytes, page_count, item_type,
+      whatsapp_agent_id, whatsapp_message, itemId
     ]
   );
 

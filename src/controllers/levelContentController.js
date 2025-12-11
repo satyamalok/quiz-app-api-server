@@ -7,6 +7,7 @@
 
 const levelContentService = require('../services/levelContentService');
 const purchaseService = require('../services/purchaseService');
+const agentService = require('../services/agentService');
 
 /**
  * Format file size for display
@@ -50,8 +51,8 @@ async function getContentByLevel(req, res, next) {
 
     const content = await levelContentService.getContentByLevel(req, levelNum, userPhone);
 
-    // Format response
-    const formattedContent = content.map(c => formatContentResponse(c, userPhone));
+    // Format response (with agent lookups for digital items)
+    const formattedContent = await formatContentWithAgents(req, content, userPhone);
 
     let response = {
       success: true,
@@ -105,10 +106,20 @@ async function getContentById(req, res, next) {
       });
     }
 
-    const formattedContent = formatContentResponse(content, userPhone);
+    // Get agent for digital items
+    let agent = null;
+    if (content.content_type === 'digital' && content.whatsapp_agent_id) {
+      try {
+        agent = await agentService.getAgentById(req, content.whatsapp_agent_id);
+      } catch (err) {
+        console.error(`Failed to fetch agent ${content.whatsapp_agent_id}:`, err.message);
+      }
+    }
 
-    // Include file URL only if user has purchased
-    if (userPhone && content.is_purchased) {
+    const formattedContent = formatContentResponse(content, userPhone, agent);
+
+    // Include file URL only if user has purchased (for non-digital items)
+    if (userPhone && content.is_purchased && content.file_url && content.content_type !== 'digital') {
       formattedContent.file_url = content.file_url;
     }
 
@@ -149,7 +160,8 @@ async function getFeaturedContent(req, res, next) {
       userPhone
     );
 
-    const formattedContent = result.content.map(c => formatContentResponse(c, userPhone));
+    // Format content (with agent lookups for digital items)
+    const formattedContent = await formatContentWithAgents(req, result.content, userPhone);
 
     res.json({
       success: true,
@@ -193,7 +205,8 @@ async function getAllContent(req, res, next) {
 
     const result = await levelContentService.getAllContent(req, options, userPhone);
 
-    const formattedContent = result.content.map(c => formatContentResponse(c, userPhone));
+    // Format content (with agent lookups for digital items)
+    const formattedContent = await formatContentWithAgents(req, result.content, userPhone);
 
     let response = {
       success: true,
@@ -342,8 +355,11 @@ async function getLevelsSummary(req, res, next) {
 
 /**
  * Format content for API response
+ * @param {Object} content - Content from database
+ * @param {string|null} userPhone - User's phone number (if authenticated)
+ * @param {Object|null} agent - Agent for digital items (if applicable)
  */
-function formatContentResponse(content, userPhone) {
+function formatContentResponse(content, userPhone, agent = null) {
   const response = {
     id: content.id,
     level: content.level,
@@ -363,18 +379,59 @@ function formatContentResponse(content, userPhone) {
     total_purchases: content.total_purchases
   };
 
+  // For digital items, include WhatsApp redirect info
+  if (content.content_type === 'digital' && agent) {
+    const message = content.whatsapp_message || 'Hello!';
+    response.whatsapp_url = agentService.generateWhatsAppUrl(agent.whatsapp_number, message);
+    response.whatsapp_agent_name = agent.name;
+  }
+
   // Add purchase status if user is authenticated
   if (userPhone) {
     response.is_purchased = content.is_purchased || false;
     response.purchased_at = content.purchased_at || null;
 
-    // Include download URL if purchased
-    if (content.is_purchased && content.file_url) {
+    // Include download URL if purchased (for non-digital items)
+    if (content.is_purchased && content.file_url && content.content_type !== 'digital') {
       response.file_url = content.file_url;
     }
   }
 
   return response;
+}
+
+/**
+ * Format content array with agent lookups for digital items
+ * @param {Object} req - Express request
+ * @param {Array} contentArray - Content items from database
+ * @param {string|null} userPhone - User's phone number
+ */
+async function formatContentWithAgents(req, contentArray, userPhone) {
+  // Collect unique agent IDs from digital items
+  const agentIds = [...new Set(
+    contentArray
+      .filter(c => c.content_type === 'digital' && c.whatsapp_agent_id)
+      .map(c => c.whatsapp_agent_id)
+  )];
+
+  // Fetch all needed agents in one batch
+  const agentMap = {};
+  for (const agentId of agentIds) {
+    try {
+      const agent = await agentService.getAgentById(req, agentId);
+      if (agent) {
+        agentMap[agentId] = agent;
+      }
+    } catch (err) {
+      console.error(`Failed to fetch agent ${agentId}:`, err.message);
+    }
+  }
+
+  // Format content with agent info
+  return contentArray.map(content => {
+    const agent = content.whatsapp_agent_id ? agentMap[content.whatsapp_agent_id] : null;
+    return formatContentResponse(content, userPhone, agent);
+  });
 }
 
 module.exports = {

@@ -56,9 +56,9 @@ docker-compose up -d
 
 ## Critical Architecture Details
 
-### Database Schema (20 Tables)
+### Database Schema (23 Tables)
 
-The application uses 20 interconnected tables. Key relationships:
+The application uses 23 interconnected tables. Key relationships:
 
 1. **users_profile** - Core user data with unique 5-digit `referral_code`, includes `xp_spent` for shop balance
 2. **questions** - 100 levels × 10 questions, uses **@ symbol prefix** for correct answers
@@ -80,6 +80,9 @@ The application uses 20 interconnected tables. Key relationships:
 18. **shop_chapters** - Shop categories for PDF items
 19. **shop_items** - PDF items for sale with XP pricing
 20. **user_purchases** - Purchase records tracking who bought what
+21. **level_content** - Level-associated paid content (PDFs, videos, notes per level) - Feature 2
+22. **daily_gifts** - Time-released daily content gifts - Feature 6
+23. **sales_agents** - WhatsApp sales agent distribution system - Feature 7
 
 ### Correct Answer Format (CRITICAL)
 
@@ -390,10 +393,10 @@ GET  /api/v1/reels/hearted   - Get user's hearted reels
 
 ## API Architecture
 
-**Base URL:** `/api/v1`
+**Base URL:** `/api/v1/{appSlug}`
 **Auth:** `Authorization: Bearer <jwt_token>` (6 months expiry)
 
-### 28 Main Endpoints
+### 42 Main Endpoints
 
 **Authentication (2):**
 - `POST /auth/send-otp` - Generate 6-digit OTP (5 min expiry, max 3/hour)
@@ -441,6 +444,26 @@ GET  /api/v1/reels/hearted   - Get user's hearted reels
 - `GET /reels/stats` - Get user's reel viewing stats
 - `GET /reels/hearted` - Get user's hearted reels (paginated)
 
+**Level Content (7):** - Feature 2
+- `GET /level/:level/content` - Get content for specific level
+- `GET /level-content` - List all content (filterable)
+- `GET /level-content/featured` - Get featured content
+- `GET /level-content/levels-summary` - Get summary of all levels with content
+- `GET /level-content/:id` - Get specific content details
+- `POST /level-content/purchase` - Purchase content with XP
+- `GET /level-content/my-purchases` - Get user's purchased content
+
+**Daily Gifts (5):** - Feature 6
+- `GET /gifts/today` - Get today's available gift
+- `GET /gifts/upcoming` - Get upcoming gifts (next 7 days)
+- `GET /gifts/:id` - Get specific gift details
+- `POST /gifts/purchase` - Purchase gift with XP
+- `GET /gifts/my-purchases` - Get user's purchased gifts
+
+**Sales Agents (2):** - Feature 7
+- `GET /agent/messages` - Get agent messages for user
+- `GET /agent/redirect` - Get WhatsApp redirect URL for assigned agent
+
 ## Admin Panel
 
 **Separate authentication:** Session-based (NOT JWT)
@@ -475,6 +498,16 @@ GET  /api/v1/reels/hearted   - Get user's hearted reels
 9. **Reels Management** (`/admin/reels`) - List, filter, sort, bulk actions
 10. **Reels Upload** (`/admin/reels/upload`) - Bulk drag & drop upload (up to 20 files)
 11. **Reels Analytics** (`/admin/reels/analytics`) - Engagement metrics, top reels, user stats
+12. **Level Content** (`/admin/level-content`) - Manage level-associated paid content (Feature 2)
+13. **Level Content Bulk Upload** (`/admin/level-content/bulk-upload`) - Drag & drop upload for PDFs/videos
+14. **Level Content Analytics** (`/admin/level-content/analytics`) - Content sales and engagement stats
+15. **Daily Gifts** (`/admin/daily-gifts`) - Manage time-released daily gifts (Feature 6)
+16. **Daily Gifts Calendar** (`/admin/daily-gifts/calendar`) - Calendar view of gift schedule
+17. **Daily Gifts Bulk Upload** (`/admin/daily-gifts/bulk-upload`) - Bulk upload daily gifts
+18. **Sales Agents** (`/admin/agents`) - Manage WhatsApp sales agents (Feature 7)
+19. **Agent Messages** (`/admin/agent-messages`) - Configure agent message templates
+20. **Agent Distribution** (`/admin/agent-distribution`) - Configure user-to-agent distribution
+21. **Agent Analytics** (`/admin/agent-analytics`) - Agent performance metrics
 
 ### Admin Session Storage (PostgreSQL)
 
@@ -972,6 +1005,24 @@ VALUES ('satyamalok.talkin@gmail.com', '<hash>', 'Super Admin', 'superadmin');
 **Admin Bulk Operations (2025-12-03):**
 51. **Videos support bulk delete** - `POST /admin/videos/bulk-delete` accepts `{ video_ids: [1, 2, 3] }`. UI has checkboxes and "Delete Selected" button.
 
+**Level Content (2025-12-11) - Feature 2:**
+62. **Level content levels are 1-100** - Same as quiz levels, validation enforced in API and admin
+63. **Content file URL hidden until purchased** - `file_url` field only returned when `is_purchased: true`
+64. **Level content supports bulk upload** - Admin drag & drop for multiple PDFs/videos at once
+65. **Sale pricing is manual** - Admin must set `xp_original_price` and `sale_ends_at` for sales
+
+**Daily Gifts (2025-12-11) - Feature 6:**
+66. **Daily gifts are date-based** - `available_date` determines when gift becomes accessible
+67. **Today's gift uses IST date** - Compares with `(NOW() AT TIME ZONE 'Asia/Kolkata')::DATE`
+68. **Upcoming gifts show preview only** - Next 7 days visible but `file_url` hidden until available
+69. **Gift calendar view for admin** - Shows monthly schedule with gift indicators
+
+**Sales Agents (2025-12-11) - Feature 7:**
+70. **Agent assignment is sticky** - Once user assigned to agent, they stay with that agent
+71. **Round-robin distribution** - New users assigned to agent with fewest assignments
+72. **WhatsApp deep link format** - `https://wa.me/{number}?text={url_encoded_message}`
+73. **Message template variables** - Support `{user_name}`, `{user_phone}` placeholder substitution
+
 ## Load Testing (Future)
 
 **Recommended tools:**
@@ -1108,6 +1159,160 @@ if (authHeader && authHeader.startsWith('Bearer ')) {
 59. **Optional auth for browsing** - Use `optionalAuth` middleware for public endpoints
 60. **PDF URL only for purchased** - Only return `pdf_url` if user owns item (is_purchased = true)
 61. **Items on sale check expiry** - Compare `sale_ends_at` with current IST time
+
+## Level Content Feature (2025-12-11) - Feature 2
+
+**Level-Associated Paid Content:** Premium study materials (PDFs, videos, notes) associated with specific quiz levels.
+
+### Core Concept
+
+- **Level Association:** Each content item belongs to a specific level (1-100)
+- **Content Types:** PDF, video, notes, practice materials, other
+- **XP Purchase:** Students use earned XP to purchase content
+- **Sale Pricing:** Optional original price and sale end date for promotions
+- **Featured Content:** Highlighted items shown in featured section
+
+### Database Table
+
+**level_content:**
+- `id`, `level` (1-100), `title`, `description`
+- `content_type` (pdf, video, notes, practice, other)
+- `file_url`, `thumbnail_url`, `file_size_bytes`
+- `page_count` (for PDFs), `duration_seconds` (for videos)
+- `xp_price`, `xp_original_price`, `sale_ends_at`
+- `is_active`, `is_featured`, `display_order`
+- `total_purchases`, `created_at`, `updated_at`
+
+### API Endpoints
+
+```
+GET  /level/:level/content     - Get content for specific level (optional auth)
+GET  /level-content            - List all content with filters (optional auth)
+GET  /level-content/featured   - Get featured content (optional auth)
+GET  /level-content/levels-summary - Get summary of all levels with content
+GET  /level-content/:id        - Get specific content details (optional auth)
+POST /level-content/purchase   - Purchase content with XP (requires auth)
+GET  /level-content/my-purchases - Get user's purchased content (requires auth)
+```
+
+### Key Files
+
+- `src/services/levelContentService.js` - Content CRUD and purchase logic
+- `src/controllers/levelContentController.js` - API handlers
+- `src/routes/levelContentRoutes.js` - Route definitions
+- `src/admin/levelContentAdminController.js` - Admin panel handlers
+- `src/admin/views/level-content-*.ejs` - Admin views
+
+### Business Rules
+
+1. **Level validation** - Content must be for levels 1-100
+2. **Purchase prevents duplicates** - User can only purchase each item once
+3. **File URL hidden until purchased** - `file_url` only returned if `is_purchased: true`
+4. **Sale pricing** - Shows strikethrough original price when on sale
+5. **Webhook on purchase** - Triggers purchase webhook for analytics
+
+## Daily Gifts Feature (2025-12-11) - Feature 6
+
+**Time-Released Daily Content:** Premium content that becomes available on specific dates, creating daily engagement.
+
+### Core Concept
+
+- **Date-Based Availability:** Each gift has a specific date when it becomes available
+- **Time Window:** Gifts can have specific availability times
+- **XP Purchase:** Free or paid with XP
+- **Calendar View:** Admin can see gift schedule in calendar format
+- **Upcoming Preview:** Users can see upcoming gifts (next 7 days)
+
+### Database Table
+
+**daily_gifts:**
+- `id`, `title`, `description`
+- `content_type` (pdf, video, notes, practice, other)
+- `file_url`, `thumbnail_url`, `file_size_bytes`
+- `page_count`, `duration_seconds`
+- `xp_price` (0 for free gifts)
+- `available_date`, `available_time`
+- `is_active`, `total_purchases`
+- `created_at`, `updated_at`
+
+### API Endpoints
+
+```
+GET  /gifts/today        - Get today's available gift (optional auth)
+GET  /gifts/upcoming     - Get upcoming gifts (next 7 days)
+GET  /gifts/:id          - Get specific gift details (optional auth)
+POST /gifts/purchase     - Purchase gift with XP (requires auth)
+GET  /gifts/my-purchases - Get user's purchased gifts (requires auth)
+```
+
+### Key Files
+
+- `src/services/dailyGiftService.js` - Gift CRUD and availability logic
+- `src/controllers/dailyGiftController.js` - API handlers
+- `src/routes/dailyGiftRoutes.js` - Route definitions
+- `src/admin/dailyGiftAdminController.js` - Admin panel handlers
+- `src/admin/views/daily-gifts-*.ejs` - Admin views
+
+### Business Rules
+
+1. **Date-based availability** - Gift only available on/after `available_date`
+2. **Today's gift** - Returns gift for current IST date
+3. **Upcoming preview** - Shows next 7 days of gifts (no file URLs)
+4. **Purchase prevents duplicates** - User can only purchase each gift once
+5. **Webhook on purchase** - Triggers purchase webhook
+
+## Sales Agent Feature (2025-12-11) - Feature 7
+
+**WhatsApp Sales Distribution:** Distribute users to sales agents via WhatsApp for premium content sales.
+
+### Core Concept
+
+- **Agent Pool:** Multiple WhatsApp sales agents
+- **Distribution Algorithm:** Round-robin or weighted distribution
+- **Message Templates:** Configurable messages shown to users
+- **WhatsApp Redirect:** Deep links to WhatsApp with pre-filled messages
+- **Analytics:** Track agent assignments and conversions
+
+### Database Tables
+
+**sales_agents:**
+- `id`, `name`, `phone`, `whatsapp_number`
+- `is_active`, `weight` (for weighted distribution)
+- `total_assigned`, `total_converted`
+- `created_at`, `updated_at`
+
+**agent_messages:**
+- `id`, `slug`, `title`, `message_template`
+- `is_active`, `display_order`
+- `created_at`, `updated_at`
+
+**agent_assignments:**
+- `id`, `user_phone`, `agent_id`
+- `message_slug`, `trigger_type`
+- `assigned_at`, `converted_at`
+
+### API Endpoints
+
+```
+GET /agent/messages  - Get agent messages for current user (requires auth)
+GET /agent/redirect  - Get WhatsApp redirect URL for assigned agent (requires auth)
+```
+
+### Key Files
+
+- `src/services/agentService.js` - Agent assignment and distribution logic
+- `src/controllers/agentController.js` - API handlers
+- `src/routes/agentRoutes.js` - Route definitions
+- `src/admin/agentAdminController.js` - Admin panel handlers
+- `src/admin/views/agents-*.ejs` - Admin views
+
+### Business Rules
+
+1. **Sticky assignment** - User stays with same agent once assigned
+2. **Round-robin default** - New users assigned to least-loaded agent
+3. **WhatsApp deep link** - `https://wa.me/{number}?text={encoded_message}`
+4. **Message variables** - Templates support `{user_name}`, `{user_phone}` placeholders
+5. **Analytics tracking** - Track assignment and conversion rates
 
 ## Multi-Tenancy (2025-12-07)
 

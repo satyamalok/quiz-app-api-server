@@ -1,9 +1,9 @@
 # JNV Quiz App - Complete API Documentation
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Base URL**: `http://your-domain.com/api/v1/{appSlug}`
 **Authentication**: JWT Bearer Token
-**Date**: December 8, 2025
+**Date**: December 11, 2025
 
 > **Multi-tenancy Note**: All API endpoints now require the app slug in the URL path. For example: `/api/v1/jnvquiz/auth/send-otp` or `/api/v1/ncert/user/profile`
 
@@ -23,8 +23,11 @@
    - [App Configuration APIs](#6-app-configuration-apis)
    - [Reels APIs](#7-reels-apis)
    - [Quiz Levels Metadata APIs](#8-quiz-levels-metadata-apis-unauthenticated) *(Unauthenticated)*
-   - [Shop APIs](#9-shop-apis) *(NEW)*
-   - [Balance Leaderboard APIs](#10-balance-leaderboard-apis) *(NEW)*
+   - [Shop APIs](#9-shop-apis)
+   - [Balance Leaderboard APIs](#10-balance-leaderboard-apis)
+   - [Level Content APIs](#11-level-content-apis) *(NEW)*
+   - [Daily Gifts APIs](#12-daily-gifts-apis) *(NEW)*
+   - [Sales Agent APIs](#13-sales-agent-apis) *(NEW)*
 5. [Common Workflows](#common-workflows)
 6. [Data Types & Enums](#data-types--enums)
 
@@ -43,8 +46,11 @@ This API powers the JNV Quiz App, a gamified learning platform with:
 - **Language medium support** (Hindi/English questions)
 - **Video Reels** (TikTok/Shorts-style educational content)
 - **Multi-tenancy** (multiple apps with isolated data)
-- **Shop System** (PDF notes marketplace with XP currency) *(NEW)*
-- **Balance Leaderboard** (rankings by remaining XP balance) *(NEW)*
+- **Shop System** (PDF notes marketplace with XP currency)
+- **Balance Leaderboard** (rankings by remaining XP balance)
+- **Level Content** (paid content associated with quiz levels) *(NEW)*
+- **Daily Gifts** (time-based gift availability system) *(NEW)*
+- **Sales Agents** (WhatsApp redirect for customer support) *(NEW)*
 
 ---
 
@@ -121,6 +127,13 @@ All errors follow this structure:
 | `OUT_OF_STOCK` | 400 | Shop item is sold out |
 | `ALREADY_PURCHASED` | 400 | User already owns this item |
 | `INSUFFICIENT_BALANCE` | 400 | Not enough XP to purchase |
+| `CONTENT_NOT_FOUND` | 404 | Level content does not exist |
+| `CONTENT_NOT_AVAILABLE` | 400 | Level content is no longer active |
+| `GIFT_NOT_FOUND` | 404 | Daily gift does not exist |
+| `GIFT_NOT_AVAILABLE` | 400 | Daily gift is not active |
+| `GIFT_NOT_YET_AVAILABLE` | 400 | Daily gift date hasn't arrived yet |
+| `MESSAGE_NOT_FOUND` | 404 | Agent message template not found |
+| `NO_ACTIVE_AGENTS` | 503 | No active sales agents available |
 
 ---
 
@@ -2907,6 +2920,902 @@ Get leaderboard ranked by XP balance (remaining XP after purchases).
 
 ```bash
 curl -X GET "http://localhost:3000/api/v1/jnvquiz/leaderboard/balance?limit=50" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## 11. LEVEL CONTENT APIS *(NEW)*
+
+Level Content allows associating purchasable study materials (PDFs, videos, notes) with specific quiz levels. Users can purchase content using their XP balance.
+
+**Key Concepts:**
+- **Level Association**: Each content item is tied to a specific level (1-100)
+- **Content Types**: pdf, video, notes, practice, other
+- **XP Pricing**: Items can be free (xp_price=0) or paid
+- **Sale Pricing**: Items can have limited-time discounted prices
+- **Featured Items**: Highlighted content for homepage display
+
+### 11.1 Get Content by Level
+
+Get all purchasable content for a specific quiz level.
+
+**Endpoint**: `GET /level/:level/content`
+**Authentication**: Optional (adds purchase status if authenticated)
+
+#### URL Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| level | integer | Yes | Level number (1-100) |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "level": 5,
+    "content": [
+      {
+        "id": 1,
+        "level": 5,
+        "title": "Level 5 Complete Notes",
+        "description": "Comprehensive study material for level 5 topics",
+        "content_type": "pdf",
+        "thumbnail_url": "https://minio.example.com/level-content/thumbnails/l5-notes.jpg",
+        "xp_price": 100,
+        "xp_original_price": 150,
+        "is_on_sale": true,
+        "discount_percent": 33,
+        "sale_ends_at": "2025-12-31T23:59:59.000Z",
+        "is_featured": true,
+        "file_size": "2.5 MB",
+        "page_count": 25,
+        "duration": null,
+        "total_purchases": 150,
+        "is_purchased": false,
+        "purchased_at": null
+      }
+    ],
+    "total_items": 3,
+    "user_balance": 500
+  }
+}
+```
+
+#### Error Responses
+
+**400 - Invalid Level**
+```json
+{
+  "success": false,
+  "error": "INVALID_LEVEL",
+  "message": "Level must be between 1 and 100"
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/level/5/content" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 11.2 Get All Level Content
+
+Get all level content with optional filters.
+
+**Endpoint**: `GET /level-content`
+**Authentication**: Optional (adds purchase status if authenticated)
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| level | integer | No | - | Filter by specific level |
+| content_type | string | No | - | Filter by type (pdf, video, notes, practice, other) |
+| featured | boolean | No | - | Filter featured items only |
+| search | string | No | - | Search in title/description |
+| sort | string | No | level_asc | Sort: level_asc, level_desc, price_low, price_high, popular |
+| limit | integer | No | 50 | Number of items (1-100) |
+| offset | integer | No | 0 | Offset for pagination |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "content": [...],
+    "pagination": {
+      "total": 150,
+      "limit": 50,
+      "offset": 0
+    },
+    "user_balance": 500
+  }
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/level-content?content_type=pdf&sort=popular" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 11.3 Get Featured Level Content
+
+Get featured level content for homepage display.
+
+**Endpoint**: `GET /level-content/featured`
+**Authentication**: Optional (adds purchase status if authenticated)
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | integer | No | 6 | Number of items (max 20) |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "content": [
+      {
+        "id": 1,
+        "level": 5,
+        "title": "Level 5 Complete Notes",
+        "content_type": "pdf",
+        "thumbnail_url": "https://minio.example.com/level-content/thumbnails/l5-notes.jpg",
+        "xp_price": 100,
+        "is_on_sale": false,
+        "is_featured": true,
+        "total_purchases": 150,
+        "is_purchased": false
+      }
+    ]
+  }
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/level-content/featured?limit=6" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 11.4 Get Levels Summary
+
+Get a summary of which levels have purchasable content.
+
+**Endpoint**: `GET /level-content/levels-summary`
+**Authentication**: Optional
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "levels": [
+      {
+        "level": 1,
+        "content_count": 5,
+        "active_count": 4,
+        "total_purchases": 250
+      },
+      {
+        "level": 5,
+        "content_count": 3,
+        "active_count": 3,
+        "total_purchases": 150
+      }
+    ]
+  }
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/level-content/levels-summary"
+```
+
+---
+
+### 11.5 Get Content Details
+
+Get complete details of a specific level content item.
+
+**Endpoint**: `GET /level-content/:id`
+**Authentication**: Optional (adds purchase status and file_url if purchased)
+
+#### URL Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| id | integer | Yes | Content ID |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "content": {
+      "id": 1,
+      "level": 5,
+      "title": "Level 5 Complete Notes",
+      "description": "Comprehensive study material covering all topics in level 5...",
+      "content_type": "pdf",
+      "thumbnail_url": "https://minio.example.com/level-content/thumbnails/l5-notes.jpg",
+      "xp_price": 100,
+      "xp_original_price": 150,
+      "is_on_sale": true,
+      "discount_percent": 33,
+      "sale_ends_at": "2025-12-31T23:59:59.000Z",
+      "is_featured": true,
+      "file_size": "2.5 MB",
+      "page_count": 25,
+      "duration": null,
+      "total_purchases": 150,
+      "is_purchased": true,
+      "purchased_at": "2025-12-01T10:30:00.000Z",
+      "file_url": "https://minio.example.com/level-content/l5-notes.pdf"
+    },
+    "user_balance": 400
+  }
+}
+```
+
+#### Error Responses
+
+**404 - Content Not Found**
+```json
+{
+  "success": false,
+  "error": "CONTENT_NOT_FOUND",
+  "message": "Content not found"
+}
+```
+
+**400 - Content Not Available**
+```json
+{
+  "success": false,
+  "error": "CONTENT_NOT_AVAILABLE",
+  "message": "This content is no longer available"
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/level-content/1" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 11.6 Purchase Level Content
+
+Purchase level content using XP balance.
+
+**Endpoint**: `POST /level-content/purchase`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "content_id": "integer (required)"
+}
+```
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Purchase successful!",
+  "data": {
+    "purchase_id": 42,
+    "content_id": 1,
+    "title": "Level 5 Complete Notes",
+    "file_url": "https://minio.example.com/level-content/l5-notes.pdf",
+    "xp_paid": 100,
+    "new_balance": {
+      "xp_earned": 500,
+      "xp_spent": 200,
+      "xp_remaining": 300
+    }
+  }
+}
+```
+
+#### Error Responses
+
+**400 - Missing Content ID**
+```json
+{
+  "success": false,
+  "error": "MISSING_CONTENT_ID",
+  "message": "content_id is required"
+}
+```
+
+**404 - Content Not Found**
+```json
+{
+  "success": false,
+  "error": "CONTENT_NOT_FOUND",
+  "message": "Content not found"
+}
+```
+
+**400 - Already Purchased**
+```json
+{
+  "success": false,
+  "error": "ALREADY_PURCHASED",
+  "message": "You already own this content",
+  "data": {
+    "purchased_at": "2025-12-01T10:30:00.000Z"
+  }
+}
+```
+
+**400 - Insufficient Balance**
+```json
+{
+  "success": false,
+  "error": "INSUFFICIENT_BALANCE",
+  "message": "Not enough XP to purchase",
+  "data": {
+    "required": 100,
+    "available": 50
+  }
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X POST "http://localhost:3000/api/v1/jnvquiz/level-content/purchase" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "content_id": 1
+  }'
+```
+
+---
+
+### 11.7 Get My Level Content Purchases
+
+Get user's purchased level content.
+
+**Endpoint**: `GET /level-content/my-purchases`
+**Authentication**: Required
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | integer | No | 50 | Number of items (1-100) |
+| offset | integer | No | 0 | Offset for pagination |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "data": {
+    "purchases": [
+      {
+        "id": 1,
+        "level": 5,
+        "title": "Level 5 Complete Notes",
+        "content_type": "pdf",
+        "file_url": "https://minio.example.com/level-content/l5-notes.pdf",
+        "thumbnail_url": "https://minio.example.com/level-content/thumbnails/l5-notes.jpg",
+        "file_size": "2.5 MB",
+        "page_count": 25,
+        "duration": null,
+        "xp_paid": 100,
+        "purchased_at": "2025-12-01T10:30:00.000Z"
+      }
+    ],
+    "pagination": {
+      "total": 5,
+      "limit": 50,
+      "offset": 0
+    }
+  }
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/level-content/my-purchases?limit=20" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## 12. DAILY GIFTS APIS *(NEW)*
+
+Daily Gifts provides time-based gift availability where specific content is available on specific dates. Users can purchase gifts using XP when they become available.
+
+**Key Concepts:**
+- **Date-Based Availability**: Each gift has a specific available date
+- **Time Window**: Gifts become available at a specific time on their date
+- **XP Pricing**: Gifts can be free or require XP
+- **Content Types**: pdf, video, notes, other
+- **One-Time Purchase**: Each user can only purchase a gift once
+
+### 12.1 Get Today's Gift
+
+Get the gift available for today.
+
+**Endpoint**: `GET /gifts/today`
+**Authentication**: Optional (adds purchase status if authenticated)
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "gift": {
+    "id": 1,
+    "title": "Special Math Notes",
+    "description": "Exclusive math notes for today only",
+    "content_type": "pdf",
+    "file_url": null,
+    "thumbnail_url": "https://minio.example.com/daily-gifts/thumbnails/math-notes.jpg",
+    "xp_price": 50,
+    "available_date": "2025-12-11",
+    "available_time": "00:00:00",
+    "file_size_bytes": 2048576,
+    "page_count": 15,
+    "duration_seconds": null,
+    "is_purchased": false
+  },
+  "user_balance": 500
+}
+```
+
+**If no gift available today:**
+```json
+{
+  "success": true,
+  "gift": null,
+  "message": "No gift available today"
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/gifts/today" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 12.2 Get Upcoming Gifts
+
+Preview upcoming gifts (dates visible, content not yet available).
+
+**Endpoint**: `GET /gifts/upcoming`
+**Authentication**: Not required
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| days | integer | No | 7 | Days ahead to show (max 30) |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "days_ahead": 7,
+  "gifts": [
+    {
+      "id": 2,
+      "title": "Science Quiz Notes",
+      "description": "Special science notes",
+      "content_type": "pdf",
+      "thumbnail_url": "https://minio.example.com/daily-gifts/thumbnails/science.jpg",
+      "xp_price": 75,
+      "available_date": "2025-12-12",
+      "available_time": "00:00:00"
+    },
+    {
+      "id": 3,
+      "title": "History Video Lecture",
+      "content_type": "video",
+      "thumbnail_url": null,
+      "xp_price": 100,
+      "available_date": "2025-12-13",
+      "available_time": "09:00:00"
+    }
+  ]
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/gifts/upcoming?days=7"
+```
+
+---
+
+### 12.3 Get Gift Details
+
+Get details of a specific gift.
+
+**Endpoint**: `GET /gifts/:id`
+**Authentication**: Optional (adds purchase status if authenticated)
+
+#### URL Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| id | integer | Yes | Gift ID |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "gift": {
+    "id": 1,
+    "title": "Special Math Notes",
+    "description": "Exclusive math notes with solved examples",
+    "content_type": "pdf",
+    "file_url": "https://minio.example.com/daily-gifts/math-notes.pdf",
+    "thumbnail_url": "https://minio.example.com/daily-gifts/thumbnails/math-notes.jpg",
+    "xp_price": 50,
+    "available_date": "2025-12-11",
+    "available_time": "00:00:00",
+    "file_size_bytes": 2048576,
+    "page_count": 15,
+    "is_active": true,
+    "is_purchased": true,
+    "purchased_at": "2025-12-11T10:30:00.000Z"
+  }
+}
+```
+
+#### Error Responses
+
+**404 - Gift Not Found**
+```json
+{
+  "success": false,
+  "error": "GIFT_NOT_FOUND",
+  "message": "Gift not found"
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/gifts/1" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 12.4 Purchase Gift
+
+Purchase a daily gift using XP balance.
+
+**Endpoint**: `POST /gifts/purchase`
+**Authentication**: Required
+
+#### Request Headers
+
+```http
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+```
+
+#### Request Body
+
+```json
+{
+  "gift_id": "integer (required)"
+}
+```
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "message": "Gift purchased successfully!",
+  "purchase": {
+    "id": 42,
+    "gift_id": 1,
+    "title": "Special Math Notes",
+    "file_url": "https://minio.example.com/daily-gifts/math-notes.pdf",
+    "xp_paid": 50,
+    "purchased_at": "2025-12-11T10:30:00.000Z"
+  },
+  "new_balance": {
+    "xp_earned": 500,
+    "xp_spent": 150,
+    "xp_remaining": 350
+  }
+}
+```
+
+#### Error Responses
+
+**400 - Missing Gift ID**
+```json
+{
+  "success": false,
+  "error": "MISSING_GIFT_ID",
+  "message": "gift_id is required"
+}
+```
+
+**404 - Gift Not Found**
+```json
+{
+  "success": false,
+  "error": "GIFT_NOT_FOUND",
+  "message": "Gift not found"
+}
+```
+
+**400 - Gift Not Available**
+```json
+{
+  "success": false,
+  "error": "GIFT_NOT_AVAILABLE",
+  "message": "This gift is not active"
+}
+```
+
+**400 - Gift Not Yet Available**
+```json
+{
+  "success": false,
+  "error": "GIFT_NOT_YET_AVAILABLE",
+  "message": "This gift is not available yet. Available from 2025-12-12 00:00:00"
+}
+```
+
+**409 - Already Purchased**
+```json
+{
+  "success": false,
+  "error": "ALREADY_PURCHASED",
+  "message": "You have already purchased this gift",
+  "purchased_at": "2025-12-11T10:30:00.000Z"
+}
+```
+
+**400 - Insufficient Balance**
+```json
+{
+  "success": false,
+  "error": "INSUFFICIENT_BALANCE",
+  "message": "Not enough XP. Need 50 XP but have 30 XP",
+  "required": 50,
+  "available": 30
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X POST "http://localhost:3000/api/v1/jnvquiz/gifts/purchase" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "gift_id": 1
+  }'
+```
+
+---
+
+### 12.5 Get My Gift Purchases
+
+Get user's purchased gifts.
+
+**Endpoint**: `GET /gifts/my-purchases`
+**Authentication**: Required
+
+#### Query Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| limit | integer | No | 50 | Number of items (1-100) |
+| offset | integer | No | 0 | Offset for pagination |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "purchases": [
+    {
+      "id": 42,
+      "gift_id": 1,
+      "title": "Special Math Notes",
+      "content_type": "pdf",
+      "file_url": "https://minio.example.com/daily-gifts/math-notes.pdf",
+      "thumbnail_url": "https://minio.example.com/daily-gifts/thumbnails/math-notes.jpg",
+      "xp_paid": 50,
+      "available_date": "2025-12-11",
+      "purchased_at": "2025-12-11T10:30:00.000Z"
+    }
+  ],
+  "total": 5,
+  "pagination": {
+    "limit": 50,
+    "offset": 0
+  }
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/gifts/my-purchases?limit=20" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+## 13. SALES AGENT APIS *(NEW)*
+
+Sales Agent system distributes user queries to sales representatives via WhatsApp. The system selects an agent based on configurable distribution rules and generates a pre-filled WhatsApp message.
+
+**Key Concepts:**
+- **Agent Distribution**: Agents are selected using algorithms (round_robin, least_recent, random, weighted)
+- **Message Templates**: Pre-defined message templates with placeholders
+- **WhatsApp Redirect**: Returns a WhatsApp URL to redirect user
+- **Trigger Tracking**: Logs what triggered the redirect (purchase, general query, etc.)
+
+### 13.1 Get Agent Messages
+
+Get available message templates for WhatsApp redirect.
+
+**Endpoint**: `GET /agent/messages`
+**Authentication**: Required
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "messages": [
+    {
+      "slug": "general_query",
+      "title": "General Query",
+      "description": "Ask a general question"
+    },
+    {
+      "slug": "purchase_help",
+      "title": "Purchase Help",
+      "description": "Get help with a purchase"
+    },
+    {
+      "slug": "technical_support",
+      "title": "Technical Support",
+      "description": "Report a technical issue"
+    }
+  ]
+}
+```
+
+#### cURL Example
+
+```bash
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/agent/messages" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+---
+
+### 13.2 Get Agent Redirect
+
+Generate WhatsApp redirect URL to contact a sales agent.
+
+**Endpoint**: `GET /agent/redirect`
+**Authentication**: Required
+
+#### Query Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| message_slug | string | Yes | Message template slug (from /agent/messages) |
+| trigger_type | string | No | What triggered this (purchase, inquiry, support) |
+| item_id | integer | No | Related item ID (if purchase related) |
+| item_type | string | No | Item type (shop_item, level_content, daily_gift) |
+| item_title | string | No | Item title for context |
+| xp_paid | integer | No | XP paid (if purchase related) |
+
+#### Success Response (200)
+
+```json
+{
+  "success": true,
+  "redirect_url": "https://wa.me/919876543210?text=Hello%2C%20I%20am%20John%20Doe%20(9999900001).%20I%20need%20help%20with%20my%20purchase.",
+  "agent": {
+    "name": "Rahul",
+    "phone": "919876543210"
+  },
+  "message_preview": "Hello, I am John Doe (9999900001). I need help with my purchase."
+}
+```
+
+#### Error Responses
+
+**400 - Missing Message Slug**
+```json
+{
+  "success": false,
+  "error": "MISSING_MESSAGE_SLUG",
+  "message": "message_slug query parameter is required"
+}
+```
+
+**404 - Message Not Found**
+```json
+{
+  "success": false,
+  "error": "MESSAGE_NOT_FOUND",
+  "message": "Message template not found"
+}
+```
+
+**503 - No Active Agents**
+```json
+{
+  "success": false,
+  "error": "NO_ACTIVE_AGENTS",
+  "message": "No active sales agents available. Please try again later."
+}
+```
+
+#### cURL Examples
+
+```bash
+# General query
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/agent/redirect?message_slug=general_query" \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+# Purchase-related query
+curl -X GET "http://localhost:3000/api/v1/jnvquiz/agent/redirect?message_slug=purchase_help&trigger_type=purchase&item_type=shop_item&item_id=1&item_title=Algebra%20Basics&xp_paid=100" \
   -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 ```
 

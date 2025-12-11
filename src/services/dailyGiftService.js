@@ -50,8 +50,14 @@ function formatGiftResponse(gift, isPurchased = false) {
     is_purchased: isPurchased
   };
 
-  // Only include file_url if purchased or free AND available
-  if ((isPurchased || gift.xp_price === 0) && available) {
+  // Include WhatsApp agent info for digital items
+  if (gift.content_type === 'digital') {
+    response.whatsapp_agent_id = gift.whatsapp_agent_id;
+    response.whatsapp_message = gift.whatsapp_message;
+  }
+
+  // Only include file_url if purchased or free AND available (for non-digital items)
+  if ((isPurchased || gift.xp_price === 0) && available && gift.content_type !== 'digital') {
     response.file_url = gift.file_url;
     response.file_size_bytes = gift.file_size_bytes;
     response.page_count = gift.page_count;
@@ -489,7 +495,9 @@ async function createGift(req, data) {
     file_size_bytes,
     page_count,
     duration_seconds,
-    is_active = true
+    is_active = true,
+    whatsapp_agent_id,
+    whatsapp_message
   } = data;
 
   const result = await tenantQuery(req,
@@ -499,9 +507,10 @@ async function createGift(req, data) {
        xp_price,
        available_date, available_time,
        file_size_bytes, page_count, duration_seconds,
-       is_active
+       is_active,
+       whatsapp_agent_id, whatsapp_message
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING *`,
     [
       title, description, content_type,
@@ -509,7 +518,8 @@ async function createGift(req, data) {
       xp_price,
       available_date, available_time,
       file_size_bytes, page_count, duration_seconds,
-      is_active
+      is_active,
+      whatsapp_agent_id, whatsapp_message
     ]
   );
 
@@ -535,7 +545,9 @@ async function updateGift(req, giftId, data) {
     file_size_bytes,
     page_count,
     duration_seconds,
-    is_active
+    is_active,
+    whatsapp_agent_id,
+    whatsapp_message
   } = data;
 
   const result = await tenantQuery(req,
@@ -552,8 +564,10 @@ async function updateGift(req, giftId, data) {
          page_count = COALESCE($10, page_count),
          duration_seconds = COALESCE($11, duration_seconds),
          is_active = COALESCE($12, is_active),
+         whatsapp_agent_id = $13,
+         whatsapp_message = $14,
          updated_at = ${SQL_IST_NOW}
-     WHERE id = $13
+     WHERE id = $15
      RETURNING *`,
     [
       title, description, content_type,
@@ -561,7 +575,8 @@ async function updateGift(req, giftId, data) {
       xp_price,
       available_date, available_time,
       file_size_bytes, page_count, duration_seconds,
-      is_active, giftId
+      is_active,
+      whatsapp_agent_id, whatsapp_message, giftId
     ]
   );
 

@@ -361,7 +361,9 @@ async function createContent(req, data) {
     duration_seconds,
     is_active = true,
     is_featured = false,
-    display_order = 0
+    display_order = 0,
+    whatsapp_agent_id,
+    whatsapp_message
   } = data;
 
   const result = await tenantQuery(req,
@@ -370,16 +372,18 @@ async function createContent(req, data) {
        file_url, thumbnail_url,
        xp_price, xp_original_price, sale_ends_at,
        file_size_bytes, page_count, duration_seconds,
-       is_active, is_featured, display_order
+       is_active, is_featured, display_order,
+       whatsapp_agent_id, whatsapp_message
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      RETURNING *`,
     [
       level, title, description, content_type,
       file_url, thumbnail_url,
       xp_price, xp_original_price, sale_ends_at,
       file_size_bytes, page_count, duration_seconds,
-      is_active, is_featured, display_order
+      is_active, is_featured, display_order,
+      whatsapp_agent_id, whatsapp_message
     ]
   );
 
@@ -408,7 +412,9 @@ async function updateContent(req, contentId, data) {
     duration_seconds,
     is_active,
     is_featured,
-    display_order
+    display_order,
+    whatsapp_agent_id,
+    whatsapp_message
   } = data;
 
   const result = await tenantQuery(req,
@@ -428,15 +434,18 @@ async function updateContent(req, contentId, data) {
          is_active = COALESCE($13, is_active),
          is_featured = COALESCE($14, is_featured),
          display_order = COALESCE($15, display_order),
+         whatsapp_agent_id = $16,
+         whatsapp_message = $17,
          updated_at = ${SQL_IST_NOW}
-     WHERE id = $16
+     WHERE id = $18
      RETURNING *`,
     [
       level, title, description, content_type,
       file_url, thumbnail_url,
       xp_price, xp_original_price, sale_ends_at,
       file_size_bytes, page_count, duration_seconds,
-      is_active, is_featured, display_order, contentId
+      is_active, is_featured, display_order,
+      whatsapp_agent_id, whatsapp_message, contentId
     ]
   );
 

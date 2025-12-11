@@ -6,6 +6,7 @@
 const shopService = require('../services/shopService');
 const purchaseService = require('../services/purchaseService');
 const balanceLeaderboardService = require('../services/balanceLeaderboardService');
+const agentService = require('../services/agentService');
 const { uploadFile, deleteFile } = require('../services/uploadService');
 const multer = require('multer');
 
@@ -37,17 +38,21 @@ const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit for PDFs and Videos
   fileFilter: (req, file, cb) => {
     if (file.fieldname === 'pdf_file' || file.fieldname === 'files') {
-      // Allow PDF and video files for shop items
+      // Allow PDF, video, and image files for shop items
       const allowedMimes = [
         'application/pdf',
         'video/mp4',
         'video/webm',
-        'video/quicktime'
+        'video/quicktime',
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp'
       ];
       if (allowedMimes.includes(file.mimetype)) {
         cb(null, true);
       } else {
-        cb(new Error('Only PDF and video files are allowed'));
+        cb(new Error('Only PDF, video, and image files are allowed'));
       }
     } else if (file.fieldname === 'thumbnail' || file.fieldname === 'icon') {
       if (file.mimetype.startsWith('image/')) {
@@ -319,11 +324,13 @@ async function showCreateItem(req, res) {
   try {
     prepareAdminReq(req);
     const chapters = await shopService.getAllChapters(req, false);
+    const agents = await agentService.getAllAgents(req);
 
     res.render('shop-item-form', {
       title: 'Create Item',
       item: null,
       chapters,
+      agents,
       isEdit: false,
       currentApp: req.tenant,
       allApps: req.allApps
@@ -346,7 +353,7 @@ async function createItem(req, res) {
       chapter_id,
       title,
       description,
-      item_type = 'pdf', // Feature 4: pdf, video, notes, other
+      item_type = 'pdf', // Feature 4: pdf, video, notes, image, digital, other
       xp_price,
       xp_original_price,
       sale_ends_at,
@@ -355,17 +362,21 @@ async function createItem(req, res) {
       display_order,
       is_active,
       is_featured,
-      page_count
+      page_count,
+      whatsapp_agent_id,
+      whatsapp_message
     } = req.body;
 
-    // Handle file uploads
+    // Handle file uploads (not required for digital items)
     let pdf_url = null;
     let thumbnail_url = null;
+    let file_size_bytes = null;
 
     if (req.files) {
       if (req.files.pdf_file && req.files.pdf_file[0]) {
         const pdfResult = await uploadFile(req.files.pdf_file[0], 'shop/pdfs', req.tenant.slug);
         pdf_url = pdfResult.publicUrl;
+        file_size_bytes = req.files.pdf_file[0].size;
       }
       if (req.files.thumbnail && req.files.thumbnail[0]) {
         const thumbResult = await uploadFile(req.files.thumbnail[0], 'shop/thumbnails', req.tenant.slug);
@@ -373,12 +384,20 @@ async function createItem(req, res) {
       }
     }
 
-    if (!pdf_url) {
-      return res.redirect('/admin/shop/items/create?error=PDF file is required');
+    // For digital items, file is not required; for others, it is required
+    if (item_type !== 'digital' && !pdf_url) {
+      return res.redirect('/admin/shop/items/create?error=Content file is required');
     }
 
-    // Get file size
-    const file_size_bytes = req.files.pdf_file[0].size;
+    // For digital items, validate WhatsApp fields
+    if (item_type === 'digital') {
+      if (!whatsapp_agent_id) {
+        return res.redirect('/admin/shop/items/create?error=WhatsApp agent is required for digital items');
+      }
+      if (!whatsapp_message) {
+        return res.redirect('/admin/shop/items/create?error=WhatsApp message is required for digital items');
+      }
+    }
 
     // Feature 4: chapter_id can be null for independent items
     const chapterIdValue = chapter_id && chapter_id !== '' && chapter_id !== 'null'
@@ -391,7 +410,7 @@ async function createItem(req, res) {
       description,
       pdf_url,
       thumbnail_url,
-      item_type, // Feature 4
+      item_type,
       xp_price: parseInt(xp_price) || 0,
       xp_original_price: xp_original_price ? parseInt(xp_original_price) : null,
       sale_ends_at: sale_ends_at || null,
@@ -401,7 +420,9 @@ async function createItem(req, res) {
       is_active: is_active === 'on',
       is_featured: is_featured === 'on',
       file_size_bytes,
-      page_count: page_count ? parseInt(page_count) : null
+      page_count: page_count ? parseInt(page_count) : null,
+      whatsapp_agent_id: whatsapp_agent_id ? parseInt(whatsapp_agent_id) : null,
+      whatsapp_message: whatsapp_message || null
     });
 
     res.redirect('/admin/shop/items?success=Item created successfully');
@@ -421,6 +442,7 @@ async function showEditItem(req, res) {
     const { id } = req.params;
     const item = await shopService.getItemById(req, parseInt(id));
     const chapters = await shopService.getAllChapters(req, false);
+    const agents = await agentService.getAllAgents(req);
 
     if (!item) {
       return res.redirect('/admin/shop/items?error=Item not found');
@@ -430,6 +452,7 @@ async function showEditItem(req, res) {
       title: 'Edit Item',
       item,
       chapters,
+      agents,
       isEdit: true,
       currentApp: req.tenant,
       allApps: req.allApps
@@ -465,7 +488,9 @@ async function updateItem(req, res) {
       is_featured,
       page_count,
       remove_thumbnail,
-      clear_sale
+      clear_sale,
+      whatsapp_agent_id,
+      whatsapp_message
     } = req.body;
 
     let pdf_url = undefined;
@@ -495,6 +520,16 @@ async function updateItem(req, res) {
       finalSaleEndsAt = null;
     }
 
+    // For digital items, validate WhatsApp fields
+    if (item_type === 'digital') {
+      if (!whatsapp_agent_id) {
+        return res.redirect(`/admin/shop/items/${id}/edit?error=WhatsApp agent is required for digital items`);
+      }
+      if (!whatsapp_message) {
+        return res.redirect(`/admin/shop/items/${id}/edit?error=WhatsApp message is required for digital items`);
+      }
+    }
+
     // Feature 4: chapter_id can be null for independent items
     const chapterIdValue = chapter_id && chapter_id !== '' && chapter_id !== 'null'
       ? parseInt(chapter_id)
@@ -514,7 +549,9 @@ async function updateItem(req, res) {
       display_order: parseInt(display_order) || 0,
       is_active: is_active === 'on',
       is_featured: is_featured === 'on',
-      page_count: page_count ? parseInt(page_count) : null
+      page_count: page_count ? parseInt(page_count) : null,
+      whatsapp_agent_id: whatsapp_agent_id ? parseInt(whatsapp_agent_id) : null,
+      whatsapp_message: whatsapp_message || null
     };
 
     if (pdf_url !== undefined) {

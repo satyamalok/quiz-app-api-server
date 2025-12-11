@@ -3,12 +3,12 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session);
+const RedisStore = require('connect-redis').default;
 const cookieParser = require('cookie-parser');
 const path = require('path');
 require('dotenv').config();
 
-const pool = require('./config/database');
+const { getClient: getRedisClient } = require('./config/redis');
 
 const errorHandler = require('./middleware/errorHandler');
 const apiRoutes = require('./routes');
@@ -44,17 +44,15 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser());
 
-// Session for admin panel (PostgreSQL store for PM2 cluster mode)
+// Session for admin panel (Redis store for PM2 cluster mode)
+const redisClient = getRedisClient();
 app.use(session({
-  store: new pgSession({
-    pool: pool,
-    tableName: 'session',
-    pruneSessionInterval: 60 * 15 // Cleanup expired sessions every 15 minutes
-  }),
+  store: new RedisStore({ client: redisClient }),
   secret: process.env.SESSION_SECRET,
   name: 'admin.sid',
   resave: false,
   saveUninitialized: false,
+  rolling: true, // Reset expiry on each request
   cookie: {
     secure: false, // Set to false - app runs on HTTP internally, Nginx handles HTTPS externally
     httpOnly: true,

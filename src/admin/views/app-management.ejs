@@ -128,6 +128,63 @@
             color: #888;
             margin-bottom: 20px;
         }
+        .btn-danger {
+            background: #dc3545;
+        }
+        .btn-danger:hover {
+            background: #c82333;
+        }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal-overlay.show {
+            display: flex;
+        }
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            max-width: 450px;
+            width: 90%;
+        }
+        .modal-content h3 {
+            margin: 0 0 15px;
+            color: #dc3545;
+        }
+        .modal-content p {
+            margin: 0 0 20px;
+            color: #666;
+        }
+        .modal-content .warning {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #856404;
+        }
+        .modal-content input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
     </style>
 </head>
 <body>
@@ -190,6 +247,7 @@
                             <button onclick="toggleStatus(<%= app.id %>, <%= app.is_active %>)" class="btn">
                                 <%= app.is_active ? 'Deactivate' : 'Activate' %>
                             </button>
+                            <button onclick="showDeleteModal(<%= app.id %>, '<%= app.name %>', '<%= app.slug %>')" class="btn btn-danger">Delete</button>
                         </div>
                     </div>
                 <% }); %>
@@ -197,7 +255,59 @@
         <% } %>
     </div>
 
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3>Delete App Permanently</h3>
+            <p>You are about to delete <strong id="deleteAppName"></strong>.</p>
+            <div class="warning">
+                <strong>Warning:</strong> This will permanently delete:
+                <ul style="margin: 10px 0 0; padding-left: 20px;">
+                    <li>All users and their progress</li>
+                    <li>All questions and answers</li>
+                    <li>All videos and reels</li>
+                    <li>All shop items and purchases</li>
+                    <li>All database tables for this app</li>
+                </ul>
+                <p style="margin-top: 10px;"><strong>Note:</strong> MinIO storage bucket will be preserved.</p>
+            </div>
+            <p>Type <strong>DELETE</strong> to confirm:</p>
+            <form id="deleteForm" method="POST">
+                <input type="text" name="confirm" id="deleteConfirm" placeholder="Type DELETE here" autocomplete="off">
+                <div class="modal-actions">
+                    <button type="button" onclick="hideDeleteModal()" class="btn btn-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-danger">Delete Permanently</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
+        let currentDeleteId = null;
+
+        function showDeleteModal(id, name, slug) {
+            currentDeleteId = id;
+            document.getElementById('deleteAppName').textContent = name + ' (' + slug + ')';
+            document.getElementById('deleteForm').action = '/admin/apps/' + id + '/delete';
+            document.getElementById('deleteConfirm').value = '';
+            document.getElementById('deleteModal').classList.add('show');
+        }
+
+        function hideDeleteModal() {
+            document.getElementById('deleteModal').classList.remove('show');
+            currentDeleteId = null;
+        }
+
+        // Close modal on escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') hideDeleteModal();
+        });
+
+        // Close modal on clicking outside
+        document.getElementById('deleteModal').addEventListener('click', function(e) {
+            if (e.target === this) hideDeleteModal();
+        });
+
         async function toggleStatus(id, currentStatus) {
             if (!confirm(`Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} this app?`)) {
                 return;

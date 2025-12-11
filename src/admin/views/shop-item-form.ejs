@@ -120,10 +120,12 @@
 
                 <div class="form-group">
                     <label for="item_type">Item Type *</label>
-                    <select id="item_type" name="item_type" required>
+                    <select id="item_type" name="item_type" required onchange="toggleDigitalFields()">
                         <option value="pdf" <%= !item || item.item_type === 'pdf' ? 'selected' : '' %>>PDF</option>
                         <option value="video" <%= item && item.item_type === 'video' ? 'selected' : '' %>>Video</option>
                         <option value="notes" <%= item && item.item_type === 'notes' ? 'selected' : '' %>>Notes</option>
+                        <option value="image" <%= item && item.item_type === 'image' ? 'selected' : '' %>>Image (Mindmap)</option>
+                        <option value="digital" <%= item && item.item_type === 'digital' ? 'selected' : '' %>>Digital (WhatsApp)</option>
                         <option value="other" <%= item && item.item_type === 'other' ? 'selected' : '' %>>Other</option>
                     </select>
                 </div>
@@ -144,7 +146,7 @@
                 <!-- Files -->
                 <div class="section-title">Files</div>
 
-                <div class="form-group">
+                <div class="form-group" id="file_upload_section">
                     <label for="pdf_file">Content File <%= isEdit ? '' : '*' %></label>
                     <% if (isEdit && item && item.pdf_url) { %>
                     <div class="current-file">
@@ -156,8 +158,8 @@
                     </div>
                     <small>Upload new file to replace:</small>
                     <% } %>
-                    <input type="file" id="pdf_file" name="pdf_file" accept=".pdf,.mp4,.webm,.mov" <%= isEdit ? '' : 'required' %>>
-                    <small>PDF or Video files. Max size: 100MB</small>
+                    <input type="file" id="pdf_file" name="pdf_file" accept=".pdf,.mp4,.webm,.mov,image/*">
+                    <small>PDF, Video, or Image files. Max size: 100MB</small>
                 </div>
 
                 <div class="form-group">
@@ -262,6 +264,37 @@
                     </div>
                 </div>
 
+                <!-- Digital Item Section (WhatsApp Redirect) -->
+                <div id="digital_section" style="display: none;">
+                    <div class="section-title">WhatsApp Redirect Settings</div>
+                    <p style="color: #666; margin-bottom: 15px;">
+                        Digital items redirect users to WhatsApp with a predefined message. No file upload needed.
+                    </p>
+
+                    <div class="form-group">
+                        <label for="whatsapp_agent_id">Select Agent *</label>
+                        <select id="whatsapp_agent_id" name="whatsapp_agent_id">
+                            <option value="">-- Select Agent --</option>
+                            <% if (typeof agents !== 'undefined' && agents) { %>
+                                <% agents.forEach(agent => { %>
+                                <option value="<%= agent.id %>"
+                                    <%= item?.whatsapp_agent_id === agent.id ? 'selected' : '' %>>
+                                    <%= agent.name %> (<%= agent.whatsapp_number %>)
+                                </option>
+                                <% }); %>
+                            <% } %>
+                        </select>
+                        <small>Agent who will receive the WhatsApp message</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="whatsapp_message">WhatsApp Message *</label>
+                        <textarea id="whatsapp_message" name="whatsapp_message"
+                                  placeholder="Hi! I am interested in {item_title}. My phone: {user_phone}"><%= item?.whatsapp_message || '' %></textarea>
+                        <small>Placeholders: {user_name}, {user_phone}, {item_title}</small>
+                    </div>
+                </div>
+
                 <!-- Status -->
                 <div class="section-title">Status</div>
 
@@ -304,6 +337,27 @@
             const enabled = document.getElementById('is_stock_enabled').checked;
             document.getElementById('stockSection').style.display = enabled ? 'block' : 'none';
         }
+        function toggleDigitalFields() {
+            const itemType = document.getElementById('item_type').value;
+            const digitalSection = document.getElementById('digital_section');
+            const fileSection = document.getElementById('file_upload_section');
+            const fileInput = document.getElementById('pdf_file');
+
+            if (itemType === 'digital') {
+                digitalSection.style.display = 'block';
+                fileSection.style.display = 'none';
+                fileInput.removeAttribute('required');
+            } else {
+                digitalSection.style.display = 'none';
+                fileSection.style.display = 'block';
+                <% if (!isEdit) { %>
+                fileInput.setAttribute('required', 'required');
+                <% } %>
+            }
+        }
+
+        // Run on page load
+        document.addEventListener('DOMContentLoaded', toggleDigitalFields);
     </script>
 </body>
 </html>

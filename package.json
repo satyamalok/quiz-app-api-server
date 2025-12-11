@@ -31,6 +31,7 @@
     "axios": "^1.13.2",
     "bcryptjs": "^2.4.3",
     "connect-pg-simple": "^10.0.0",
+    "connect-redis": "^7.1.1",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "csv-parser": "^3.0.0",

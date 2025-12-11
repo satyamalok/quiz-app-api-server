@@ -2,10 +2,11 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 // Dynamic pool sizing for PM2 cluster mode
-// PostgreSQL max_connections: 100 (stable limit)
-// Reserve 20 for admin/migrations/monitoring, Available for app: 80
+// PostgreSQL max_connections: configurable (default 100, can be increased)
+// Reserve some for admin/migrations/monitoring
+// PG_AVAILABLE_CONNECTIONS: Set via environment variable for production tuning
 const PM2_INSTANCES = parseInt(process.env.PM2_INSTANCES) || 1;
-const PG_AVAILABLE_CONNECTIONS = 80;
+const PG_AVAILABLE_CONNECTIONS = parseInt(process.env.PG_AVAILABLE_CONNECTIONS) || 80;
 const POOL_SIZE = Math.floor(PG_AVAILABLE_CONNECTIONS / PM2_INSTANCES);
 
 const pool = new Pool({

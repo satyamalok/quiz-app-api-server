@@ -6,6 +6,7 @@
 
 const shopService = require('../services/shopService');
 const purchaseService = require('../services/purchaseService');
+const agentService = require('../services/agentService');
 
 /**
  * Format file size for display
@@ -92,8 +93,8 @@ async function getChapterById(req, res, next) {
       });
     }
 
-    // Format items
-    const items = chapter.items.map(item => formatItemResponse(item, userPhone));
+    // Format items (with agent lookups for digital items)
+    const items = await formatItemsWithAgents(req, chapter.items, userPhone);
 
     let response = {
       success: true,
@@ -157,8 +158,8 @@ async function getItems(req, res, next) {
 
     const result = await shopService.getAllItems(req, options, userPhone);
 
-    // Format items
-    const items = result.items.map(item => formatItemResponse(item, userPhone));
+    // Format items (with agent lookups for digital items)
+    const items = await formatItemsWithAgents(req, result.items, userPhone);
 
     let response = {
       success: true,
@@ -211,10 +212,20 @@ async function getItemById(req, res, next) {
       });
     }
 
-    const formattedItem = formatItemResponse(item, userPhone);
+    // Get agent for digital items
+    let agent = null;
+    if (item.item_type === 'digital' && item.whatsapp_agent_id) {
+      try {
+        agent = await agentService.getAgentById(req, item.whatsapp_agent_id);
+      } catch (err) {
+        console.error(`Failed to fetch agent ${item.whatsapp_agent_id}:`, err.message);
+      }
+    }
 
-    // Include PDF URL only if user has purchased
-    if (userPhone && item.is_purchased) {
+    const formattedItem = formatItemResponse(item, userPhone, agent);
+
+    // Include PDF URL only if user has purchased (for non-digital items)
+    if (userPhone && item.is_purchased && item.pdf_url && item.item_type !== 'digital') {
       formattedItem.pdf_url = item.pdf_url;
     }
 
@@ -255,7 +266,8 @@ async function getFeatured(req, res, next) {
       userPhone
     );
 
-    const items = result.items.map(item => formatItemResponse(item, userPhone));
+    // Format items (with agent lookups for digital items)
+    const items = await formatItemsWithAgents(req, result.items, userPhone);
 
     res.json({
       success: true,
@@ -388,8 +400,11 @@ async function getUserBalance(req, res, next) {
 
 /**
  * Format item for API response
+ * @param {Object} item - Item from database
+ * @param {string|null} userPhone - User's phone number (if authenticated)
+ * @param {Object|null} agent - Agent for digital items (if applicable)
  */
-function formatItemResponse(item, userPhone) {
+function formatItemResponse(item, userPhone, agent = null) {
   const response = {
     id: item.id,
     chapter_id: item.chapter_id,
@@ -397,7 +412,7 @@ function formatItemResponse(item, userPhone) {
     title: item.title,
     description: item.description,
     thumbnail_url: item.thumbnail_url,
-    item_type: item.item_type || 'pdf', // Feature 4: Item type (pdf, video, notes, other)
+    item_type: item.item_type || 'pdf', // Item type (pdf, video, notes, image, digital, other)
     xp_price: item.xp_price,
     xp_original_price: item.xp_original_price,
     is_on_sale: item.is_on_sale,
@@ -407,24 +422,65 @@ function formatItemResponse(item, userPhone) {
     stock_remaining: item.is_stock_enabled ? item.stock_remaining : null,
     is_sold_out: item.is_sold_out,
     is_featured: item.is_featured,
-    is_independent: item.chapter_id === null, // Feature 4: Indicates item has no chapter
+    is_independent: item.chapter_id === null, // Indicates item has no chapter
     file_size: formatFileSize(item.file_size_bytes),
     page_count: item.page_count,
     total_purchases: item.total_purchases
   };
+
+  // For digital items, include WhatsApp redirect info
+  if (item.item_type === 'digital' && agent) {
+    const message = item.whatsapp_message || 'Hello!';
+    response.whatsapp_url = agentService.generateWhatsAppUrl(agent.whatsapp_number, message);
+    response.whatsapp_agent_name = agent.name;
+  }
 
   // Add purchase status if user is authenticated
   if (userPhone) {
     response.is_purchased = item.is_purchased || false;
     response.purchased_at = item.purchased_at || null;
 
-    // Include download URL if purchased
-    if (item.is_purchased && item.pdf_url) {
+    // Include download URL if purchased (for non-digital items)
+    if (item.is_purchased && item.pdf_url && item.item_type !== 'digital') {
       response.download_url = item.pdf_url;
     }
   }
 
   return response;
+}
+
+/**
+ * Format items array with agent lookups for digital items
+ * @param {Object} req - Express request
+ * @param {Array} items - Items from database
+ * @param {string|null} userPhone - User's phone number
+ */
+async function formatItemsWithAgents(req, items, userPhone) {
+  // Collect unique agent IDs from digital items
+  const agentIds = [...new Set(
+    items
+      .filter(item => item.item_type === 'digital' && item.whatsapp_agent_id)
+      .map(item => item.whatsapp_agent_id)
+  )];
+
+  // Fetch all needed agents in one batch
+  const agentMap = {};
+  for (const agentId of agentIds) {
+    try {
+      const agent = await agentService.getAgentById(req, agentId);
+      if (agent) {
+        agentMap[agentId] = agent;
+      }
+    } catch (err) {
+      console.error(`Failed to fetch agent ${agentId}:`, err.message);
+    }
+  }
+
+  // Format items with agent info
+  return items.map(item => {
+    const agent = item.whatsapp_agent_id ? agentMap[item.whatsapp_agent_id] : null;
+    return formatItemResponse(item, userPhone, agent);
+  });
 }
 
 module.exports = {
