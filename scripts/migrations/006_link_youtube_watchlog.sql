@@ -135,6 +135,15 @@ BEGIN
     END IF;
 END $$;
 
+-- SHOP_ITEMS: Add duration_seconds for video items
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name = 'shop_items' AND column_name = 'duration_seconds') THEN
+        ALTER TABLE shop_items ADD COLUMN duration_seconds INTEGER;
+    END IF;
+END $$;
+
 -- PROMOTIONAL_VIDEOS: Add YouTube fields
 DO $$
 BEGIN

@@ -89,13 +89,13 @@
 
         <!-- Upload Video Form -->
         <div class="card">
-            <h2>Upload Video</h2>
+            <h2>Add Video</h2>
             <p style="color: #666; margin-bottom: 15px;">
-                Upload videos for any level. Multiple videos can have the same level with different categories.
-                You can also duplicate existing videos to other levels.
+                Add videos for any level. You can either <strong>upload a video file</strong> OR <strong>paste a YouTube URL</strong>.
+                Multiple videos can have the same level with different categories.
             </p>
 
-            <form method="POST" action="/admin/videos/upload" enctype="multipart/form-data">
+            <form method="POST" action="/admin/videos/upload" enctype="multipart/form-data" id="videoForm">
                 <div style="display: grid; grid-template-columns: 150px 1fr; gap: 20px;">
                     <div class="form-group">
                         <label for="level">Level *</label>
@@ -108,12 +108,35 @@
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label for="video_file">Video File *</label>
-                    <input type="file" id="video_file" name="video_file" accept="video/*" required>
+                <!-- Video Source Toggle -->
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 10px;">Video Source *</label>
+                    <div style="display: flex; gap: 20px;">
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="radio" name="video_source" value="file" checked onchange="toggleVideoSource()">
+                            Upload File
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 5px; cursor: pointer;">
+                            <input type="radio" name="video_source" value="youtube" onchange="toggleVideoSource()">
+                            YouTube URL
+                        </label>
+                    </div>
                 </div>
 
-                <div style="display: grid; grid-template-columns: 200px 1fr 200px; gap: 20px;">
+                <!-- File Upload Section -->
+                <div id="fileUploadSection" class="form-group">
+                    <label for="video_file">Video File *</label>
+                    <input type="file" id="video_file" name="video_file" accept="video/*">
+                </div>
+
+                <!-- YouTube URL Section -->
+                <div id="youtubeSection" class="form-group" style="display: none;">
+                    <label for="youtube_url">YouTube URL *</label>
+                    <input type="url" id="youtube_url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=...">
+                    <small style="color: #666;">Paste the full YouTube video URL</small>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 200px 1fr 200px 200px; gap: 20px;">
                     <div class="form-group">
                         <label for="duration_seconds">Duration (seconds) *</label>
                         <input type="number" id="duration_seconds" name="duration_seconds" min="1" required>
@@ -134,9 +157,17 @@
                             <option value="other">Other</option>
                         </select>
                     </div>
+
+                    <div class="form-group">
+                        <label for="video_orientation">Orientation</label>
+                        <select id="video_orientation" name="video_orientation">
+                            <option value="horizontal">Horizontal</option>
+                            <option value="vertical">Vertical</option>
+                        </select>
+                    </div>
                 </div>
 
-                <button type="submit">Upload Video</button>
+                <button type="submit">Add Video</button>
             </form>
         </div>
 
@@ -257,6 +288,29 @@
     </div>
 
     <script>
+        // Toggle between file upload and YouTube URL sections
+        function toggleVideoSource() {
+            const videoSource = document.querySelector('input[name="video_source"]:checked').value;
+            const fileSection = document.getElementById('fileUploadSection');
+            const youtubeSection = document.getElementById('youtubeSection');
+            const fileInput = document.getElementById('video_file');
+            const youtubeInput = document.getElementById('youtube_url');
+
+            if (videoSource === 'file') {
+                fileSection.style.display = 'block';
+                youtubeSection.style.display = 'none';
+                fileInput.required = true;
+                youtubeInput.required = false;
+                youtubeInput.value = '';
+            } else {
+                fileSection.style.display = 'none';
+                youtubeSection.style.display = 'block';
+                fileInput.required = false;
+                youtubeInput.required = true;
+                fileInput.value = '';
+            }
+        }
+
         // Video Preview Modal
         function previewVideo(url, name) {
             document.getElementById('previewTitle').textContent = name;

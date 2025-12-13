@@ -571,11 +571,56 @@ async function showAnalytics(req, res) {
   }
 }
 
+/**
+ * POST /admin/reels/add-youtube
+ * Add a reel from YouTube URL (no file upload)
+ */
+async function addYouTubeReel(req, res) {
+  try {
+    const { youtube_url, title, description, category, duration_seconds } = req.body;
+
+    if (!youtube_url || !youtube_url.trim()) {
+      return res.redirect('/admin/reels/upload?error=' + encodeURIComponent('Please provide a YouTube URL'));
+    }
+
+    if (!title || !title.trim()) {
+      return res.redirect('/admin/reels/upload?error=' + encodeURIComponent('Please provide a title'));
+    }
+
+    const schema = getAdminSchema(req);
+
+    // Insert YouTube reel into database
+    await adminQuery(schema, `
+      INSERT INTO reels (title, description, video_url, youtube_url, duration_seconds, category, uploaded_by, created_at, updated_at)
+      VALUES ($1, $2, NULL, $3, $4, $5, $6, NOW(), NOW())
+    `, [
+      title.trim(),
+      description || null,
+      youtube_url.trim(),
+      parseInt(duration_seconds) || 0,
+      category || 'education',
+      req.session.adminUser.email
+    ]);
+
+    // Invalidate cache after new reel (non-blocking)
+    invalidateReelsCache().catch(err =>
+      console.error('Cache invalidation error (non-critical):', err.message)
+    );
+
+    res.redirect('/admin/reels?message=' + encodeURIComponent('YouTube reel added successfully!'));
+
+  } catch (err) {
+    console.error('Add YouTube reel error:', err);
+    res.redirect('/admin/reels/upload?error=' + encodeURIComponent('Error adding YouTube reel: ' + err.message));
+  }
+}
+
 module.exports = {
   showReels,
   showUploadPage,
   uploadReels,
   uploadSingleReel,
+  addYouTubeReel,
   showEditReel,
   updateReel,
   toggleReelStatus,

@@ -67,6 +67,7 @@ const {
   showUploadPage: showReelsUpload,
   uploadReels,
   uploadSingleReel,
+  addYouTubeReel,
   showEditReel,
   updateReel,
   toggleReelStatus,
@@ -361,6 +362,7 @@ router.get('/reels', showReels);
 router.get('/reels/upload', showReelsUpload);
 router.post('/reels/upload', reelsUpload.array('videos', 20), uploadReels);
 router.post('/reels/upload-single', reelsUpload.single('video'), uploadSingleReel);
+router.post('/reels/add-youtube', addYouTubeReel);
 router.get('/reels/analytics', showReelsAnalytics);
 router.get('/reels/:id/edit', showEditReel);
 router.post('/reels/:id/update', updateReel);

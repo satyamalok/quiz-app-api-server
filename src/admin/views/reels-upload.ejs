@@ -169,6 +169,53 @@
             <div class="error"><%= error %></div>
         <% } %>
 
+        <!-- YouTube URL Section -->
+        <div class="card">
+            <h2>Add YouTube Reel</h2>
+            <p style="color: #666; margin-bottom: 15px;">
+                Add a reel directly from YouTube by pasting the URL. No file upload needed.
+            </p>
+
+            <form method="POST" action="/admin/reels/add-youtube" id="youtubeForm">
+                <div style="display: grid; grid-template-columns: 1fr 200px 200px 150px; gap: 15px; align-items: end;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="youtube_url">YouTube URL *</label>
+                        <input type="url" id="youtube_url" name="youtube_url" placeholder="https://www.youtube.com/watch?v=..." required>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="yt_title">Title *</label>
+                        <input type="text" id="yt_title" name="title" placeholder="Reel title" required>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="yt_category">Category</label>
+                        <select id="yt_category" name="category">
+                            <option value="education">Education</option>
+                            <option value="motivation">Motivation</option>
+                            <option value="tips">Tips & Tricks</option>
+                            <option value="news">News</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" style="height: 38px;">Add YouTube Reel</button>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 150px 1fr; gap: 15px; margin-top: 15px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="yt_duration">Duration (seconds)</label>
+                        <input type="number" id="yt_duration" name="duration_seconds" min="1" placeholder="e.g., 30">
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="yt_description">Description</label>
+                        <input type="text" id="yt_description" name="description" placeholder="Optional description">
+                    </div>
+                </div>
+            </form>
+        </div>
+
         <div class="card">
             <h2>Bulk Upload (Drag & Drop)</h2>
             <p style="color: #666; margin-bottom: 20px;">

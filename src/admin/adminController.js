@@ -1501,20 +1501,33 @@ async function showVideos(req, res) {
 async function uploadVideo(req, res) {
   try {
     const schema = getAdminSchema(req);
-    const { level, video_name, duration_seconds, description, category } = req.body;
+    const { level, video_name, duration_seconds, description, category, video_source, youtube_url, video_orientation } = req.body;
 
-    if (!req.file) {
-      throw new Error('Please select a video file');
+    let videoUrl = null;
+    let youtubeUrlValue = null;
+
+    if (video_source === 'youtube') {
+      // YouTube URL mode - no file required
+      if (!youtube_url || !youtube_url.trim()) {
+        throw new Error('Please provide a YouTube URL');
+      }
+      youtubeUrlValue = youtube_url.trim();
+      videoUrl = null; // No file URL for YouTube videos
+    } else {
+      // File upload mode
+      if (!req.file) {
+        throw new Error('Please select a video file');
+      }
+      // Upload to MinIO (tenant-specific bucket)
+      const bucket = getAdminBucket(req);
+      const result = await uploadFile(req.file, 'videos', bucket);
+      videoUrl = result.publicUrl;
     }
 
-    // Upload to MinIO (tenant-specific bucket)
-    const bucket = getAdminBucket(req);
-    const result = await uploadFile(req.file, 'videos', bucket);
-
     await adminQuery(schema, `
-      INSERT INTO promotional_videos (level, video_name, video_url, duration_seconds, description, category)
-      VALUES ($1, $2, $3, $4, $5, $6)
-    `, [level, video_name, result.publicUrl, duration_seconds, description, category || 'promotional']);
+      INSERT INTO promotional_videos (level, video_name, video_url, duration_seconds, description, category, youtube_url, video_orientation)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `, [level, video_name, videoUrl, duration_seconds, description, category || 'promotional', youtubeUrlValue, video_orientation || 'horizontal']);
 
     const videos = await adminQuery(schema, 'SELECT * FROM promotional_videos ORDER BY level ASC, id DESC');
 

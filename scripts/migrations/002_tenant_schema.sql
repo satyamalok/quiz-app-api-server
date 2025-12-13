@@ -538,6 +538,7 @@ CREATE TABLE IF NOT EXISTS shop_items (
     -- YouTube video support
     youtube_url VARCHAR(500),
     video_orientation VARCHAR(20) DEFAULT 'horizontal' CHECK (video_orientation IN ('horizontal', 'vertical')),
+    duration_seconds INTEGER,                -- Video duration for video items
 
     created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
     updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
