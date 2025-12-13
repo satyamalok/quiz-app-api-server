@@ -163,6 +163,22 @@ BEGIN
     END IF;
 END $$;
 
+-- PROMOTIONAL_VIDEOS: Make video_url nullable for YouTube-only videos
+DO $$
+BEGIN
+    ALTER TABLE promotional_videos ALTER COLUMN video_url DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not alter promotional_videos.video_url: %', SQLERRM;
+END $$;
+
+-- REELS: Make video_url nullable for YouTube-only reels
+DO $$
+BEGIN
+    ALTER TABLE reels ALTER COLUMN video_url DROP NOT NULL;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not alter reels.video_url: %', SQLERRM;
+END $$;
+
 -- REELS: Add YouTube URL (reels are always vertical, no orientation needed)
 DO $$
 BEGIN

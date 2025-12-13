@@ -265,11 +265,12 @@ Tutorial not found (404):
   "item_type": "video",
   "redirect_url": null,
   "youtube_url": "https://www.youtube.com/watch?v=def456",
-  "video_orientation": "horizontal"
+  "video_orientation": "horizontal",
+  "duration_seconds": 300
 }
 ```
 
-**Note:** Shop uses `item_type` instead of `content_type`.
+**Note:** Shop uses `item_type` instead of `content_type`. Video items include `duration_seconds`.
 
 ---
 
@@ -445,8 +446,10 @@ psql -h localhost -U admin -d quizdb -f scripts/migrations/006_link_youtube_watc
 1. `redirect_url` column to level_content, daily_gifts, shop_items
 2. `youtube_url` column to level_content, daily_gifts, shop_items, promotional_videos, reels
 3. `video_orientation` column to level_content, daily_gifts, shop_items, promotional_videos
-4. Updates CHECK constraints to include `link` content type
-5. Creates `content_watch_log` table for tracking video watches
+4. `duration_seconds` column to shop_items (for video items)
+5. Updates CHECK constraints to include `link` content type
+6. Creates `content_watch_log` table for tracking video watches
+7. Makes `video_url` nullable in promotional_videos and reels (for YouTube-only videos)
 
 ---
 
