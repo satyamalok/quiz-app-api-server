@@ -512,7 +512,10 @@ async function createGift(req, data) {
     duration_seconds,
     is_active = true,
     whatsapp_agent_id,
-    whatsapp_message
+    whatsapp_message,
+    youtube_url,
+    video_orientation,
+    redirect_url
   } = data;
 
   const result = await tenantQuery(req,
@@ -523,9 +526,10 @@ async function createGift(req, data) {
        available_date, available_time,
        file_size_bytes, page_count, duration_seconds,
        is_active,
-       whatsapp_agent_id, whatsapp_message
+       whatsapp_agent_id, whatsapp_message,
+       youtube_url, video_orientation, redirect_url
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
      RETURNING *`,
     [
       title, description, content_type,
@@ -534,7 +538,8 @@ async function createGift(req, data) {
       available_date, available_time,
       file_size_bytes, page_count, duration_seconds,
       is_active,
-      whatsapp_agent_id, whatsapp_message
+      whatsapp_agent_id, whatsapp_message,
+      youtube_url || null, video_orientation || 'horizontal', redirect_url || null
     ]
   );
 
@@ -562,7 +567,10 @@ async function updateGift(req, giftId, data) {
     duration_seconds,
     is_active,
     whatsapp_agent_id,
-    whatsapp_message
+    whatsapp_message,
+    youtube_url,
+    video_orientation,
+    redirect_url
   } = data;
 
   const result = await tenantQuery(req,
@@ -581,8 +589,11 @@ async function updateGift(req, giftId, data) {
          is_active = COALESCE($12, is_active),
          whatsapp_agent_id = $13,
          whatsapp_message = $14,
+         youtube_url = $15,
+         video_orientation = COALESCE($16, video_orientation),
+         redirect_url = $17,
          updated_at = ${SQL_IST_NOW}
-     WHERE id = $15
+     WHERE id = $18
      RETURNING *`,
     [
       title, description, content_type,
@@ -591,7 +602,9 @@ async function updateGift(req, giftId, data) {
       available_date, available_time,
       file_size_bytes, page_count, duration_seconds,
       is_active,
-      whatsapp_agent_id, whatsapp_message, giftId
+      whatsapp_agent_id, whatsapp_message,
+      youtube_url || null, video_orientation, redirect_url || null,
+      giftId
     ]
   );
 

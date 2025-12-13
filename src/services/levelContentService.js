@@ -363,7 +363,10 @@ async function createContent(req, data) {
     is_featured = false,
     display_order = 0,
     whatsapp_agent_id,
-    whatsapp_message
+    whatsapp_message,
+    youtube_url,
+    video_orientation,
+    redirect_url
   } = data;
 
   const result = await tenantQuery(req,
@@ -373,9 +376,10 @@ async function createContent(req, data) {
        xp_price, xp_original_price, sale_ends_at,
        file_size_bytes, page_count, duration_seconds,
        is_active, is_featured, display_order,
-       whatsapp_agent_id, whatsapp_message
+       whatsapp_agent_id, whatsapp_message,
+       youtube_url, video_orientation, redirect_url
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
      RETURNING *`,
     [
       level, title, description, content_type,
@@ -383,7 +387,8 @@ async function createContent(req, data) {
       xp_price, xp_original_price, sale_ends_at,
       file_size_bytes, page_count, duration_seconds,
       is_active, is_featured, display_order,
-      whatsapp_agent_id, whatsapp_message
+      whatsapp_agent_id, whatsapp_message,
+      youtube_url || null, video_orientation || 'horizontal', redirect_url || null
     ]
   );
 
@@ -414,7 +419,10 @@ async function updateContent(req, contentId, data) {
     is_featured,
     display_order,
     whatsapp_agent_id,
-    whatsapp_message
+    whatsapp_message,
+    youtube_url,
+    video_orientation,
+    redirect_url
   } = data;
 
   const result = await tenantQuery(req,
@@ -436,8 +444,11 @@ async function updateContent(req, contentId, data) {
          display_order = COALESCE($15, display_order),
          whatsapp_agent_id = $16,
          whatsapp_message = $17,
+         youtube_url = $18,
+         video_orientation = COALESCE($19, video_orientation),
+         redirect_url = $20,
          updated_at = ${SQL_IST_NOW}
-     WHERE id = $18
+     WHERE id = $21
      RETURNING *`,
     [
       level, title, description, content_type,
@@ -445,7 +456,9 @@ async function updateContent(req, contentId, data) {
       xp_price, xp_original_price, sale_ends_at,
       file_size_bytes, page_count, duration_seconds,
       is_active, is_featured, display_order,
-      whatsapp_agent_id, whatsapp_message, contentId
+      whatsapp_agent_id, whatsapp_message,
+      youtube_url || null, video_orientation, redirect_url || null,
+      contentId
     ]
   );
 

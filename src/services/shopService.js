@@ -477,9 +477,13 @@ async function createItem(req, data) {
     is_featured = false,
     file_size_bytes,
     page_count,
-    item_type = 'pdf', // Feature 4: pdf, video, notes, image, digital, other
+    item_type = 'pdf', // Feature 4: pdf, video, notes, image, digital, link, other
     whatsapp_agent_id,
-    whatsapp_message
+    whatsapp_message,
+    youtube_url,
+    video_orientation,
+    redirect_url,
+    duration_seconds
   } = data;
 
   // If stock is enabled, set stock_remaining = stock_total
@@ -492,9 +496,10 @@ async function createItem(req, data) {
        is_stock_enabled, stock_total, stock_remaining,
        display_order, is_active, is_featured,
        file_size_bytes, page_count, item_type,
-       whatsapp_agent_id, whatsapp_message
+       whatsapp_agent_id, whatsapp_message,
+       youtube_url, video_orientation, redirect_url, duration_seconds
      )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
      RETURNING *`,
     [
       chapter_id, title, description, pdf_url, thumbnail_url,
@@ -502,7 +507,8 @@ async function createItem(req, data) {
       is_stock_enabled, stock_total, stock_remaining,
       display_order, is_active, is_featured,
       file_size_bytes, page_count, item_type,
-      whatsapp_agent_id, whatsapp_message
+      whatsapp_agent_id, whatsapp_message,
+      youtube_url || null, video_orientation || 'horizontal', redirect_url || null, duration_seconds || null
     ]
   );
 
@@ -535,7 +541,11 @@ async function updateItem(req, itemId, data) {
     page_count,
     item_type,
     whatsapp_agent_id,
-    whatsapp_message
+    whatsapp_message,
+    youtube_url,
+    video_orientation,
+    redirect_url,
+    duration_seconds
   } = data;
 
   // Note: chapter_id can be explicitly set to null for independent items
@@ -563,8 +573,12 @@ async function updateItem(req, itemId, data) {
          item_type = COALESCE($17, item_type),
          whatsapp_agent_id = $18,
          whatsapp_message = $19,
+         youtube_url = $20,
+         video_orientation = COALESCE($21, video_orientation),
+         redirect_url = $22,
+         duration_seconds = COALESCE($23, duration_seconds),
          updated_at = ${SQL_IST_NOW}
-     WHERE id = $20
+     WHERE id = $24
      RETURNING *`,
     [
       chapterIdValue, title, description, pdf_url, thumbnail_url,
@@ -572,7 +586,9 @@ async function updateItem(req, itemId, data) {
       is_stock_enabled, stock_total, stock_remaining,
       display_order, is_active, is_featured,
       file_size_bytes, page_count, item_type,
-      whatsapp_agent_id, whatsapp_message, itemId
+      whatsapp_agent_id, whatsapp_message,
+      youtube_url || null, video_orientation, redirect_url || null,
+      duration_seconds, itemId
     ]
   );
 
