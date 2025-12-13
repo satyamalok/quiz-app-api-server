@@ -216,7 +216,10 @@ async function createContent(req, res) {
       is_active,
       is_featured,
       whatsapp_agent_id,
-      whatsapp_message
+      whatsapp_message,
+      youtube_url,
+      video_orientation,
+      redirect_url
     } = req.body;
 
     // Validate level
@@ -250,9 +253,19 @@ async function createContent(req, res) {
       }
     }
 
-    // For digital items, file is not required; for others, it is required
-    if (content_type !== 'digital' && !file_url) {
-      return res.redirect('/admin/level-content/create?error=Content file is required');
+    // For digital items and link items, file is not required; for others, it is required
+    // For video items with youtube_url, file is also not required
+    if (content_type !== 'digital' && content_type !== 'link' && !file_url) {
+      if (content_type === 'video' && youtube_url) {
+        // YouTube URL provided, file not required
+      } else {
+        return res.redirect('/admin/level-content/create?error=Content file is required');
+      }
+    }
+
+    // For link items, validate redirect_url
+    if (content_type === 'link' && !redirect_url) {
+      return res.redirect('/admin/level-content/create?error=Redirect URL is required for link items');
     }
 
     // For digital items, validate WhatsApp fields
@@ -287,7 +300,10 @@ async function createContent(req, res) {
       is_active: is_active === 'on',
       is_featured: is_featured === 'on',
       whatsapp_agent_id: agentIdValue,
-      whatsapp_message: whatsapp_message || null
+      whatsapp_message: whatsapp_message || null,
+      youtube_url: youtube_url || null,
+      video_orientation: video_orientation || 'horizontal',
+      redirect_url: redirect_url || null
     });
 
     res.redirect('/admin/level-content?success=Content created successfully');
@@ -355,7 +371,10 @@ async function updateContent(req, res) {
       remove_thumbnail,
       clear_sale,
       whatsapp_agent_id,
-      whatsapp_message
+      whatsapp_message,
+      youtube_url,
+      video_orientation,
+      redirect_url
     } = req.body;
 
     // Validate level
@@ -416,6 +435,11 @@ async function updateContent(req, res) {
       ? parseInt(whatsapp_agent_id)
       : null;
 
+    // For link items, validate redirect_url
+    if (content_type === 'link' && !redirect_url) {
+      return res.redirect(`/admin/level-content/${id}/edit?error=Redirect URL is required for link items`);
+    }
+
     const updateData = {
       level: levelNum,
       title,
@@ -430,7 +454,10 @@ async function updateContent(req, res) {
       is_active: is_active === 'on',
       is_featured: is_featured === 'on',
       whatsapp_agent_id: agentIdValue,
-      whatsapp_message: whatsapp_message || null
+      whatsapp_message: whatsapp_message || null,
+      youtube_url: youtube_url || null,
+      video_orientation: video_orientation || 'horizontal',
+      redirect_url: redirect_url || null
     };
 
     if (file_url !== undefined) {

@@ -227,26 +227,33 @@ async function uploadReels(req, res) {
 async function uploadSingleReel(req, res) {
   try {
     const file = req.file;
-    const { title, description, category, duration } = req.body;
+    const { title, description, category, duration, youtube_url } = req.body;
 
-    if (!file) {
-      return res.status(400).json({ success: false, error: 'No file uploaded' });
+    // Either file or youtube_url must be provided
+    if (!file && !youtube_url) {
+      return res.status(400).json({ success: false, error: 'No file or YouTube URL provided' });
     }
 
-    // Upload to MinIO (tenant-specific bucket)
-    const bucket = getAdminBucket(req);
-    const uploadResult = await uploadFile(file, 'reels', bucket);
+    let video_url = youtube_url || null;
+
+    // Upload file to MinIO if provided
+    if (file) {
+      const bucket = getAdminBucket(req);
+      const uploadResult = await uploadFile(file, 'reels', bucket);
+      video_url = uploadResult.publicUrl;
+    }
 
     // Insert into database
     const schema = getAdminSchema(req);
     const result = await adminQuery(schema, `
-      INSERT INTO reels (title, description, video_url, duration_seconds, category, uploaded_by, created_at, updated_at)
-      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+      INSERT INTO reels (title, description, video_url, youtube_url, duration_seconds, category, uploaded_by, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
       RETURNING id
     `, [
-      title || file.originalname.replace(/\.[^/.]+$/, ''),
+      title || (file ? file.originalname.replace(/\.[^/.]+$/, '') : 'Untitled'),
       description || null,
-      uploadResult.publicUrl,
+      video_url,
+      youtube_url || null,
       parseInt(duration) || 0,
       category || 'education',
       req.session.adminUser.email
@@ -260,8 +267,8 @@ async function uploadSingleReel(req, res) {
     res.json({
       success: true,
       id: result.rows[0].id,
-      filename: file.originalname,
-      url: uploadResult.publicUrl
+      filename: file ? file.originalname : 'YouTube Video',
+      url: video_url
     });
 
   } catch (err) {
@@ -305,7 +312,7 @@ async function showEditReel(req, res) {
 async function updateReel(req, res) {
   try {
     const { id } = req.params;
-    const { title, description, category, duration_seconds, tags, is_active } = req.body;
+    const { title, description, category, duration_seconds, tags, is_active, youtube_url } = req.body;
     const schema = getAdminSchema(req);
 
     // Parse tags (comma-separated string to array)
@@ -320,8 +327,9 @@ async function updateReel(req, res) {
         duration_seconds = $4,
         tags = $5,
         is_active = $6,
+        youtube_url = $7,
         updated_at = NOW()
-      WHERE id = $7
+      WHERE id = $8
     `, [
       title || null,
       description || null,
@@ -329,6 +337,7 @@ async function updateReel(req, res) {
       parseInt(duration_seconds) || 0,
       tagsArray,
       is_active === 'true' || is_active === 'on',
+      youtube_url || null,
       id
     ]);
 

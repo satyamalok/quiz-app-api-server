@@ -353,7 +353,7 @@ async function createItem(req, res) {
       chapter_id,
       title,
       description,
-      item_type = 'pdf', // Feature 4: pdf, video, notes, image, digital, other
+      item_type = 'pdf', // Feature 4: pdf, video, notes, image, digital, link, other
       xp_price,
       xp_original_price,
       sale_ends_at,
@@ -363,8 +363,12 @@ async function createItem(req, res) {
       is_active,
       is_featured,
       page_count,
+      duration_seconds,
       whatsapp_agent_id,
-      whatsapp_message
+      whatsapp_message,
+      youtube_url,
+      video_orientation,
+      redirect_url
     } = req.body;
 
     // Handle file uploads (not required for digital items)
@@ -384,9 +388,19 @@ async function createItem(req, res) {
       }
     }
 
-    // For digital items, file is not required; for others, it is required
-    if (item_type !== 'digital' && !pdf_url) {
-      return res.redirect('/admin/shop/items/create?error=Content file is required');
+    // For digital items and link items, file is not required; for others, it is required
+    // For video items with youtube_url, file is also not required
+    if (item_type !== 'digital' && item_type !== 'link' && !pdf_url) {
+      if (item_type === 'video' && youtube_url) {
+        // YouTube URL provided, file not required
+      } else {
+        return res.redirect('/admin/shop/items/create?error=Content file is required');
+      }
+    }
+
+    // For link items, validate redirect_url
+    if (item_type === 'link' && !redirect_url) {
+      return res.redirect('/admin/shop/items/create?error=Redirect URL is required for link items');
     }
 
     // For digital items, validate WhatsApp fields
@@ -426,8 +440,12 @@ async function createItem(req, res) {
       is_featured: is_featured === 'on',
       file_size_bytes,
       page_count: page_count ? parseInt(page_count) : null,
+      duration_seconds: duration_seconds ? parseInt(duration_seconds) : null,
       whatsapp_agent_id: agentIdValue,
-      whatsapp_message: whatsapp_message || null
+      whatsapp_message: whatsapp_message || null,
+      youtube_url: youtube_url || null,
+      video_orientation: video_orientation || 'horizontal',
+      redirect_url: redirect_url || null
     });
 
     res.redirect('/admin/shop/items?success=Item created successfully');
@@ -492,10 +510,14 @@ async function updateItem(req, res) {
       is_active,
       is_featured,
       page_count,
+      duration_seconds,
       remove_thumbnail,
       clear_sale,
       whatsapp_agent_id,
-      whatsapp_message
+      whatsapp_message,
+      youtube_url,
+      video_orientation,
+      redirect_url
     } = req.body;
 
     let pdf_url = undefined;
@@ -545,6 +567,11 @@ async function updateItem(req, res) {
       ? parseInt(whatsapp_agent_id)
       : null;
 
+    // For link items, validate redirect_url
+    if (item_type === 'link' && !redirect_url) {
+      return res.redirect(`/admin/shop/items/${id}/edit?error=Redirect URL is required for link items`);
+    }
+
     const updateData = {
       chapter_id: chapterIdValue,
       title,
@@ -560,8 +587,12 @@ async function updateItem(req, res) {
       is_active: is_active === 'on',
       is_featured: is_featured === 'on',
       page_count: page_count ? parseInt(page_count) : null,
+      duration_seconds: duration_seconds ? parseInt(duration_seconds) : null,
       whatsapp_agent_id: agentIdValue,
-      whatsapp_message: whatsapp_message || null
+      whatsapp_message: whatsapp_message || null,
+      youtube_url: youtube_url || null,
+      video_orientation: video_orientation || 'horizontal',
+      redirect_url: redirect_url || null
     };
 
     if (pdf_url !== undefined) {

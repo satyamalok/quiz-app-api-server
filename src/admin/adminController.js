@@ -1583,7 +1583,7 @@ async function updateVideo(req, res) {
   try {
     const schema = getAdminSchema(req);
     const { id } = req.params;
-    const { level, video_name, duration_seconds, description, category, is_active } = req.body;
+    const { level, video_name, duration_seconds, description, category, is_active, youtube_url, video_orientation } = req.body;
 
     await adminQuery(schema, `
       UPDATE promotional_videos SET
@@ -1592,9 +1592,11 @@ async function updateVideo(req, res) {
         duration_seconds = $3,
         description = $4,
         category = $5,
-        is_active = $6
-      WHERE id = $7
-    `, [level, video_name, duration_seconds, description, category, is_active === 'on', id]);
+        is_active = $6,
+        youtube_url = $7,
+        video_orientation = $8
+      WHERE id = $9
+    `, [level, video_name, duration_seconds, description, category, is_active === 'on', youtube_url || null, video_orientation || 'horizontal', id]);
 
     const result = await adminQuery(schema, 'SELECT * FROM promotional_videos WHERE id = $1', [id]);
 

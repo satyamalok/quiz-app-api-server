@@ -69,6 +69,24 @@
                     </div>
                 </div>
 
+                <div style="display: grid; grid-template-columns: 1fr 200px; gap: 20px; margin-top: 15px;">
+                    <div class="form-group">
+                        <label for="youtube_url">YouTube URL (Optional)</label>
+                        <input type="url" id="youtube_url" name="youtube_url"
+                               value="<%= video.youtube_url || '' %>"
+                               placeholder="https://www.youtube.com/watch?v=...">
+                        <small style="color: #666;">Use YouTube URL instead of uploaded video file</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video_orientation">Video Orientation</label>
+                        <select id="video_orientation" name="video_orientation">
+                            <option value="horizontal" <%= (!video.video_orientation || video.video_orientation === 'horizontal') ? 'selected' : '' %>>Horizontal (16:9)</option>
+                            <option value="vertical" <%= video.video_orientation === 'vertical' ? 'selected' : '' %>>Vertical (9:16)</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label style="display: flex; align-items: center; cursor: pointer;">
                         <input type="checkbox" id="is_active" name="is_active" <%= video.is_active ? 'checked' : '' %> style="width: auto; margin-right: 10px;">

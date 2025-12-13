@@ -120,12 +120,13 @@
 
                 <div class="form-group">
                     <label for="item_type">Item Type *</label>
-                    <select id="item_type" name="item_type" required onchange="toggleDigitalFields()">
+                    <select id="item_type" name="item_type" required onchange="toggleContentTypeFields()">
                         <option value="pdf" <%= !item || item.item_type === 'pdf' ? 'selected' : '' %>>PDF</option>
                         <option value="video" <%= item && item.item_type === 'video' ? 'selected' : '' %>>Video</option>
                         <option value="notes" <%= item && item.item_type === 'notes' ? 'selected' : '' %>>Notes</option>
                         <option value="image" <%= item && item.item_type === 'image' ? 'selected' : '' %>>Image (Mindmap)</option>
                         <option value="digital" <%= item && item.item_type === 'digital' ? 'selected' : '' %>>Digital (WhatsApp)</option>
+                        <option value="link" <%= item && item.item_type === 'link' ? 'selected' : '' %>>Link (External URL)</option>
                         <option value="other" <%= item && item.item_type === 'other' ? 'selected' : '' %>>Other</option>
                     </select>
                 </div>
@@ -182,6 +183,53 @@
                     <input type="number" id="page_count" name="page_count" min="0"
                            value="<%= item ? item.page_count : '' %>"
                            placeholder="Optional">
+                </div>
+
+                <div class="form-group">
+                    <label for="duration_seconds">Duration (seconds)</label>
+                    <input type="number" id="duration_seconds" name="duration_seconds" min="0"
+                           value="<%= item ? item.duration_seconds : '' %>"
+                           placeholder="For videos">
+                </div>
+
+                <!-- YouTube/Video Section -->
+                <div id="youtube_section" style="display: none;">
+                    <div class="section-title">YouTube Video Settings</div>
+                    <p style="color: #666; margin-bottom: 15px;">
+                        Use a YouTube URL instead of uploading a video file.
+                    </p>
+
+                    <div class="form-group">
+                        <label for="youtube_url">YouTube URL</label>
+                        <input type="url" id="youtube_url" name="youtube_url"
+                               value="<%= item?.youtube_url || '' %>"
+                               placeholder="https://www.youtube.com/watch?v=...">
+                        <small>Paste full YouTube URL (regular or shorts)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="video_orientation">Video Orientation</label>
+                        <select id="video_orientation" name="video_orientation">
+                            <option value="horizontal" <%= (!item?.video_orientation || item?.video_orientation === 'horizontal') ? 'selected' : '' %>>Horizontal (16:9)</option>
+                            <option value="vertical" <%= item?.video_orientation === 'vertical' ? 'selected' : '' %>>Vertical (9:16)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Link Section -->
+                <div id="link_section" style="display: none;">
+                    <div class="section-title">External Link Settings</div>
+                    <p style="color: #666; margin-bottom: 15px;">
+                        Link items redirect users to an external URL.
+                    </p>
+
+                    <div class="form-group">
+                        <label for="redirect_url">Redirect URL *</label>
+                        <input type="url" id="redirect_url" name="redirect_url"
+                               value="<%= item?.redirect_url || '' %>"
+                               placeholder="https://example.com/resource">
+                        <small>External URL to redirect the user to</small>
+                    </div>
                 </div>
 
                 <!-- Pricing -->
@@ -340,18 +388,35 @@
             const enabled = document.getElementById('is_stock_enabled').checked;
             document.getElementById('stockSection').style.display = enabled ? 'block' : 'none';
         }
-        function toggleDigitalFields() {
+        function toggleContentTypeFields() {
             const itemType = document.getElementById('item_type').value;
             const digitalSection = document.getElementById('digital_section');
+            const youtubeSection = document.getElementById('youtube_section');
+            const linkSection = document.getElementById('link_section');
             const fileSection = document.getElementById('file_upload_section');
             const fileInput = document.getElementById('pdf_file');
 
+            // Hide all optional sections first
+            digitalSection.style.display = 'none';
+            youtubeSection.style.display = 'none';
+            linkSection.style.display = 'none';
+            fileSection.style.display = 'block';
+            fileInput.removeAttribute('required');
+
             if (itemType === 'digital') {
+                // Digital: Show WhatsApp settings, hide file upload
                 digitalSection.style.display = 'block';
                 fileSection.style.display = 'none';
-                fileInput.removeAttribute('required');
+            } else if (itemType === 'video') {
+                // Video: Show YouTube options and file upload
+                youtubeSection.style.display = 'block';
+                fileSection.style.display = 'block';
+            } else if (itemType === 'link') {
+                // Link: Show redirect URL, hide file upload
+                linkSection.style.display = 'block';
+                fileSection.style.display = 'none';
             } else {
-                digitalSection.style.display = 'none';
+                // Other types: Show file upload
                 fileSection.style.display = 'block';
                 <% if (!isEdit) { %>
                 fileInput.setAttribute('required', 'required');
@@ -360,7 +425,7 @@
         }
 
         // Run on page load
-        document.addEventListener('DOMContentLoaded', toggleDigitalFields);
+        document.addEventListener('DOMContentLoaded', toggleContentTypeFields);
     </script>
 </body>
 </html>

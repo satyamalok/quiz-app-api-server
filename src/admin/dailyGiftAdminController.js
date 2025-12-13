@@ -205,7 +205,10 @@ async function createGift(req, res) {
       duration_seconds,
       is_active,
       whatsapp_agent_id,
-      whatsapp_message
+      whatsapp_message,
+      youtube_url,
+      video_orientation,
+      redirect_url
     } = req.body;
 
     // Validate date
@@ -238,9 +241,19 @@ async function createGift(req, res) {
       }
     }
 
-    // For digital items, file is not required; for others, it is required
-    if (content_type !== 'digital' && !file_url) {
-      return res.redirect('/admin/daily-gifts/create?error=Gift file is required');
+    // For digital items and link items, file is not required; for others, it is required
+    // For video items with youtube_url, file is also not required
+    if (content_type !== 'digital' && content_type !== 'link' && !file_url) {
+      if (content_type === 'video' && youtube_url) {
+        // YouTube URL provided, file not required
+      } else {
+        return res.redirect('/admin/daily-gifts/create?error=Gift file is required');
+      }
+    }
+
+    // For link items, validate redirect_url
+    if (content_type === 'link' && !redirect_url) {
+      return res.redirect('/admin/daily-gifts/create?error=Redirect URL is required for link items');
     }
 
     // For digital items, validate WhatsApp fields
@@ -272,7 +285,10 @@ async function createGift(req, res) {
       duration_seconds: duration_seconds ? parseInt(duration_seconds) : null,
       is_active: is_active === 'on',
       whatsapp_agent_id: agentIdValue,
-      whatsapp_message: whatsapp_message || null
+      whatsapp_message: whatsapp_message || null,
+      youtube_url: youtube_url || null,
+      video_orientation: video_orientation || 'horizontal',
+      redirect_url: redirect_url || null
     });
 
     res.redirect('/admin/daily-gifts?success=Gift created successfully');
@@ -337,7 +353,10 @@ async function updateGift(req, res) {
       is_active,
       remove_thumbnail,
       whatsapp_agent_id,
-      whatsapp_message
+      whatsapp_message,
+      youtube_url,
+      video_orientation,
+      redirect_url
     } = req.body;
 
     let file_url = undefined;
@@ -383,6 +402,11 @@ async function updateGift(req, res) {
       ? parseInt(whatsapp_agent_id)
       : null;
 
+    // For link items, validate redirect_url
+    if (content_type === 'link' && !redirect_url) {
+      return res.redirect(`/admin/daily-gifts/${id}/edit?error=Redirect URL is required for link items`);
+    }
+
     const updateData = {
       title,
       description,
@@ -394,7 +418,10 @@ async function updateGift(req, res) {
       duration_seconds: duration_seconds ? parseInt(duration_seconds) : null,
       is_active: is_active === 'on',
       whatsapp_agent_id: agentIdValue,
-      whatsapp_message: whatsapp_message || null
+      whatsapp_message: whatsapp_message || null,
+      youtube_url: youtube_url || null,
+      video_orientation: video_orientation || 'horizontal',
+      redirect_url: redirect_url || null
     };
 
     if (file_url !== undefined) {

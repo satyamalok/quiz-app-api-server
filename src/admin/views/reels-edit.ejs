@@ -164,6 +164,14 @@
                     </div>
 
                     <div class="form-group">
+                        <label for="youtube_url">YouTube URL (Optional)</label>
+                        <input type="url" id="youtube_url" name="youtube_url"
+                               value="<%= reel.youtube_url || '' %>"
+                               placeholder="https://www.youtube.com/shorts/...">
+                        <small style="color: #666;">Use YouTube URL instead of uploaded video file</small>
+                    </div>
+
+                    <div class="form-group">
                         <label>Status</label>
                         <div class="toggle-switch">
                             <input type="checkbox" id="is_active" name="is_active" value="true" <%= reel.is_active ? 'checked' : '' %>>
