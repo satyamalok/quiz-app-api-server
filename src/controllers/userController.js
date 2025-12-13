@@ -1,6 +1,6 @@
 const { tenantQuery } = require('../config/database');
 const multer = require('multer');
-const { uploadFile } = require('../services/uploadService');
+const { uploadTenantFile } = require('../services/uploadService');
 const { getStreak } = require('../services/streakService');
 const { getReferralStats, getReferredUsers } = require('../services/referralService');
 const { getISTDate, SQL_IST_NOW } = require('../utils/timezone');
@@ -47,6 +47,11 @@ async function getProfile(req, res, next) {
     );
     const progressionMode = configResult.rows[0]?.progression_mode || 'linear';
 
+    // Calculate XP balance
+    const xpEarned = user.xp_total || 0;
+    const xpSpent = user.xp_spent || 0;
+    const xpRemaining = xpEarned - xpSpent;
+
     res.json({
       success: true,
       user: {
@@ -59,6 +64,10 @@ async function getProfile(req, res, next) {
         profile_image_url: user.profile_image_url,
         xp_total: user.xp_total,
         xp_today: xpToday,
+        // XP balance fields
+        xp_earned: xpEarned,
+        xp_spent: xpSpent,
+        xp_remaining: xpRemaining,
         current_level: user.current_level,
         total_ads_watched: user.total_ads_watched,
         date_joined: user.date_joined,
@@ -91,7 +100,7 @@ async function updateProfile(req, res, next) {
 
     // Upload profile image if provided
     if (file) {
-      const uploadResult = await uploadFile(file, 'profiles', req);
+      const uploadResult = await uploadTenantFile(file, 'profiles', req);
       profileImageUrl = uploadResult.publicUrl;
     }
 

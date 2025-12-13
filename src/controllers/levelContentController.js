@@ -8,6 +8,7 @@
 const levelContentService = require('../services/levelContentService');
 const purchaseService = require('../services/purchaseService');
 const agentService = require('../services/agentService');
+const watchXpService = require('../services/watchXpService');
 
 /**
  * Format file size for display
@@ -392,13 +393,26 @@ function formatContentResponse(content, userPhone, agent = null) {
     response.whatsapp_agent_name = agent.name;
   }
 
+  // For link items, include redirect URL
+  if (content.content_type === 'link' && content.redirect_url) {
+    response.redirect_url = content.redirect_url;
+  }
+
+  // For video items, include YouTube support
+  if (content.content_type === 'video') {
+    if (content.youtube_url) {
+      response.youtube_url = content.youtube_url;
+    }
+    response.video_orientation = content.video_orientation || 'horizontal';
+  }
+
   // Add purchase status if user is authenticated
   if (userPhone) {
     response.is_purchased = content.is_purchased || false;
     response.purchased_at = content.purchased_at || null;
 
-    // Include download URL if purchased (for non-digital items)
-    if (content.is_purchased && content.file_url && content.content_type !== 'digital') {
+    // Include download URL if purchased (for non-digital/link items)
+    if (content.is_purchased && content.file_url && !['digital', 'link'].includes(content.content_type)) {
       response.file_url = content.file_url;
     }
   }
@@ -461,6 +475,64 @@ async function formatContentWithAgents(req, contentArray, userPhone) {
   });
 }
 
+/**
+ * POST /api/v1/{app}/level-content/watch-log
+ * Log video watch time and award XP
+ * 5 XP per 30 seconds - no limits, called every time user sends progress
+ */
+async function logWatchTime(req, res, next) {
+  try {
+    const { phone } = req.user;
+    const { content_id, watch_duration_seconds, completed } = req.body;
+
+    // Validate required fields
+    if (!content_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_CONTENT_ID',
+        message: 'content_id is required'
+      });
+    }
+
+    if (watch_duration_seconds === undefined || watch_duration_seconds < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_WATCH_DURATION',
+        message: 'watch_duration_seconds must be a non-negative number'
+      });
+    }
+
+    // Minimum watch time of 5 seconds to log
+    if (watch_duration_seconds < 5) {
+      return res.json({
+        success: true,
+        message: 'Watch time too short to log',
+        xp_earned: 0
+      });
+    }
+
+    // Log watch and award XP
+    const result = await watchXpService.logWatchAndAwardXP(
+      req,
+      phone,
+      parseInt(content_id),
+      'level_content',
+      parseInt(watch_duration_seconds),
+      completed === true
+    );
+
+    res.json({
+      success: true,
+      message: 'Watch time logged',
+      xp_earned: result.xp_earned,
+      new_balance: result.new_balance
+    });
+
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getContentByLevel,
   getContentById,
@@ -468,5 +540,6 @@ module.exports = {
   getAllContent,
   purchaseContent,
   getMyPurchases,
-  getLevelsSummary
+  getLevelsSummary,
+  logWatchTime
 };

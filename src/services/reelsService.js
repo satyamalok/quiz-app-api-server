@@ -36,7 +36,8 @@ async function getActiveReels(req) {
         category,
         tags,
         total_hearts,
-        created_at
+        created_at,
+        youtube_url
       FROM reels
       WHERE is_active = TRUE
       ORDER BY id DESC
@@ -194,6 +195,7 @@ async function getReelById(reelId, phone, req) {
       r.tags,
       r.total_hearts,
       r.created_at,
+      r.youtube_url,
       COALESCE(urp.is_hearted, FALSE) as is_hearted,
       COALESCE(urp.status, 'not_started') as user_status
     FROM reels r

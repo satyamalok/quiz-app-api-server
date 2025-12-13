@@ -699,7 +699,7 @@ async function showUsers(req, res) {
 async function listAllUsers(req, res) {
   try {
     const schema = getAdminSchema(req);
-    const { search, page = 1, sort = 'xp_total', filter = 'all' } = req.query;
+    const { search, page = 1, sort = 'xp_total', filter = 'all', registration_date, activity_date } = req.query;
     const limit = 50;
     const offset = (page - 1) * limit;
 
@@ -749,6 +749,19 @@ async function listAllUsers(req, res) {
       paramCount++;
     }
 
+    // Date filters (IST dates stored in database)
+    if (registration_date) {
+      query += ` AND date_joined::date = $${paramCount}::date`;
+      params.push(registration_date);
+      paramCount++;
+    }
+
+    if (activity_date) {
+      query += ` AND last_active_at IS NOT NULL AND last_active_at::date = $${paramCount}::date`;
+      params.push(activity_date);
+      paramCount++;
+    }
+
     // Sorting
     const validSorts = {
       'xp_total': 'xp_total DESC',
@@ -775,6 +788,20 @@ async function listAllUsers(req, res) {
     if (search) {
       countQuery += ` AND (phone LIKE $${countParamNum} OR name ILIKE $${countParamNum} OR referral_code LIKE $${countParamNum})`;
       countParams.push(`%${search}%`);
+      countParamNum++;
+    }
+
+    // Date filters for count query
+    if (registration_date) {
+      countQuery += ` AND date_joined::date = $${countParamNum}::date`;
+      countParams.push(registration_date);
+      countParamNum++;
+    }
+
+    if (activity_date) {
+      countQuery += ` AND last_active_at IS NOT NULL AND last_active_at::date = $${countParamNum}::date`;
+      countParams.push(activity_date);
+      countParamNum++;
     }
 
     const countResult = await adminQuery(schema, countQuery, countParams);
@@ -784,7 +811,7 @@ async function listAllUsers(req, res) {
     res.render('user-list', {
       admin: req.session.adminUser,
       users: result.rows,
-      filters: { search, sort, filter },
+      filters: { search, sort, filter, registration_date, activity_date },
       filterCounts: {
         total: parseInt(filterCounts.total),
         joined_today: parseInt(filterCounts.joined_today),

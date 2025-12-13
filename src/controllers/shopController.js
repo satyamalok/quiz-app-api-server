@@ -418,7 +418,7 @@ function formatItemResponse(item, userPhone, agent = null) {
     title: item.title,
     description: item.description,
     thumbnail_url: item.thumbnail_url,
-    item_type: item.item_type || 'pdf', // Item type (pdf, video, notes, image, digital, other)
+    item_type: item.item_type || 'pdf', // Item type (pdf, video, notes, image, digital, link, other)
     xp_price: item.xp_price,
     xp_original_price: item.xp_original_price,
     is_on_sale: item.is_on_sale,
@@ -441,13 +441,26 @@ function formatItemResponse(item, userPhone, agent = null) {
     response.whatsapp_agent_name = agent.name;
   }
 
+  // For link items, include redirect URL
+  if (item.item_type === 'link' && item.redirect_url) {
+    response.redirect_url = item.redirect_url;
+  }
+
+  // For video items, include YouTube support
+  if (item.item_type === 'video') {
+    if (item.youtube_url) {
+      response.youtube_url = item.youtube_url;
+    }
+    response.video_orientation = item.video_orientation || 'horizontal';
+  }
+
   // Add purchase status if user is authenticated
   if (userPhone) {
     response.is_purchased = item.is_purchased || false;
     response.purchased_at = item.purchased_at || null;
 
-    // Include download URL if purchased (for non-digital items)
-    if (item.is_purchased && item.pdf_url && item.item_type !== 'digital') {
+    // Include download URL if purchased (for non-digital/link items)
+    if (item.is_purchased && item.pdf_url && !['digital', 'link'].includes(item.item_type)) {
       response.download_url = item.pdf_url;
     }
   }

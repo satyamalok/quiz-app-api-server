@@ -266,11 +266,14 @@ CREATE TABLE IF NOT EXISTS promotional_videos (
     id SERIAL PRIMARY KEY,
     level INTEGER NOT NULL,
     video_name VARCHAR(200) NOT NULL,
-    video_url VARCHAR(500) NOT NULL,
+    video_url VARCHAR(500),  -- Nullable when using YouTube
     duration_seconds INTEGER NOT NULL,
     category VARCHAR(50) DEFAULT 'promotional',
     description TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    -- YouTube video support
+    youtube_url VARCHAR(500),
+    video_orientation VARCHAR(20) DEFAULT 'horizontal' CHECK (video_orientation IN ('horizontal', 'vertical')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -372,7 +375,7 @@ CREATE TABLE IF NOT EXISTS reels (
     id SERIAL PRIMARY KEY,
     title VARCHAR(200),
     description TEXT,
-    video_url VARCHAR(500) NOT NULL,
+    video_url VARCHAR(500),  -- Nullable when using YouTube
     thumbnail_url VARCHAR(500),
     duration_seconds INTEGER NOT NULL DEFAULT 0,
     category VARCHAR(50) DEFAULT 'education',
@@ -383,6 +386,8 @@ CREATE TABLE IF NOT EXISTS reels (
     total_hearts INTEGER NOT NULL DEFAULT 0,
     total_watch_time_seconds BIGINT NOT NULL DEFAULT 0,
     uploaded_by VARCHAR(100),
+    -- YouTube video support (reels are always vertical)
+    youtube_url VARCHAR(500),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -501,11 +506,11 @@ CREATE TABLE IF NOT EXISTS shop_items (
     chapter_id INTEGER REFERENCES shop_chapters(id) ON DELETE CASCADE,  -- Nullable for independent items
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    pdf_url VARCHAR(500) NOT NULL,           -- Direct MinIO URL (no signing)
+    pdf_url VARCHAR(500),                    -- Nullable for digital/link types
     thumbnail_url VARCHAR(500),              -- Preview image
 
     -- Item type
-    item_type VARCHAR(20) DEFAULT 'pdf' CHECK (item_type IN ('pdf', 'video', 'notes', 'other')),
+    item_type VARCHAR(20) DEFAULT 'pdf' CHECK (item_type IN ('pdf', 'video', 'notes', 'other', 'digital', 'image', 'link')),
 
     -- Pricing
     xp_price INTEGER NOT NULL DEFAULT 0 CHECK (xp_price >= 0),  -- Current price (0 = free)
@@ -524,6 +529,15 @@ CREATE TABLE IF NOT EXISTS shop_items (
     total_purchases INTEGER DEFAULT 0,       -- Denormalized for stats
     file_size_bytes BIGINT,                  -- For display (e.g., "2.5 MB")
     page_count INTEGER,                      -- Optional metadata
+
+    -- Digital items (WhatsApp redirect)
+    whatsapp_agent_id INTEGER,
+    whatsapp_message TEXT,
+    -- Link items (custom URL redirect)
+    redirect_url VARCHAR(500),
+    -- YouTube video support
+    youtube_url VARCHAR(500),
+    video_orientation VARCHAR(20) DEFAULT 'horizontal' CHECK (video_orientation IN ('horizontal', 'vertical')),
 
     created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
     updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
@@ -646,8 +660,8 @@ CREATE TABLE IF NOT EXISTS level_content (
     level INTEGER NOT NULL CHECK (level >= 1 AND level <= 100),
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    content_type VARCHAR(20) NOT NULL CHECK (content_type IN ('pdf', 'video', 'notes', 'other')),
-    file_url VARCHAR(500) NOT NULL,
+    content_type VARCHAR(20) NOT NULL CHECK (content_type IN ('pdf', 'video', 'notes', 'other', 'digital', 'image', 'link')),
+    file_url VARCHAR(500),  -- Nullable for digital/link types
     thumbnail_url VARCHAR(500),
     xp_price INTEGER NOT NULL DEFAULT 0 CHECK (xp_price >= 0),
     xp_original_price INTEGER CHECK (xp_original_price >= 0),
@@ -659,6 +673,14 @@ CREATE TABLE IF NOT EXISTS level_content (
     is_featured BOOLEAN DEFAULT false,
     display_order INTEGER DEFAULT 0,
     total_purchases INTEGER DEFAULT 0,
+    -- Digital items (WhatsApp redirect)
+    whatsapp_agent_id INTEGER,
+    whatsapp_message TEXT,
+    -- Link items (custom URL redirect)
+    redirect_url VARCHAR(500),
+    -- YouTube video support
+    youtube_url VARCHAR(500),
+    video_orientation VARCHAR(20) DEFAULT 'horizontal' CHECK (video_orientation IN ('horizontal', 'vertical')),
     created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
     updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
 );
@@ -679,8 +701,8 @@ CREATE TABLE IF NOT EXISTS daily_gifts (
     id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     description TEXT,
-    content_type VARCHAR(20) NOT NULL CHECK (content_type IN ('pdf', 'video', 'notes', 'surprise', 'other')),
-    file_url VARCHAR(500) NOT NULL,
+    content_type VARCHAR(20) NOT NULL CHECK (content_type IN ('pdf', 'video', 'notes', 'surprise', 'other', 'digital', 'image', 'link')),
+    file_url VARCHAR(500),  -- Nullable for digital/link types
     thumbnail_url VARCHAR(500),
     xp_price INTEGER NOT NULL DEFAULT 0 CHECK (xp_price >= 0),
     available_date DATE NOT NULL,
@@ -690,6 +712,14 @@ CREATE TABLE IF NOT EXISTS daily_gifts (
     duration_seconds INTEGER,
     is_active BOOLEAN DEFAULT true,
     total_purchases INTEGER DEFAULT 0,
+    -- Digital items (WhatsApp redirect)
+    whatsapp_agent_id INTEGER,
+    whatsapp_message TEXT,
+    -- Link items (custom URL redirect)
+    redirect_url VARCHAR(500),
+    -- YouTube video support
+    youtube_url VARCHAR(500),
+    video_orientation VARCHAR(20) DEFAULT 'horizontal' CHECK (video_orientation IN ('horizontal', 'vertical')),
     created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata'),
     updated_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
 );
@@ -780,6 +810,24 @@ CREATE INDEX IF NOT EXISTS idx_agent_redirects_user ON agent_redirect_logs(user_
 CREATE INDEX IF NOT EXISTS idx_agent_redirects_agent ON agent_redirect_logs(agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_redirects_date ON agent_redirect_logs(redirected_at DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_redirects_trigger ON agent_redirect_logs(trigger_type);
+
+-- ============================================
+-- Table 30: content_watch_log (Video Watch XP Tracking)
+-- ============================================
+CREATE TABLE IF NOT EXISTS content_watch_log (
+    id SERIAL PRIMARY KEY,
+    phone VARCHAR(15) NOT NULL,
+    content_id INTEGER NOT NULL,
+    content_type VARCHAR(30) NOT NULL,  -- 'level_content', 'tutorial', 'gift', 'shop_item'
+    watch_duration_seconds INTEGER NOT NULL DEFAULT 0,
+    completed BOOLEAN DEFAULT FALSE,
+    xp_earned INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT (NOW() AT TIME ZONE 'Asia/Kolkata')
+);
+
+CREATE INDEX IF NOT EXISTS idx_content_watch_log_phone ON content_watch_log(phone);
+CREATE INDEX IF NOT EXISTS idx_content_watch_log_content ON content_watch_log(content_id, content_type);
+CREATE INDEX IF NOT EXISTS idx_content_watch_log_created ON content_watch_log(created_at);
 
 -- ============================================
 -- Mark this migration as applied

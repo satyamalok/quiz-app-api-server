@@ -152,10 +152,10 @@
 
         <!-- Search and Sort Bar -->
         <div class="card">
-            <form method="GET" action="/admin/users/list" style="display: flex; gap: 15px; align-items: end;">
+            <form method="GET" action="/admin/users/list" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: end;">
                 <input type="hidden" name="filter" value="<%= filters.filter || 'all' %>">
 
-                <div class="form-group" style="flex: 1; margin: 0;">
+                <div class="form-group" style="flex: 1; min-width: 200px; margin: 0;">
                     <label for="search">Search Users</label>
                     <input
                         type="text"
@@ -166,7 +166,27 @@
                     >
                 </div>
 
-                <div class="form-group" style="width: 200px; margin: 0;">
+                <div class="form-group" style="width: 160px; margin: 0;">
+                    <label for="registration_date">Registration Date</label>
+                    <input
+                        type="date"
+                        id="registration_date"
+                        name="registration_date"
+                        value="<%= filters.registration_date || '' %>"
+                    >
+                </div>
+
+                <div class="form-group" style="width: 160px; margin: 0;">
+                    <label for="activity_date">Activity Date</label>
+                    <input
+                        type="date"
+                        id="activity_date"
+                        name="activity_date"
+                        value="<%= filters.activity_date || '' %>"
+                    >
+                </div>
+
+                <div class="form-group" style="width: 180px; margin: 0;">
                     <label for="sort">Sort By</label>
                     <select id="sort" name="sort">
                         <option value="xp_total" <%= filters.sort === 'xp_total' ? 'selected' : '' %>>XP (High to Low)</option>
@@ -178,7 +198,7 @@
                 </div>
 
                 <button type="submit" style="white-space: nowrap;">Search</button>
-                <% if (filters.search || (filters.filter && filters.filter !== 'all')) { %>
+                <% if (filters.search || (filters.filter && filters.filter !== 'all') || filters.registration_date || filters.activity_date) { %>
                     <a href="/admin/users/list" class="btn" style="background: #6c757d; text-decoration: none;">Clear All</a>
                 <% } %>
             </form>
@@ -187,7 +207,11 @@
         <!-- User List Table -->
         <div class="card">
             <h2>
-                <% if (filters.filter === 'joined_today') { %>
+                <% if (filters.registration_date) { %>
+                    Users Registered on <%= filters.registration_date %>
+                <% } else if (filters.activity_date) { %>
+                    Users Active on <%= filters.activity_date %>
+                <% } else if (filters.filter === 'joined_today') { %>
                     Users Joined Today
                 <% } else if (filters.filter === 'joined_this_week') { %>
                     Users Joined This Week
@@ -267,8 +291,18 @@
             <!-- Pagination -->
             <% if (pagination.totalPages > 1) { %>
                 <div style="margin-top: 20px; text-align: center;">
+                    <%
+                        // Build query string for pagination links
+                        const paginationParams = [
+                            'filter=' + (filters.filter || 'all'),
+                            filters.search ? 'search=' + encodeURIComponent(filters.search) : '',
+                            'sort=' + filters.sort,
+                            filters.registration_date ? 'registration_date=' + filters.registration_date : '',
+                            filters.activity_date ? 'activity_date=' + filters.activity_date : ''
+                        ].filter(p => p).join('&');
+                    %>
                     <% if (pagination.currentPage > 1) { %>
-                        <a href="?page=<%= pagination.currentPage - 1 %>&filter=<%= filters.filter || 'all' %><%= filters.search ? '&search=' + filters.search : '' %>&sort=<%= filters.sort %>" class="btn" style="margin: 0 5px;">Previous</a>
+                        <a href="?page=<%= pagination.currentPage - 1 %>&<%= paginationParams %>" class="btn" style="margin: 0 5px;">Previous</a>
                     <% } %>
 
                     <span style="margin: 0 15px; color: #666;">
@@ -276,7 +310,7 @@
                     </span>
 
                     <% if (pagination.currentPage < pagination.totalPages) { %>
-                        <a href="?page=<%= pagination.currentPage + 1 %>&filter=<%= filters.filter || 'all' %><%= filters.search ? '&search=' + filters.search : '' %>&sort=<%= filters.sort %>" class="btn" style="margin: 0 5px;">Next</a>
+                        <a href="?page=<%= pagination.currentPage + 1 %>&<%= paginationParams %>" class="btn" style="margin: 0 5px;">Next</a>
                     <% } %>
                 </div>
             <% } %>

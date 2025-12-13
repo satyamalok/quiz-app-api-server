@@ -234,7 +234,7 @@ async function getUserPurchases(req, phone, options = {}) {
        p.item_id,
        p.item_title,
        p.chapter_id,
-       c.name as chapter_name,
+       COALESCE(c.name, 'Uncategorized') as chapter_name,
        p.xp_paid,
        p.purchased_at,
        i.thumbnail_url,
@@ -242,9 +242,10 @@ async function getUserPurchases(req, phone, options = {}) {
        i.is_active as is_item_active,
        i.description,
        i.file_size_bytes,
-       i.page_count
+       i.page_count,
+       i.item_type
      FROM user_purchases p
-     JOIN shop_chapters c ON c.id = p.chapter_id
+     LEFT JOIN shop_chapters c ON c.id = p.chapter_id
      LEFT JOIN shop_items i ON i.id = p.item_id
      WHERE p.phone = $1
      ORDER BY p.purchased_at DESC
@@ -333,12 +334,13 @@ async function getAllPurchases(req, options = {}) {
   const query = `
     SELECT
       p.*,
-      c.name as chapter_name,
+      COALESCE(c.name, 'Uncategorized') as chapter_name,
       u.name as user_name,
       i.thumbnail_url,
-      i.is_active as is_item_active
+      i.is_active as is_item_active,
+      i.item_type
     FROM user_purchases p
-    JOIN shop_chapters c ON c.id = p.chapter_id
+    LEFT JOIN shop_chapters c ON c.id = p.chapter_id
     JOIN users_profile u ON u.phone = p.phone
     LEFT JOIN shop_items i ON i.id = p.item_id
     ${whereClause}
@@ -397,12 +399,13 @@ async function getPurchaseAnalytics(req) {
     SELECT
       i.id,
       i.title,
-      c.name as chapter_name,
+      COALESCE(c.name, 'Uncategorized') as chapter_name,
       i.xp_price,
       i.total_purchases,
-      i.thumbnail_url
+      i.thumbnail_url,
+      i.item_type
     FROM shop_items i
-    JOIN shop_chapters c ON c.id = i.chapter_id
+    LEFT JOIN shop_chapters c ON c.id = i.chapter_id
     WHERE i.total_purchases > 0
     ORDER BY i.total_purchases DESC
     LIMIT 10

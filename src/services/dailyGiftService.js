@@ -56,8 +56,21 @@ function formatGiftResponse(gift, isPurchased = false) {
     response.whatsapp_message = gift.whatsapp_message;
   }
 
-  // Only include file_url if purchased or free AND available (for non-digital items)
-  if ((isPurchased || gift.xp_price === 0) && available && gift.content_type !== 'digital') {
+  // Include redirect URL for link items
+  if (gift.content_type === 'link' && gift.redirect_url) {
+    response.redirect_url = gift.redirect_url;
+  }
+
+  // Include YouTube support for video items
+  if (gift.content_type === 'video') {
+    if (gift.youtube_url) {
+      response.youtube_url = gift.youtube_url;
+    }
+    response.video_orientation = gift.video_orientation || 'horizontal';
+  }
+
+  // Only include file_url if purchased or free AND available (for non-digital/link items)
+  if ((isPurchased || gift.xp_price === 0) && available && !['digital', 'link'].includes(gift.content_type)) {
     response.file_url = gift.file_url;
     response.file_size_bytes = gift.file_size_bytes;
     response.page_count = gift.page_count;

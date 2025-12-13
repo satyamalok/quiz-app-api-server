@@ -1,0 +1,174 @@
+i need some more features in this. i am explaining them below, you tru to understand and make a plan first
+
+1- in digital goods currently we are only redirecting to whatsapp. i want another version of digital goods where i can place a link to redirect to. you have to keep the whatsapp redirect and implement this also in digital goods - you can make this another type say digital links. implement this for everything - shop, gift, chapter items, levels everywhere.
+
+2- in the videos everywhere currently i am only able to give the link of uploaded video to my server. i want you to include the YouTube video option also where i can place the link of youtube video and mark it as if its horizontal or vertical ie reels style. the delivery will be same, mostly keeping the api structure also same. implement this in all places - keep the video just this as new where i can paste the youtube link and in name only you can send the vertical or horizontal. 
+
+3- In the fronend i have implemented the feature to calculate the duration of the videos watched so that it can increase the XP based on videos watch duration from anywhere. for this it is requestion an api endpoint where it can post the watchtime and you can increase the XP accordingly. currently i am using for every 30 sec, 5XP is added. i am giving you the api format that it has requested, but you have to plan your own implementations: 
+
+## Priority 1: Video Watch Log Endpoint (NEW)
+
+**Endpoint:** `POST /level-content/watch-log`
+
+**Status:** Returns 404 - endpoint doesn't exist
+
+**Required Request:**
+```json
+{
+ "content_id": 6,
+ "watch_duration_seconds": 16,
+ "completed": false
+}
+```
+
+**Required Response:**
+```json
+{
+ "success": true,
+ "message": "Watch time logged",
+ "xp_earned": 5,
+ "new_balance": {
+   "xp_earned": 210,
+   "xp_spent": 106,
+   "xp_remaining": 104
+ }
+}
+```
+
+**Why:** Frontend now tracks video watch time for purchased level content videos. When user watches a video and presses back (or video ends), this endpoint is called to log watch time and award XP. Only called if watch duration >= 5 seconds. `completed` is true if user watched >= 80% of video.
+
+---
+
+## Priority 3: Tutorial Watch Complete Endpoint
+
+**Endpoint:** `POST /tutorials/watch-complete`
+
+**Status:** Returns 404 - endpoint doesn't exist
+
+**Required Request:**
+```json
+{
+ "tutorial_id": 123,
+ "watch_duration_seconds": 45
+}
+```
+
+**Required Response:**
+```json
+{
+ "success": true,
+ "message": "Tutorial watched",
+ "xp_earned": 10,
+ "watch_duration_seconds": 45,
+ "new_balance": {
+   "xp_earned": 210,
+   "xp_spent": 106,
+   "xp_remaining": 104
+ }
+}
+```
+
+**Why:** Tutorial videos should award XP based on watch time (xp_per_minute field exists in tutorial data).
+
+4- it also need some more data in XP. below is its request:
+
+## Priority 2: Profile API - Add XP Balance Fields
+
+**Endpoint:** `GET /user/profile`
+
+**Current Response:**
+```json
+{
+ "user": {
+   "xp_total": 200,
+   "xp_today": 100
+ }
+}
+```
+
+**Required Response:**
+```json
+{
+ "user": {
+   "xp_total": 200,
+   "xp_today": 100,
+   "xp_earned": 200,
+   "xp_spent": 106,
+   "xp_remaining": 94
+ }
+}
+```
+
+**Why:** Frontend needs `xp_remaining` to show correct spendable balance in Shop and Level screens. Currently falls back to `xp_total` which doesn't account for spent XP.
+
+5- the shop does not return the purchase item for the items which are not under any chapter. rectify this:
+
+## Priority 5: Shop My-Purchases - Return All Purchases
+
+**Endpoint:** `GET /shop/my-purchases`
+
+**Issue:** Some purchased items not showing (items with chapter "Unknown" or no chapter)
+
+**Fix:** Ensure all shop purchases are returned regardless of chapter association.
+
+6- There is a problem in server while uploading the profile image. currently it has been rectified by the AI on vps, but it has given a message for you:
+
+Bug Fix: Profile Image Upload in Multi-Tenancy
+
+The Bug
+
+File: src/controllers/userController.js
+Line: 94
+
+Problem: When uploading profile images, the code was calling uploadFile() with the wrong parameter:
+
+// WRONG - passing req object as bucket name
+const uploadResult = await uploadFile(file, 'profiles', req);
+
+Function signatures:
+// uploadFile expects: (file, folder, bucketString)
+async function uploadFile(file, folder, bucket = null)
+
+// uploadTenantFile expects: (file, folder, reqObject)  
+async function uploadTenantFile(file, folder, req)
+
+The uploadFile function tried to use req (an object) as the bucket name, resulting in:
+MinIO upload error: InvalidBucketNameError: Invalid bucket name: [object Object]
+
+The Fix
+
+Change the import:
+// Before
+const { uploadFile } = require('../services/uploadService');
+
+// After
+const { uploadTenantFile } = require('../services/uploadService');
+
+Change the function call:
+// Before (line 94)
+const uploadResult = await uploadFile(file, 'profiles', req);
+
+// After
+const uploadResult = await uploadTenantFile(file, 'profiles', req);
+
+Why This Happened
+
+The codebase has two upload functions:
+- uploadFile(file, folder, bucket) - For direct uploads with explicit bucket name
+- uploadTenantFile(file, folder, req) - For multi-tenant uploads that extract bucket from req.tenant.bucket
+
+The userController.js was using the wrong function for the multi-tenant context.
+
+Files to Update in GitHub
+
+| File                              | Change                                                                                       |
+|-----------------------------------|----------------------------------------------------------------------------------------------|
+| src/controllers/userController.js | Line 3: Change import from uploadFile to uploadTenantFile                                    |
+| src/controllers/userController.js | Line 94: Change uploadFile(file, 'profiles', req) to uploadTenantFile(file, 'profiles', req) |
+ 
+
+7- i also need some analytics related changes in the Users - Manage all Users and inside this there is predefined filters for Registration, and Activity. I want the option of datewise so that in each i select a date and it shows data for that day. eg - in registration, i select any date and it shows total registration on that day and also the list of users registered on that day. same for Activity (if its complex then let me know)
+
+
+
+I want you to first plan all these changes and let me know first. 

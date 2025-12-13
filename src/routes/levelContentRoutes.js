@@ -13,7 +13,8 @@ const {
   getAllContent,
   purchaseContent,
   getMyPurchases,
-  getLevelsSummary
+  getLevelsSummary,
+  logWatchTime
 } = require('../controllers/levelContentController');
 const authenticateJWT = require('../middleware/auth');
 const optionalAuth = require('../middleware/optionalAuth');
@@ -47,5 +48,8 @@ router.post('/level-content/purchase', authenticateJWT, purchaseContent);
 
 // Get my purchased level content
 router.get('/level-content/my-purchases', authenticateJWT, getMyPurchases);
+
+// Log video watch time and award XP (5 XP per 30 seconds)
+router.post('/level-content/watch-log', authenticateJWT, logWatchTime);
 
 module.exports = router;

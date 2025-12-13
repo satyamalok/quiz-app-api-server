@@ -42,7 +42,8 @@ async function getVideoURL(req, res, next) {
 
     // Cache miss - fetch from database
     let query = `
-      SELECT id, level, video_name, video_url, duration_seconds, description, category
+      SELECT id, level, video_name, video_url, duration_seconds, description, category,
+             youtube_url, video_orientation
       FROM promotional_videos
       WHERE level = $1 AND is_active = TRUE
     `;
@@ -86,7 +87,8 @@ async function getVideoURL(req, res, next) {
  */
 async function cacheAllVideos(category, req) {
   let query = `
-    SELECT id, level, video_name, video_url, duration_seconds, description, category
+    SELECT id, level, video_name, video_url, duration_seconds, description, category,
+           youtube_url, video_orientation
     FROM promotional_videos
     WHERE is_active = TRUE
   `;
@@ -316,8 +318,87 @@ async function restoreLifelinesHandler(req, res, next) {
   }
 }
 
+/**
+ * POST /api/v1/{app}/tutorials/watch-complete
+ * Log tutorial video watch time and award XP
+ * Uses the same 5 XP per 30 seconds formula
+ */
+async function tutorialWatchComplete(req, res, next) {
+  try {
+    const { phone } = req.user;
+    const { tutorial_id, watch_duration_seconds } = req.body;
+
+    // Validate required fields
+    if (!tutorial_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'MISSING_TUTORIAL_ID',
+        message: 'tutorial_id is required'
+      });
+    }
+
+    if (watch_duration_seconds === undefined || watch_duration_seconds < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'INVALID_WATCH_DURATION',
+        message: 'watch_duration_seconds must be a non-negative number'
+      });
+    }
+
+    // Verify the tutorial exists and is a tutorial category
+    const tutorialResult = await tenantQuery(req,
+      `SELECT id, video_name, duration_seconds, category
+       FROM promotional_videos
+       WHERE id = $1 AND is_active = TRUE`,
+      [tutorial_id]
+    );
+
+    if (tutorialResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'TUTORIAL_NOT_FOUND',
+        message: 'Tutorial video not found'
+      });
+    }
+
+    // Minimum watch time of 5 seconds to log
+    if (watch_duration_seconds < 5) {
+      return res.json({
+        success: true,
+        message: 'Watch time too short to log',
+        xp_earned: 0
+      });
+    }
+
+    // Import watchXpService
+    const watchXpService = require('../services/watchXpService');
+
+    // Log watch and award XP
+    const result = await watchXpService.logWatchAndAwardXP(
+      req,
+      phone,
+      parseInt(tutorial_id),
+      'tutorial',
+      parseInt(watch_duration_seconds),
+      false // completed flag not used for tutorials
+    );
+
+    res.json({
+      success: true,
+      message: 'Tutorial watched',
+      xp_earned: result.xp_earned,
+      watch_duration_seconds: parseInt(watch_duration_seconds),
+      new_balance: result.new_balance
+    });
+
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getVideoURL,
   completeVideo,
-  restoreLifelinesHandler
+  restoreLifelinesHandler,
+  tutorialWatchComplete
 };
