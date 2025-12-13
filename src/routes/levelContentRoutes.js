@@ -36,20 +36,25 @@ router.get('/level-content/featured', optionalAuth, getFeaturedContent);
 // Get levels summary (which levels have content)
 router.get('/level-content/levels-summary', optionalAuth, getLevelsSummary);
 
-// Get specific content details
-router.get('/level-content/:id', optionalAuth, getContentById);
-
 // ============================================
 // PROTECTED ROUTES (authentication required)
+// Must be defined BEFORE /:id to avoid route conflict
 // ============================================
-
-// Purchase level content
-router.post('/level-content/purchase', authenticateJWT, purchaseContent);
 
 // Get my purchased level content
 router.get('/level-content/my-purchases', authenticateJWT, getMyPurchases);
 
+// Purchase level content
+router.post('/level-content/purchase', authenticateJWT, purchaseContent);
+
 // Log video watch time and award XP (5 XP per 30 seconds)
 router.post('/level-content/watch-log', authenticateJWT, logWatchTime);
+
+// ============================================
+// DYNAMIC ID ROUTE (must be LAST to avoid conflicts)
+// ============================================
+
+// Get specific content details
+router.get('/level-content/:id', optionalAuth, getContentById);
 
 module.exports = router;

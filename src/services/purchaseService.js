@@ -220,7 +220,8 @@ async function getUserBalance(req, phone) {
 }
 
 /**
- * Get user's purchased items
+ * Get user's purchased SHOP items only
+ * Filters to only show shop_items (where item_id IS NOT NULL)
  * @param {Object} req - Express request with tenant context
  * @param {string} phone - User phone
  * @param {Object} options - Pagination options
@@ -228,6 +229,7 @@ async function getUserBalance(req, phone) {
 async function getUserPurchases(req, phone, options = {}) {
   const { limit = 50, offset = 0 } = options;
 
+  // Filter to shop items only (item_id IS NOT NULL)
   const result = await tenantQuery(req,
     `SELECT
        p.id as purchase_id,
@@ -247,16 +249,16 @@ async function getUserPurchases(req, phone, options = {}) {
      FROM user_purchases p
      LEFT JOIN shop_chapters c ON c.id = p.chapter_id
      LEFT JOIN shop_items i ON i.id = p.item_id
-     WHERE p.phone = $1
+     WHERE p.phone = $1 AND p.item_id IS NOT NULL
      ORDER BY p.purchased_at DESC
      LIMIT $2 OFFSET $3`,
     [phone, limit, offset]
   );
 
-  // Get total spent
+  // Get total spent on shop items only
   const totalResult = await tenantQuery(req,
     `SELECT COALESCE(SUM(xp_paid), 0) as total_spent, COUNT(*) as total_items
-     FROM user_purchases WHERE phone = $1`,
+     FROM user_purchases WHERE phone = $1 AND item_id IS NOT NULL`,
     [phone]
   );
 
